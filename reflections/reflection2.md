@@ -24,3 +24,20 @@ The resources we used were our mentors and documentation. When choosing how to d
 * Which features and user stories would you consider “at risk”? How will you change your plan if those items remain “at risk”?
 
 One feature that is "at risk" is the latency of the AI recommendation. It takes around 10 seconds for the AI to make a restaurant recommendation, which could lead to a poor user experience.
+
+
+* Did your team perform a spec audit this sprint? What did you find — were there gaps between the documented and actual behavior? Is the Spec Reconciliation — Sprint 2 Midpoint section committed to your repo?
+
+We regularly perform spec audit. There's no gaps between the spec and the actual behavior because we regularly update the documentation when we push to dev or when we finish implementing a feature. The Spec Reconciliation — Sprint 2 Midpoint section is committed to our repo, which can be found in the project_plan.md
+
+
+* Which spec sections were most useful during development? Which were too vague to be actionable, and how did you address that?
+
+The most useful spec sections during development were the AI Feature Specification and the Endpoints section, where we laid out detailed specifications for all our routes and endpoints.
+
+* Were there features you cut for MVP? Did you update the spec to reflect those decisions — and record them in the Decisions Log?
+
+We didn't cut any features for the MVP. 
+
+
+
