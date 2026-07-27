@@ -95,23 +95,21 @@ async def analyze_member_turn(
     current_signals = payload.current_signals
     if session_id is not None:
         async with async_session_factory() as db:
-            session = await session_crud.get_session(db, session_id)
+            # One round-trip for the session + both Qa rows. This used to be three
+            # sequential queries, which cost ~385 ms against the remote database —
+            # more than half a real-time voice turn's budget before any LLM work.
+            session, own_qa, host_qa = await session_crud.get_analyze_context(
+                db, session_id, payload.user_id
+            )
             if session is not None:
                 if session.host_user_id == payload.user_id:
                     is_host = True
-                else:
-                    host_qa = await session_crud.get_qa_for_user(
-                        db, session_id, session.host_user_id
-                    )
-                    if host_qa is not None:
-                        host_location_label = host_qa.location_address
+                elif host_qa is not None:
+                    host_location_label = host_qa.location_address
             # Seed the agent with what the CALLER already set this session (their
             # own Qa row). The frontend sends empty current_signals each session,
             # so without this the host's modal-set location (and any prior answers)
             # are invisible and get re-asked. Request fields still win over stored.
-            own_qa = await session_crud.get_qa_for_user(
-                db, session_id, payload.user_id
-            )
             current_signals = _merge_prior_qa(payload.current_signals, own_qa)
 
     result = await analyze_turn(

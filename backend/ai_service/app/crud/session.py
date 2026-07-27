@@ -52,6 +52,39 @@ async def get_qa_for_user(
     return result.scalars().first()
 
 
+async def get_analyze_context(
+    db: AsyncSession, session_id: int, user_id: int
+) -> tuple[Session | None, Qa | None, Qa | None]:
+    """Load everything one analyze turn needs, in ONE round-trip.
+
+    Returns (session, caller's Qa, host's Qa). The analyze path previously issued
+    three SEQUENTIAL queries (get_session, then the host's Qa, then the caller's
+    Qa). Against the remote Render database each round-trip is ~120 ms, so that
+    cost ~385 ms before the LLM call even started — over half of a real-time voice
+    turn's total budget. One query with an OR over the two user ids collapses it
+    to a single ~120 ms hop.
+
+    The host's Qa is returned even when the caller IS the host (then both tuple
+    slots reference the same row); resolving who is host stays with the caller,
+    which keeps this function a pure read.
+    """
+    session = await db.get(Session, session_id)
+    if session is None:
+        return None, None, None
+
+    # One statement, both rows: the caller's and the host's. When the caller is
+    # the host these coincide and the query simply returns a single row.
+    result = await db.execute(
+        select(Qa).where(
+            Qa.session_id == session_id,
+            Qa.user_id.in_({user_id, session.host_user_id}),  # type: ignore[attr-defined]
+        )
+    )
+    rows = list(result.scalars().all())
+    by_user = {row.user_id: row for row in rows}
+    return session, by_user.get(user_id), by_user.get(session.host_user_id)
+
+
 async def list_qa(db: AsyncSession, session_id: int) -> list[Qa]:
     """Return every member's Qa row for a session (one per member)."""
     result = await db.execute(

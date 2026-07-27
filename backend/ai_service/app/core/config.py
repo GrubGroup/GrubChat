@@ -41,6 +41,31 @@ class Settings(BaseSettings):
         validation_alias="SALESFORCE_LLM_MODEL",
     )
 
+    # --- Extraction routing (separate from the ranking/justification model) -----
+    # backend/CLAUDE.md's model-routing rule is "cheap model for extraction, strong
+    # model for ranking/justification". The conversational analyze turn is
+    # EXTRACTION, so it routes here rather than to active_llm_model.
+    #
+    # This exists because the turn is output-token-bound (~13 ms/token measured):
+    # on the strong model it ran ~3.9 s p50 against a ~700 ms real-time voice
+    # budget. gemini-2.5-flash via OpenRouter measured ~916 ms p50 / 1388 ms p95
+    # at full extraction quality (see scripts/probe_combined_fix.py). Provider is
+    # pinned separately because the SAME model was ~3x slower via the Salesforce
+    # gateway, so the win comes from the provider+model pair, not the model alone.
+    # Set extraction_provider="" to fall back to the main provider/model.
+    extraction_provider: str = "openrouter"  # env EXTRACTION_PROVIDER
+    extraction_model: str = Field(
+        default="google/gemini-2.5-flash",
+        validation_alias="EXTRACTION_MODEL",
+    )
+
+    # Master switch for the fast analyze path (fast extraction model + delta-shaped
+    # response + server-authored reply). On by default: it measured ~4x faster at
+    # equal extraction quality, and the reply becomes deterministic, which the
+    # voice/TTS path needs. Set ANALYZE_LOW_LATENCY=false to restore the original
+    # single-provider, model-written-reply behavior.
+    analyze_low_latency: bool = True  # env ANALYZE_LOW_LATENCY
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def active_llm_model(self) -> str:
@@ -50,11 +75,35 @@ class Settings(BaseSettings):
             return self.salesforce_llm_model
         return self.openrouter_llm_model
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def active_extraction_provider(self) -> str:
+        """Provider for extraction turns; falls back to the main provider."""
+        return self.extraction_provider.strip().lower() or self.llm_provider.strip().lower()
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def active_extraction_model(self) -> str:
+        """Model for extraction turns; falls back to the main provider's model."""
+        if not self.extraction_provider.strip():
+            return self.active_llm_model
+        return self.extraction_model
+
     # Back-compat alias — chat_completion historically read settings.llm_model.
     @computed_field  # type: ignore[prop-decorator]
     @property
     def llm_model(self) -> str:
         return self.active_llm_model
+
+    # --- Voice (STT / TTS relay) -----------------------------------------------
+    # Deepgram Flux for streaming STT (wss://api.deepgram.com/v2/listen, auth
+    # scheme "Token"); Cartesia Sonic-3.5 for TTS. Both are server-side only —
+    # audio never transits with a long-lived key in the browser.
+    deepgram_api_key: str = ""  # env DEEPGRAM_API_KEY
+    cartesia_api_key: str = ""  # env CARTESIA_API_KEY
+    # Cartesia requires a version header; this is the current documented value.
+    # Older values are still accepted, so it is configurable rather than pinned.
+    cartesia_version: str = "2026-03-01"  # env CARTESIA_VERSION
 
     # Shared internal secret guarding service-to-service endpoints (must match
     # the gateway JWT_SECRET).
