@@ -9,7 +9,7 @@ import { DietaryStep } from '@/pages/member/onboarding/Onboarding1'
 import { CuisinesStep } from '@/pages/member/onboarding/OnboardingCuisines'
 import { BudgetStep } from '@/pages/member/onboarding/Onboarding2'
 import { LocationStep } from '@/pages/member/onboarding/Onboarding3'
-import { EmptyGroupsPage } from '@/pages/member/EmptyGroupsPage'
+import { GroupsIndex } from '@/pages/member/GroupsIndex'
 import { GroupChatPage } from '@/pages/member/GroupChatPage'
 import { EventsPage } from '@/pages/member/EventsPage'
 import { AgentChatPage } from '@/pages/member/session/AgentChatPage'
@@ -52,7 +52,7 @@ function App() {
           </Route>
 
           <Route path="groups">
-            <Route index element={<EmptyGroupsPage />} />
+            <Route index element={<GroupsIndex />} />
             <Route path=":groupId" element={<GroupChatPage />} />
             <Route path=":groupId/session/:sessionId" element={<AgentChatPage />} />
             <Route path=":groupId/session/:sessionId/done" element={<AgentChatPage done />} />

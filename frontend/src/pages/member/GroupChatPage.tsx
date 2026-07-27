@@ -9,6 +9,7 @@ import { SessionCard } from '@/components/session/SessionCard'
 import { GroupDetailPanel } from '@/components/session/GroupDetailPanel'
 import { HostSessionModal } from '@/components/session/HostSessionModal'
 import { Avatar, Icon, Spinner } from '@/components/ui'
+import { AppSplash } from '@/components/layout/AppSplash'
 import { COLUMN_HEADER_H } from '@/components/layout/AppSidebar'
 import { VoiceComposer } from '@/components/voice/VoiceComposer'
 import { TypingIndicator } from '@/components/session/TypingIndicator'
@@ -210,9 +211,13 @@ export function GroupChatPage() {
   // off their own chat. `replace` keeps the bad URL out of the history stack.
   if (groupsLoaded && !isMember) return <Navigate to="/groups" replace />
 
-  // Paint guard (after all hooks): don't render a foreign room for the frame
-  // before the group list resolves.
-  if (!isMember) return null
+  // Membership is still unresolved: the list hasn't arrived (a cold URL entry —
+  // RequireAuth owns that fetch). Hold the frame with the same branded loader the
+  // session check uses, so the two run together seamlessly. This must not render
+  // nothing: doing so is what made a reload look like a permanently broken app.
+  // "Still loading" and "not your group" are different states, and only the second
+  // one above redirects.
+  if (!isMember) return <AppSplash />
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-raised">

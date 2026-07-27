@@ -1,7 +1,9 @@
+import { useEffect } from 'react'
 import { Navigate, Outlet } from 'react-router'
 import { AppSplash } from './AppSplash'
 import { useSession } from '@/lib/authClient'
 import { useAuthStore } from '@/stores/authStore'
+import { useGroupsStore } from '@/stores/groupsStore'
 
 // Auth guard for every non-public route.
 //
@@ -22,8 +24,25 @@ import { useAuthStore } from '@/stores/authStore'
 export function RequireAuth() {
   const { data: session, isPending } = useSession()
   const user = useAuthStore((s) => s.user)
+  const groupsLoaded = useGroupsStore((s) => s.loaded)
+  const loadGroups = useGroupsStore((s) => s.load)
 
-  if (session?.user || user) return <Outlet />
+  const authed = !!(session?.user || user)
+
+  // Load the group list here, for every member route, because it is app-level data
+  // that pages GATE THEMSELVES ON: GroupChatPage resolves membership from it before
+  // it will render anything. Loading it from a page (or worse, from a component that
+  // page only renders once it's already satisfied) deadlocks a cold URL entry — the
+  // page renders nothing, so the loader never mounts, so the list never arrives.
+  //
+  // Runs even while a child renders null, since effects don't depend on what was
+  // painted. Guarded on `loaded`, which groupsStore.load() sets on BOTH success and
+  // failure, so a failing fetch can't spin.
+  useEffect(() => {
+    if (authed && !groupsLoaded) void loadGroups()
+  }, [authed, groupsLoaded, loadGroups])
+
+  if (authed) return <Outlet />
   if (isPending) return <AppSplash />
 
   return <Navigate to="/login" replace />
