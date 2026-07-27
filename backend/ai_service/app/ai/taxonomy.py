@@ -16,14 +16,22 @@ Two vocabularies live here:
     recorded alongside cuisines in ``preferred_cuisines`` (the schema has no
     separate style column), so a style term also expands to any catalog aliases.
 
-**Tag format is underscore, lowercase, single concept** (``gluten_free``,
-``fine_dining``, ``middle_eastern``) — the exact style the *embedded* seed
-catalog (``scripts/seed_restaurants.py``) and the pgvector retriever match on.
-This is deliberate: only that catalog carries embeddings, so its vocabulary is
-the one retrieval actually filters/weights against. Where a canonical key
-differs from the seed's tag (style ``barbecue`` vs seed ``bbq``; group
-``latin_american`` vs seed ``latin``), the expansion emits BOTH so the recorded
-tags land on real restaurants.
+**Tag format is lowercase and single-concept, but the SEPARATOR differs by column:**
+
+  * ``cuisine_tags`` — UNDERSCORE (``fine_dining``, ``middle_eastern``).
+  * ``dietary_tags`` — HYPHEN (``gluten-free``, ``nut-free``), because that
+    controlled vocabulary is owned by the gateway's Prisma seed
+    (``backend/gateway/prisma/seed.mjs``), which is what populated the live
+    database. See the note above ``DIETARY_SYNONYMS`` — getting this wrong
+    silently empties the recommendation set, since dietary is the one HARD filter.
+
+Where a canonical key differs from the catalog's tag (style ``barbecue`` vs
+``bbq``; group ``latin_american`` vs ``latin``), the expansion emits BOTH so the
+recorded tags land on real restaurants.
+
+Note that ``scripts/seed_restaurants.py`` (the older embedded Python catalog)
+writes the underscore form for dietary tags and so disagrees with the live data;
+the gateway seed is authoritative.
 
 Expansion is **soft**: cuisine tags are a preference weight, never a hard filter
 (only dietary tags hard-filter), so an expanded tag with no matching restaurant
@@ -57,11 +65,15 @@ __all__ = [
 
 
 def normalize_tag(value: str) -> str:
-    """Coerce a raw term to the canonical tag style: lower_snake, single concept.
+    """Coerce a raw term to lower_snake, single concept — the LOOKUP key form.
 
     Collapses spaces and hyphens to a single underscore so "gluten free",
-    "gluten-free", and "Gluten  Free" all land on ``gluten_free`` — matching the
-    seed catalog's tag vocabulary and ``conversation_agent._clean_tags``.
+    "gluten-free", and "Gluten  Free" all reduce to one key (``gluten_free``).
+    That makes it the right normalizer for cuisine tags, which are stored
+    underscored, and the right first step for dietary terms — but NOT the final
+    form for them: ``normalize_dietary_terms`` maps the key onto the hyphenated
+    tag the ``dietary_tags`` column actually stores. Don't use this alone on a
+    dietary term.
     """
     return "_".join(str(value).strip().lower().replace("-", " ").split())
 
@@ -241,19 +253,48 @@ RESTAURANT_STYLES: dict[str, dict[str, list[str]]] = {
 # a durable Profile write from the /analyze turn stays matchable.
 # ---------------------------------------------------------------------------
 
+# NOTE ON SEPARATORS — dietary tags are HYPHENATED, cuisines are underscored.
+# This asymmetry is not a typo. `dietary_tags` is a controlled vocabulary owned by
+# the gateway's Prisma seed (backend/gateway/prisma/seed.mjs), which declares it as
+# 'vegan' | 'vegetarian' | 'gluten-free' | 'nut-free' | 'dairy-free' | 'halal' |
+# 'kosher' | 'shellfish-free' — with HYPHENS — and that seed is what populated the
+# live database (0 underscore-form dietary tags exist there).
+#
+# It matters far more than a cosmetic mismatch because `dietary_tags` is the one
+# HARD filter: ai/rag/retriever.similarity_search pushes `dietary_tags @>
+# required` into SQL. Emitting `gluten_free` against rows that say `gluten-free`
+# satisfies the superset test for ZERO rows, so a gluten-free or nut-free member
+# silently received NO recommendations at all (verified: `['gluten_free']` -> 0
+# candidates, `['gluten-free']` -> 20). Only these two of the six controlled tags
+# are multi-word, which is why the bug hid.
+#
+# Cuisine tags stay underscored (`middle_eastern`, `fine_dining`) — they are a
+# soft preference weight, so a near-miss loses a little signal instead of emptying
+# the result set. See scripts/probe_tag_format_mismatch.py.
 DIETARY_SYNONYMS: dict[str, str] = {
     "veggie": "vegetarian",
     "meatless": "vegetarian",
     "plant_based": "vegan",
-    "no_gluten": "gluten_free",
-    "gluten_free": "gluten_free",
-    "celiac": "gluten_free",
-    "coeliac": "gluten_free",
-    "gf": "gluten_free",
-    "no_nuts": "nut_free",
-    "nut_allergy": "nut_free",
-    "peanut_free": "nut_free",
-    "tree_nut_free": "nut_free",
+    "no_gluten": "gluten-free",
+    "gluten_free": "gluten-free",
+    "glutenfree": "gluten-free",
+    "celiac": "gluten-free",
+    "coeliac": "gluten-free",
+    "gf": "gluten-free",
+    "no_nuts": "nut-free",
+    "nut_free": "nut-free",
+    "nut_allergy": "nut-free",
+    "peanut_free": "nut-free",
+    "tree_nut_free": "nut-free",
+    # Also in the gateway's controlled vocabulary and present on live rows, so
+    # accept the loose phrasings a diner actually says for them.
+    "dairy_free": "dairy-free",
+    "no_dairy": "dairy-free",
+    "lactose_free": "dairy-free",
+    "lactose_intolerant": "dairy-free",
+    "shellfish_free": "shellfish-free",
+    "no_shellfish": "shellfish-free",
+    "shellfish_allergy": "shellfish-free",
 }
 
 
@@ -368,10 +409,18 @@ def expand_cuisine_terms(tags: Iterable[str]) -> list[str]:
 
 
 def normalize_dietary_terms(tags: Iterable[str]) -> list[str]:
-    """Map loose dietary phrasings onto the controlled dietary tags, order-kept.
+    """Map loose dietary phrasings onto the controlled HYPHENATED dietary tags.
 
-    Unknown terms pass through normalized (unmatched dietary tags are a safe
-    no-op against the retriever's superset filter — they simply match nothing).
+    Order-kept. Note the two-step: ``normalize_tag`` first collapses hyphens and
+    spaces to underscores (so "gluten free", "Gluten-Free", and "gluten_free" all
+    become the same lookup key), and DIETARY_SYNONYMS then maps that key to the
+    hyphenated form the live ``dietary_tags`` column actually stores. Doing it in
+    this order is what makes every phrasing land on one canonical tag.
+
+    An unknown multi-word term therefore leaves here underscored and will match
+    nothing — a safe no-op against the retriever's superset filter for a *cuisine*
+    weight, but for a dietary term it is a silent empty result set, so new entries
+    in the gateway's controlled vocabulary must be added to DIETARY_SYNONYMS.
     """
     result: list[str] = []
     for raw in tags:
