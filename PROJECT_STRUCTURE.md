@@ -211,9 +211,9 @@ React + TypeScript app built with **Vite**, styled with **TailwindCSS**, managed
 **Bun**.
 
 > **Status:** The frontend is a **full build-out** (not a Vite starter). It uses Better Auth
-> for auth and a zustand **screen-based navigation** store — there is **no `react-router-dom`**.
-> Styling is TailwindCSS v4, wired via `@tailwindcss/vite` + `@import "tailwindcss"` (`@theme`
-> tokens in `index.css`; no `tailwind.config.js`).
+> for auth and **react-router v8** for navigation — import from `react-router`, since
+> `react-router-dom` was removed in v8. Styling is TailwindCSS v4, wired via `@tailwindcss/vite`
+> + `@import "tailwindcss"` (`@theme` tokens in `index.css`; no `tailwind.config.js`).
 
 ```
 frontend/
@@ -226,8 +226,8 @@ frontend/
 ├── README.md
 ├── public/               # Static files served as-is (favicon.svg, icons.svg)
 └── src/                  # Application source (see §4a)
-    ├── main.tsx          # App entry point (mounts React)
-    ├── App.tsx           # Root — session guard + navStore-driven screen switch (no router)
+    ├── main.tsx          # App entry point (mounts React inside <BrowserRouter>)
+    ├── App.tsx           # The route tree (<Routes>) — layout routes + every path
     ├── index.css         # Tailwind import + @theme design tokens
     └── assets/           # hero.png, react.svg, vite.svg
 ```
@@ -241,25 +241,32 @@ src/
 ├── api/            # HTTP calls to the gateway via axios (live only — no mock layer)
 │   └── authApi.ts  sessionApi.ts  eventsApi.ts  restaurantsApi.ts
 │       profileApi.ts  groupsApi.ts  userApi.ts  usersApi.ts
-├── pages/          # Full screens (navStore-driven; no react-router)
-│   ├── public/         # LandingPage
-│   ├── auth/           # AuthForm (Better Auth sign-in/up + Google)
-│   └── member/         # EmptyGroupsPage, GroupChatPage, EventsPage, ProfilePage, ProfileEditPage
-│       ├── onboarding/     # Onboarding1-3 + OnboardingCuisines
+├── pages/          # Full screens (one per route)
+│   ├── public/         # LandingPage                          → /
+│   ├── auth/           # AuthForm (Better Auth sign-in/up + Google)  → /login, /signup
+│   └── member/         # EmptyGroupsPage → /groups; GroupChatPage → /groups/:groupId;
+│       │               #   EventsPage → /events[/:eventId]; ProfilePage, ProfileEditPage
+│       ├── onboarding/     # Onboarding1-3 + OnboardingCuisines  → /onboarding/*
 │       └── session/        # AgentChatPage, TopPicksPage
+│                           #   → /groups/:groupId/session/:sessionId[/done|/picks]
 ├── components/     # reusable UI pieces
 │   ├── ui/             # Design-system primitives (Button, Input, Card, Modal, …) + index.ts
-│   ├── layout/         # AppSidebar, BrandPanel, AppSplash, AuthFlowShell, AccountMenu
+│   ├── layout/         # Route layouts: RootLayout (session mirror + splash), RequireAuth,
+│   │                   #   PublicOnly (post-auth forward), AuthFlowShell (keeps the brand panel
+│   │                   #   mounted across sign-in/sign-up/onboarding so the right pane slides).
+│   │                   #   Plus AppSidebar, BrandPanel, AppSplash, AccountMenu
 │   ├── session/        # Session/chat widgets (HostSessionModal, SessionTopBar, SessionTimer,
 │   │                   #   GroupMessageRow, ChatStream, SessionCard, MemberRoster, …)
 │   ├── restaurant/     # RankedRestaurantCard (reused by TopPicksPage), MenuList (placeholder),
 │   │                   #   RestaurantHeader, TagRow, MenuItemRow
 │   ├── profile/        # CuisineTriStatePicker, PreferenceTag
 │   └── voice/          # VoiceComposer (react-speech-recognition)
-├── hooks/          # useSocket, useSessionCountdown, useVoiceInput, usePlacesInput,
+├── hooks/          # Routing: useGroupId, useSessionId (numeric route params), useBindSession
+│                   #   (rebinds a group's live session on a cold URL entry).
+│                   #   Plus useSocket, useSessionCountdown, useVoiceInput, usePlacesInput,
 │                   #   useMediaQuery, useNewItemIds, useScrollToBottom
-├── stores/         # 10 zustand stores: auth, session, groupChat, chat, event, eventList,
-│                   #   profile, groups, restaurant, nav
+├── stores/         # 9 zustand stores: auth, session, groupChat, chat, event, eventList,
+│                   #   profile, groups, restaurant. (No nav store — the URL owns navigation.)
 ├── lib/            # Client setup: axios, socket, authClient (Better Auth), env, motion
 ├── types/          # Shared TypeScript types (user, profile, session, recommendation, analyze,
 │                   #   group, groupChat, chat, restaurant, qa, menu, …)
@@ -280,6 +287,6 @@ src/
 | A real-time (WebSocket) event | `backend/gateway/src/sockets/`                                          |
 | Auth (sign-in/up, OAuth)      | `backend/gateway/src/lib/auth.js` (Better Auth; mounted in `app.js`)    |
 | An AI-proxy route (Node)      | `backend/gateway/src/routes/` + `controllers/` + `services/aiClient.js` |
-| A new screen/page (React)     | `frontend/src/pages/`                                                   |
+| A new screen/page (React)     | `frontend/src/pages/` + a `<Route>` in `frontend/src/App.tsx`            |
 | A reusable UI element (React) | `frontend/src/components/`                                              |
 | A product/planning doc        | `planning/`                                                             |

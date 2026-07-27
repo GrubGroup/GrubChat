@@ -14,7 +14,7 @@ A voice-first, group restaurant-recommendation web app. A group of friends each 
 
 This is a monorepo with three areas:
 
-- **`frontend/`** — React 19 + TypeScript + Vite 8 SPA. Screen-based navigation (zustand `navStore`, no router). Auth via Better Auth client (cookie session). Managed with **Bun**.
+- **`frontend/`** — React 19 + TypeScript + Vite 8 SPA. Routed with react-router v8 (`/groups/:groupId`, `/groups/:groupId/session/:sessionId`, `/events/:eventId`, …); zustand for client state. Auth via Better Auth client (cookie session). Managed with **Bun**.
 - **`backend/gateway/`** — Node.js + Express 4 + Socket.IO 4. Frontend-facing service: runs Better Auth (cookie sessions, email/password + Google OAuth), Socket.IO live group chat and session sync, Prisma (owns DB schema + migrations + pgvector extension), proxies AI requests to `ai_service`. Managed with **Bun**.
 - **`backend/ai_service/`** — Python 3.14 + FastAPI + SQLModel + asyncpg. The AI/data brain: LangGraph multi-agent pipeline (per-member preference agent → group orchestrator), RAG (Qwen embeddings via OpenRouter + pgvector similarity search), LLM chat. Read-side SQLModel mirror of the Prisma schema; also writes `Recommendation`/`RecommendationItem` + `Qa` rows. Managed with **uv**.
 
