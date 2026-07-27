@@ -1,7 +1,7 @@
+import { useNavigate } from 'react-router'
 import { Button, Chip } from '@/components/ui'
 import { DIETARY_RESTRICTIONS, isAllergen } from '@/constants/dietary'
 import { useProfileStore } from '@/stores/profileStore'
-import { useNavStore } from '@/stores/navStore'
 import { useEffect } from 'react'
 
 // Split the controlled dietary vocabulary into the wireframe's two groups:
@@ -14,7 +14,7 @@ const ALLERGEN_OPTIONS = DIETARY_RESTRICTIONS.filter((o) => isAllergen(o.value))
 // which owns the brand panel, progress ticks, title/subtitle, and the slide
 // transition — this component is just the right-panel form + footer.
 export function DietaryStep() {
-  const go = useNavStore((s) => s.go)
+  const navigate = useNavigate()
   const profile = useProfileStore((s) => s.profile)
   const load = useProfileStore((s) => s.load)
   const dietary = profile?.dietary_restrictions ?? []
@@ -54,10 +54,10 @@ export function DietaryStep() {
       </div>
 
       <div className="flex items-center gap-2">
-        <Button variant="primary" fullWidth onClick={() => go('onboarding-2')}>
+        <Button variant="primary" fullWidth onClick={() => navigate('/onboarding/cuisines')}>
           Continue
         </Button>
-        <Button variant="ghost" onClick={() => go('onboarding-2')}>
+        <Button variant="ghost" onClick={() => navigate('/onboarding/cuisines')}>
           Skip
         </Button>
       </div>

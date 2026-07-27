@@ -1,19 +1,16 @@
 import { useState } from 'react'
+import { useNavigate, useOutletContext } from 'react-router'
 import { Button, Input } from '@/components/ui'
-import { useNavStore } from '@/stores/navStore'
 import { useGroupsStore, mostRecentGroup } from '@/stores/groupsStore'
 import { useAuthStore } from '@/stores/authStore'
 import { signIn, signUp } from '@/lib/authClient'
 import { fetchProfile } from '@/api/profileApi'
 import { fetchAuthMethods } from '@/api/authApi'
+import type { AuthFlowContext } from '@/components/layout/AuthFlowShell'
 import type { SessionUser } from '@/stores/authStore'
 
 export interface AuthFormProps {
   mode: 'signin' | 'signup'
-  // Lets the surrounding shell show a full-screen branded splash while the
-  // post-auth forward (profile + groups fetch) into the app runs. NOT set on the
-  // new-account path — that stays in the shell and slides to onboarding.
-  setForwarding: (v: boolean) => void
 }
 
 const GoogleMark = () => (
@@ -28,9 +25,12 @@ const GoogleMark = () => (
 // Sign-in / sign-up form content. Rendered inside AuthFlowShell, which owns the
 // persistent brand panel and the slide transition into onboarding — this is just
 // the right-panel form.
-export function AuthForm({ mode, setForwarding }: AuthFormProps) {
-  const go = useNavStore((s) => s.go)
-  const setGroup = useNavStore((s) => s.setGroup)
+export function AuthForm({ mode }: AuthFormProps) {
+  const navigate = useNavigate()
+  // The shell owns the full-screen branded splash shown while the post-auth forward
+  // (profile + groups fetch) runs. NOT used on the new-account path — that stays in
+  // the shell and slides to onboarding.
+  const { setForwarding } = useOutletContext<AuthFlowContext>()
   const loadGroups = useGroupsStore((s) => s.load)
   const setSessionUser = useAuthStore((s) => s.setSessionUser)
   const setEntryFlowActive = useAuthStore((s) => s.setEntryFlowActive)
@@ -53,16 +53,16 @@ export function AuthForm({ mode, setForwarding }: AuthFormProps) {
   // and returns to the app, so it doesn't reach here.)
   //
   // First gate on onboarding: no saved profile (brand-new signup, or a returning
-  // user who abandoned onboarding) → onboarding-1. That stays inside the shell, so
+  // user who abandoned onboarding) → /onboarding. That stays inside the shell, so
   // the right panel SLIDES into onboarding (no splash). Otherwise forward into the
   // app — an existing user with groups lands in their most recent group chat; one
-  // with none sees the empty-groups landing page — showing the splash meanwhile.
+  // with none sees /groups — showing the splash meanwhile.
   const onAuthed = async () => {
     // A brand-new account can't have a saved profile — go straight to onboarding
     // so the right panel SLIDES in immediately (no profile fetch stalling the
     // transition, and no splash). The persistent BrandPanel (left) doesn't remount.
     if (isSignup) {
-      go('onboarding-1')
+      navigate('/onboarding')
       return
     }
     // Returning user: gate on whether they finished onboarding before. If they
@@ -70,18 +70,13 @@ export function AuthForm({ mode, setForwarding }: AuthFormProps) {
     // forward into the app behind the branded splash.
     const profile = await fetchProfile()
     if (!profile) {
-      go('onboarding-1')
+      navigate('/onboarding')
       return
     }
     setForwarding(true)
     await loadGroups()
     const latest = mostRecentGroup(useGroupsStore.getState().groups)
-    if (latest) {
-      setGroup(latest.id)
-      go('group-chat')
-    } else {
-      go('empty-groups')
-    }
+    navigate(latest ? `/groups/${latest.id}` : '/groups')
   }
 
   const handleSubmit = async () => {
@@ -268,7 +263,7 @@ export function AuthForm({ mode, setForwarding }: AuthFormProps) {
       <p className="text-center text-sm text-text-muted">
         {isSignup ? 'Already have an account? ' : "Don't have an account? "}
         <button
-          onClick={() => go(isSignup ? 'sign-in' : 'sign-up')}
+          onClick={() => navigate(isSignup ? '/login' : '/signup')}
           className="font-semibold text-text hover:text-primary"
         >
           {isSignup ? 'Sign in' : 'Sign up'}

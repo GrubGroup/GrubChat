@@ -57,7 +57,7 @@ export function EventsPage() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-raised">
-      <AppSidebar activeTab="events" eyebrow="Events">
+      <AppSidebar eyebrow="Events">
         <p className="px-4 pt-3 text-overline font-semibold uppercase tracking-wide text-text-muted">
           Your events
         </p>

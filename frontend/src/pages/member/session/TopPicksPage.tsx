@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { motion, useReducedMotion } from 'framer-motion'
 import { GroupsSidebar } from '@/components/session/GroupsSidebar'
 import { RankedRestaurantCard } from '@/components/restaurant/RankedRestaurantCard'
@@ -17,14 +18,14 @@ import {
 } from '@/stores/sessionStore'
 import { useRestaurantStore } from '@/stores/restaurantStore'
 import { useAuthStore } from '@/stores/authStore'
-import { useNavStore } from '@/stores/navStore'
+import { useGroupId } from '@/hooks/useGroupId'
 import { EASE } from '@/lib/motion'
 import { closeSession } from '@/api/sessionApi'
 
 export function TopPicksPage() {
   const reduce = useReducedMotion()
-  const go = useNavStore((s) => s.go)
-  const groupId = useNavStore((s) => s.groupId)
+  const navigate = useNavigate()
+  const groupId = useGroupId()
   // Session state is keyed by group — read THIS group's slice via selectors.
   const session = useSessionStore(selectSession(groupId))
   const activeSessionId = useSessionStore(selectActiveSessionId(groupId))
@@ -95,7 +96,9 @@ export function TopPicksPage() {
         setConfirming(false)
       }
     }
-    go('session-complete')
+    // Back to the group chat, where the session card now reads "complete" — that
+    // state is derived from the recommendation/roster, so it needs no dedicated URL.
+    navigate(`/groups/${groupId}`)
   }
 
   // While the group's picks are still being fetched/generated, take over the whole
@@ -128,7 +131,7 @@ export function TopPicksPage() {
         <div className="px-4 pb-2 pt-4">
           {/* Back to the group chat — same muted chevron style as Profile/Edit. */}
           <button
-            onClick={() => go('group-chat')}
+            onClick={() => navigate(`/groups/${groupId}`)}
             className="mb-2 flex items-center gap-1 text-sm text-text-muted hover:text-text"
           >
             <Icon name="chevron-left" size={14} /> Back

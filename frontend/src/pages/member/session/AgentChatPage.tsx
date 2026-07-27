@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { GroupsSidebar } from '@/components/session/GroupsSidebar'
 import { ChatStream } from '@/components/session/ChatStream'
 import { GroupProgressPanel } from '@/components/session/GroupProgressPanel'
@@ -26,15 +27,21 @@ import {
   selectIsHost,
 } from '@/stores/sessionStore'
 import { useAuthStore } from '@/stores/authStore'
-import { useNavStore } from '@/stores/navStore'
+import { useGroupId } from '@/hooks/useGroupId'
 import { useSocket } from '@/hooks/useSocket'
 import { setReady } from '@/api/sessionApi'
 import { chipsForMissing } from '@/constants/agentChat'
 
-export function AgentChatPage() {
-  const screen = useNavStore((s) => s.screen)
-  const groupId = useNavStore((s) => s.groupId)
-  const go = useNavStore((s) => s.go)
+export interface AgentChatPageProps {
+  /** Route-supplied: `…/session/:sessionId/done` renders the finished state, where
+   * the transcript stays visible for review and the composer becomes a waiting
+   * footer. */
+  done?: boolean
+}
+
+export function AgentChatPage({ done = false }: AgentChatPageProps) {
+  const navigate = useNavigate()
+  const groupId = useGroupId()
 
   // Agent-chat transcript + session state are both keyed by group.
   const messages = useChatStore(selectChatMessages(groupId))
@@ -108,10 +115,13 @@ export function AgentChatPage() {
   ])
 
   // The conversation ALWAYS stays visible (matches wireframe). Only the bottom
-  // bar changes: composer → done pill. 'agent-chat-done' shows the pill.
-  const isDone = screen === 'agent-chat-done'
+  // bar changes: composer → done pill, driven by the `/done` child route.
+  const isDone = done
   const [marking, setMarking] = useState(false)
   const [forcing, setForcing] = useState(false)
+
+  // Base path for this session, so the sub-screens can be reached from here.
+  const sessionPath = activeSessionId != null ? `/groups/${groupId}/session/${activeSessionId}` : null
 
   const handleSend = (text: string) => void sendUserMessage(groupId, text, activeSessionId)
 
@@ -123,7 +133,7 @@ export function AgentChatPage() {
     setForcing(true)
     try {
       await forceFinish(groupId)
-      go('top-picks')
+      if (sessionPath) navigate(`${sessionPath}/picks`)
     } catch {
       // Generation failed to start — stay put so the host can retry / the timer
       // can fall back; the button re-enables below.
@@ -149,7 +159,7 @@ export function AgentChatPage() {
     } else {
       setMemberDone(groupId, currentUserId)
     }
-    go('agent-chat-done')
+    if (sessionPath) navigate(`${sessionPath}/done`)
   }
 
   return (
@@ -165,7 +175,7 @@ export function AgentChatPage() {
           {/* Dark chat header — matches column header height */}
           <div className={cn('flex items-center gap-3 bg-surface-inverse px-4', COLUMN_HEADER_H)}>
             <button
-              onClick={() => go('group-chat')}
+              onClick={() => navigate(`/groups/${groupId}`)}
               className="flex h-8 w-8 items-center justify-center rounded-pill text-white/80 hover:bg-white/10"
             >
               <Icon name="chevron-left" size={18} />
@@ -238,7 +248,7 @@ export function AgentChatPage() {
                   size="lg"
                   variant="accent"
                   rightIcon={<Icon name="arrow-right" size={16} />}
-                  onClick={() => go('top-picks')}
+                  onClick={() => sessionPath && navigate(`${sessionPath}/picks`)}
                 >
                   See the group's results
                 </Button>

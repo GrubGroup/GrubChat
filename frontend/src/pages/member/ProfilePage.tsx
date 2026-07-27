@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useLocation, useNavigate } from 'react-router'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Avatar, Badge, Button, Icon } from '@/components/ui'
 import { EASE } from '@/lib/motion'
@@ -6,15 +7,14 @@ import { PreferenceTag } from '@/components/profile/PreferenceTag'
 import { CUISINES, DIETARY_RESTRICTIONS, isAllergen, labelFor } from '@/constants/dietary'
 import { useAuthStore } from '@/stores/authStore'
 import { useProfileStore } from '@/stores/profileStore'
-import { useNavStore } from '@/stores/navStore'
 import { useRestaurantStore } from '@/stores/restaurantStore'
 
 // Read-only profile view. Composes the domain User (header identity) with the
 // Profile (dining preferences). Mirrors the "[Orange] Profile" wireframe.
 export function ProfilePage() {
   const reduce = useReducedMotion()
-  const go = useNavStore((s) => s.go)
-  const returnTo = useNavStore((s) => s.returnTo)
+  const navigate = useNavigate()
+  const location = useLocation()
   const user = useAuthStore((s) => s.user)
   const profile = useProfileStore((s) => s.profile)
   const load = useProfileStore((s) => s.load)
@@ -38,6 +38,13 @@ export function ProfilePage() {
 
   const displayName = user?.display_name ?? user?.username ?? 'You'
 
+  // Back returns wherever the user came from — the account menu opens the profile
+  // from many screens, so there's no single origin. A 'default' location key means
+  // this was the entry point (a deep link or a fresh reload) and there's nothing to
+  // go back to, so fall through to the app's home instead of leaving the site.
+  const goBack = () =>
+    location.key === 'default' ? navigate('/groups') : navigate(-1)
+
   return (
     <motion.div
       className="h-screen overflow-y-auto bg-surface-raised"
@@ -50,7 +57,7 @@ export function ProfilePage() {
         <div className="flex items-start justify-between gap-4 border-b border-border px-8 py-6">
           <div>
             <button
-              onClick={() => go(returnTo)}
+              onClick={goBack}
               className="mb-2 flex items-center gap-1 text-sm text-text-muted hover:text-text"
             >
               <Icon name="chevron-left" size={14} /> Back
@@ -63,7 +70,7 @@ export function ProfilePage() {
           <Button
             variant="primary"
             leftIcon={<Icon name="pencil" size={14} />}
-            onClick={() => go('profile-edit')}
+            onClick={() => navigate('/profile/edit')}
           >
             Edit profile
           </Button>

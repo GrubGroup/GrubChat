@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Navigate, useNavigate } from 'react-router'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import type { Session } from '@/types'
 import { EASE } from '@/lib/motion'
@@ -27,7 +28,7 @@ import {
   selectIsHost,
 } from '@/stores/sessionStore'
 import { useAuthStore } from '@/stores/authStore'
-import { useNavStore } from '@/stores/navStore'
+import { useGroupId } from '@/hooks/useGroupId'
 import { useGroupsStore, mostRecentGroup } from '@/stores/groupsStore'
 import {
   useGroupChatStore,
@@ -41,20 +42,10 @@ import { useSocket } from '@/hooks/useSocket'
 import { useScrollToBottom } from '@/hooks/useScrollToBottom'
 import { useNewItemIds } from '@/hooks/useNewItemIds'
 
-// Card state derives from which group-chat screen we're on.
-const CARD_STATE: Record<string, 'not-joined' | 'continue' | 'waiting' | 'complete'> = {
-  'group-chat': 'not-joined',
-  'session-continue': 'continue',
-  'session-waiting': 'waiting',
-  'session-complete': 'complete',
-}
-
 export function GroupChatPage() {
   const reduce = useReducedMotion()
-  const screen = useNavStore((s) => s.screen)
-  const go = useNavStore((s) => s.go)
-  const setGroup = useNavStore((s) => s.setGroup)
-  const groupId = useNavStore((s) => s.groupId)
+  const navigate = useNavigate()
+  const groupId = useGroupId()
   // Session state is keyed by group — read THIS group's slice via selectors.
   const members = useSessionStore(selectMembers(groupId))
   const doneCount = useSessionStore(selectDoneCount(groupId))
@@ -124,13 +115,6 @@ export function GroupChatPage() {
   // Host "Force finish" request in flight (disables the card's button).
   const [forcing, setForcing] = useState(false)
 
-  // Redirect a user who has no valid selected group to the empty-groups screen —
-  // but only once the list has loaded, so an in-flight/empty list doesn't bounce
-  // a valid member off their chat.
-  useEffect(() => {
-    if (groupsLoaded && !isMember) go('empty-groups')
-  }, [groupsLoaded, isMember, go])
-
   // Reload survival: on a fresh page load the socket `session:start` was already
   // missed and isn't replayed on join, so an in-progress session would otherwise
   // vanish. If THIS group's slice has no active session yet, ask the gateway for
@@ -168,22 +152,18 @@ export function GroupChatPage() {
   const memberIds = members.map((m) => m.user_id)
   const total = progressTotal || members.length || 0
 
-  // The card state is derived from SESSION STATE, not just the screen, so it
-  // reflects reality regardless of how the user navigated here:
+  // The card state is derived entirely from SESSION STATE, so it reflects reality
+  // regardless of how the user got here:
   //   complete → results exist / everyone finished / the host already closed the
   //     session. Shows the "Results" button and blocks re-joining (#7, #12).
   //   waiting  → this user finished but the group hasn't. Shows "Waiting for
   //     others" (#6).
-  //   else     → the screen-derived state (continue if mid-session, else Join).
+  //   else     → nobody's finished yet, so offer Join.
   const allDone = total > 0 && doneCount === total
   const isComplete = recommendation != null || allDone || sessionObj?.closed_at != null
   const iAmDone =
     phase === 'done' || members.find((m) => m.user_id === currentUserId)?.status === true
-  const cardState = isComplete
-    ? 'complete'
-    : iAmDone
-      ? 'waiting'
-      : (CARD_STATE[screen] ?? 'not-joined')
+  const cardState = isComplete ? 'complete' : iAmDone ? 'waiting' : 'not-joined'
 
   // A session is "ongoing" once it has started but hasn't completed — the window
   // in which "Start session" is disabled (you can't run two at once). Once
@@ -194,6 +174,11 @@ export function GroupChatPage() {
   // Header "X members" reflects the real group membership from GET /api/groups
   // (member_count); falls back to the session total when absent.
   const memberCount = group?.member_count ?? total
+
+  // Base path for this group's live session. Null until a session is bound, which
+  // is why every session affordance below is guarded — the card can render from a
+  // socket echo a beat before activeSessionId lands.
+  const sessionPath = activeSessionId != null ? `/groups/${groupId}/session/${activeSessionId}` : null
 
   // Host finished the pre-session modal: adopt the created session locally, then
   // broadcast session:start WITH its id so every member's client can adopt it and
@@ -217,8 +202,9 @@ export function GroupChatPage() {
   }
 
   const handleJoin = () => {
+    if (!sessionPath) return
     join(groupId)
-    go('agent-chat')
+    navigate(sessionPath)
   }
 
   // Host ends the session early: generate over the answers gathered so far, then
@@ -230,7 +216,7 @@ export function GroupChatPage() {
     setForcing(true)
     try {
       await forceFinish(groupId)
-      go('top-picks')
+      if (sessionPath) navigate(`${sessionPath}/picks`)
     } catch {
       // Generation failed to kick off — leave the user on the chat so they can
       // retry (or let the timer fall back); the button re-enables below.
@@ -240,20 +226,20 @@ export function GroupChatPage() {
   }
 
   // After leaving, the group is gone from the (refreshed) list. Jump to the next
-  // most-recent group, or the empty-groups screen when none remain.
+  // most-recent group, or /groups when none remain.
   const handleLeft = () => {
     setEditing(false)
     const next = mostRecentGroup(useGroupsStore.getState().groups)
-    if (next) {
-      setGroup(next.id)
-      go('group-chat')
-    } else {
-      go('empty-groups')
-    }
+    navigate(next ? `/groups/${next.id}` : '/groups')
   }
 
-  // Paint guard (after all hooks): don't render group 7 / a foreign room for the
-  // frame before the redirect effect fires.
+  // Bounce a user who isn't a member of the group the URL names — but only once
+  // the list has loaded, so an in-flight/empty list doesn't throw a valid member
+  // off their own chat. `replace` keeps the bad URL out of the history stack.
+  if (groupsLoaded && !isMember) return <Navigate to="/groups" replace />
+
+  // Paint guard (after all hooks): don't render a foreign room for the frame
+  // before the group list resolves.
   if (!isMember) return null
 
   return (
@@ -367,10 +353,10 @@ export function GroupChatPage() {
                   startedAt={startedAt}
                   minutes={sessionObj?.time_limit}
                   onJoin={handleJoin}
-                  onContinue={() => go('agent-chat')}
-                  onViewResults={() => go('top-picks')}
+                  onContinue={() => sessionPath && navigate(sessionPath)}
+                  onViewResults={() => sessionPath && navigate(`${sessionPath}/picks`)}
                   onExpire={() => void triggerExpiryGeneration(groupId)}
-                  onReview={() => go('agent-chat-done')}
+                  onReview={() => sessionPath && navigate(`${sessionPath}/done`)}
                   isHost={isHost}
                   onForceFinish={() => void handleForceFinish()}
                   forcing={forcing}

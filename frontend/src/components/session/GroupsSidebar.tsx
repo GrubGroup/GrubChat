@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
+import { Link, useNavigate } from 'react-router'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Icon } from '@/components/ui'
 import { EASE } from '@/lib/motion'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { NewGroupModal } from '@/components/session/NewGroupModal'
-import { useNavStore } from '@/stores/navStore'
+import { useGroupId } from '@/hooks/useGroupId'
 import { useGroupsStore } from '@/stores/groupsStore'
 import { useGroupChatStore } from '@/stores/groupChatStore'
 import { timeAgo } from '@/utils/timeAgo'
@@ -43,18 +44,13 @@ function lastActivity(
 
 // One sidebar row. Split out so usePreview can subscribe per-group to live chat.
 function GroupRow({ group }: { group: Group }) {
-  const go = useNavStore((s) => s.go)
-  const groupId = useNavStore((s) => s.groupId)
-  const setGroup = useNavStore((s) => s.setGroup)
+  const groupId = useGroupId()
   const { preview, time } = usePreview(group)
   const selected = group.id === groupId
 
   return (
-    <button
-      onClick={() => {
-        setGroup(group.id)
-        go('group-chat')
-      }}
+    <Link
+      to={`/groups/${group.id}`}
       className={cn(
         'flex w-full items-center gap-2.5 rounded-[10px] p-2 text-left',
         'transition-colors duration-150 ease-out',
@@ -75,7 +71,7 @@ function GroupRow({ group }: { group: Group }) {
         </div>
         <p className="truncate text-caption font-medium text-text-muted">{preview}</p>
       </div>
-    </button>
+    </Link>
   )
 }
 
@@ -84,8 +80,7 @@ function GroupRow({ group }: { group: Group }) {
 // chat room; "New group" opens a name prompt and creates one (local-only).
 export function GroupsSidebar() {
   const reduce = useReducedMotion()
-  const go = useNavStore((s) => s.go)
-  const setGroup = useNavStore((s) => s.setGroup)
+  const navigate = useNavigate()
   const groups = useGroupsStore((s) => s.groups)
   const addGroup = useGroupsStore((s) => s.addGroup)
   const load = useGroupsStore((s) => s.load)
@@ -116,8 +111,7 @@ export function GroupsSidebar() {
     setCreating(true)
     try {
       const group = await addGroup(name, memberIds)
-      setGroup(group.id)
-      go('group-chat')
+      navigate(`/groups/${group.id}`)
       setModalOpen(false)
     } finally {
       setCreating(false)
@@ -126,7 +120,6 @@ export function GroupsSidebar() {
 
   return (
     <AppSidebar
-      activeTab="groups"
       eyebrow="Groups"
       // Wider panel so the group-chat list isn't cramped (~+15% vs default w-56).
       panelWidth="w-64"

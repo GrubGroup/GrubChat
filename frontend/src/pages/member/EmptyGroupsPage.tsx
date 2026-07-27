@@ -1,10 +1,10 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Button, Icon } from '@/components/ui'
 import { makeFloat } from '@/lib/motion'
 import { GroupsSidebar } from '@/components/session/GroupsSidebar'
 import { NewGroupModal } from '@/components/session/NewGroupModal'
-import { useNavStore } from '@/stores/navStore'
 import { useGroupsStore } from '@/stores/groupsStore'
 import { memberColor } from '@/constants/memberColors'
 
@@ -70,8 +70,7 @@ export function EmptyGroupsPage() {
   // Gentle idle float on the hero icon. Typed as `object` (matching BrandPanel's
   // FloatCard) so the string easing spreads cleanly onto the motion element.
   const heroFloat: object = makeFloat(!!reduce)(0)
-  const go = useNavStore((s) => s.go)
-  const setGroup = useNavStore((s) => s.setGroup)
+  const navigate = useNavigate()
   const addGroup = useGroupsStore((s) => s.addGroup)
 
   const [modalOpen, setModalOpen] = useState(false)
@@ -82,8 +81,7 @@ export function EmptyGroupsPage() {
     setCreating(true)
     try {
       const group = await addGroup(name, memberIds)
-      setGroup(group.id)
-      go('group-chat')
+      navigate(`/groups/${group.id}`)
       setModalOpen(false)
     } finally {
       setCreating(false)

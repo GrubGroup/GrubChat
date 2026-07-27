@@ -1,6 +1,6 @@
+import { useNavigate } from 'react-router'
 import { Button, Icon } from '@/components/ui'
 import { useProfileStore } from '@/stores/profileStore'
-import { useNavStore } from '@/stores/navStore'
 import { cn } from '@/utils/cn'
 
 const BANDS = [
@@ -13,7 +13,7 @@ const BANDS = [
 
 // Onboarding step 3 of 4 content (usual budget). Rendered inside AuthFlowShell.
 export function BudgetStep() {
-  const go = useNavStore((s) => s.go)
+  const navigate = useNavigate()
   const budgetMin = useProfileStore((s) => s.profile?.budget_min ?? 15)
   const budgetMax = useProfileStore((s) => s.profile?.budget_max ?? 25)
   const setBudget = useProfileStore((s) => s.setBudget)
@@ -41,10 +41,14 @@ export function BudgetStep() {
         })}
       </div>
       <div className="flex items-center gap-2">
-        <Button variant="ghost" leftIcon={<Icon name="arrow-left" size={14} />} onClick={() => go('onboarding-2')}>
+        <Button
+          variant="ghost"
+          leftIcon={<Icon name="arrow-left" size={14} />}
+          onClick={() => navigate('/onboarding/cuisines')}
+        >
           Back
         </Button>
-        <Button variant="primary" fullWidth onClick={() => go('onboarding-4')}>
+        <Button variant="primary" fullWidth onClick={() => navigate('/onboarding/location')}>
           Continue
         </Button>
       </div>
