@@ -1,24 +1,24 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import { useLocation, useNavigate } from 'react-router'
 import type { RecommendationItem } from '@/types'
 import { getSocket } from '@/lib/socket'
+import { idFromSlug } from '@/utils/slug'
 import { useAuthStore } from '@/stores/authStore'
 import { useSessionStore } from '@/stores/sessionStore'
 import { useGroupChatStore } from '@/stores/groupChatStore'
-import { useNavStore } from '@/stores/navStore'
 import { useEventListStore } from '@/stores/eventListStore'
 
-// Screens a member could be viewing/awaiting THIS session's results from when the host
-// confirms — pull them back to the group chat. Covers the results context (top-picks,
-// session-complete) AND the agent-chat context (a finisher waiting on agent-chat-done,
-// or still mid-chat). Someone already on group-chat needs no redirect — the card just
-// vanishes there.
-const CONFIRM_REDIRECT_SCREENS = [
-  'top-picks',
-  'session-complete',
-  'agent-chat-done',
-  'agent-chat',
-  'voice',
-]
+// Routes a member could be viewing/awaiting THIS session's results from when the host
+// confirms — pull them back to the group chat. Everything under a group's `/sessions/`
+// subtree qualifies: the agent chat, its `/done` state, and the results page. Someone
+// already on the group chat needs no redirect (the card just vanishes there), and this
+// deliberately matches nothing else, so a member browsing Events or Profile is never
+// teleported. Capture group 1 is the group slug, which carries the authoritative id at
+// its tail — reusing it for the destination keeps the readable URL intact.
+//
+// This mirrors the route tree in App.tsx: if the session path segment ever changes,
+// this pattern must change with it, or the confirm-redirect silently stops firing.
+const SESSION_ROUTE = /^\/groups\/([^/]+)\/sessions(?:\/|$)/
 
 // App-level session sync. Adopts session:picks regardless of the current screen —
 // group chat OR the results page (TopPicksPage), where useSocket is NOT mounted and
@@ -31,6 +31,16 @@ const CONFIRM_REDIRECT_SCREENS = [
 // useSocket's own session:picks handler on the chat page is harmless.
 export function useSessionSync() {
   const userId = useAuthStore((s) => s.user?.id)
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+  // The socket subscription is keyed on userId alone — re-binding listeners on every
+  // navigation would drop events mid-flight. So the confirm handler reads the current
+  // path from a ref instead of closing over it, which would otherwise go stale the
+  // moment the user moves between session screens.
+  const pathRef = useRef(pathname)
+  useEffect(() => {
+    pathRef.current = pathname
+  }, [pathname])
 
   useEffect(() => {
     if (!userId) return
@@ -74,9 +84,12 @@ export function useSessionSync() {
       useSessionStore.getState().close(p.groupId)
       useGroupChatStore.getState().clearSessionStart(p.groupId)
       void useEventListStore.getState().load()
-      const nav = useNavStore.getState()
-      if (nav.groupId === p.groupId && CONFIRM_REDIRECT_SCREENS.includes(nav.screen)) {
-        nav.go('group-chat')
+      // Only pull back someone sitting on a session screen OF THE GROUP that just
+      // confirmed. `replace` keeps the now-dead session URL out of the history stack,
+      // so Back doesn't return them to a closed session.
+      const match = SESSION_ROUTE.exec(pathRef.current)
+      if (match && idFromSlug(match[1]) === p.groupId) {
+        navigate(`/groups/${match[1]}`, { replace: true })
       }
     }
     socket.on('session:confirmed', handleConfirmed)
@@ -86,5 +99,5 @@ export function useSessionSync() {
       socket.off('vote:update', handleVote)
       socket.off('session:confirmed', handleConfirmed)
     }
-  }, [userId])
+  }, [userId, navigate])
 }

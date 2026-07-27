@@ -89,14 +89,31 @@ const registerSessionHandlers = (io, socket) => {
   // GroupMessage.user_id is Int — coerce once so every write/guard uses the Int.
   const userId = Number(socket.data.userId);
 
+  // Groups this socket has PROVEN membership of (verified against the DB in
+  // group:join). Rooms are the unit of fan-out, so being in one is what exposes a
+  // group's live traffic — this set is the record of who earned that.
+  //
+  // Used only to gate high-frequency ephemeral relays (typing), which would
+  // otherwise cost a DB round-trip per keystroke. Anything that PERSISTS or drives
+  // other clients' state re-checks the DB, since membership can be revoked while a
+  // socket is still connected.
+  const verifiedGroups = new Set();
+
   // Join a group's room, then replay recent history to THIS socket so a fresh
   // connection (reload / late joiner) sees the existing conversation.
   socket.on('group:join', async ({ groupId }) => {
-    if (groupId == null) return;
+    if (!Number.isInteger(groupId)) return;
+
+    // Membership FIRST, then join. Joining before the check would put a non-member
+    // in the room, and while the history below would still be withheld, they would
+    // receive every later broadcast to it — chat:message, session:start/picks/
+    // member_done/confirmed, typing. The room IS the boundary, so nothing may enter
+    // it unverified.
+    if (!(await isGroupMember(groupId, userId))) return;
+    verifiedGroups.add(groupId);
     socket.join(room(groupId));
 
     try {
-      if (!(await isGroupMember(groupId, userId))) return;
       const rows = await prisma.groupMessage.findMany({
         where: { group_id: groupId },
         orderBy: { id: 'desc' },
@@ -114,6 +131,7 @@ const registerSessionHandlers = (io, socket) => {
 
   socket.on('group:leave', ({ groupId }) => {
     if (groupId == null) return;
+    verifiedGroups.delete(groupId);
     socket.leave(room(groupId));
   });
 
@@ -167,8 +185,12 @@ const registerSessionHandlers = (io, socket) => {
   // session (load its roster, drive analyze/ready) and share one synchronized
   // countdown anchored to `at`. `sessionId` may be absent for a legacy/no-op
   // start — clients then fall back to their own session state.
-  socket.on('session:start', ({ groupId, sessionId }) => {
-    if (groupId == null) return;
+  socket.on('session:start', async ({ groupId, sessionId }) => {
+    if (!Number.isInteger(groupId)) return;
+    // DB-checked rather than cached: this drives every other client to ADOPT a
+    // session id, so an unverified sender could plant a bogus session card in a
+    // group's chat. Once per session, so the round-trip is worth the certainty.
+    if (!(await isGroupMember(groupId, userId))) return;
     io.to(room(groupId)).emit('session:start', {
       groupId,
       sessionId: sessionId ?? null,
@@ -179,8 +201,10 @@ const registerSessionHandlers = (io, socket) => {
 
   // Typing presence — ephemeral, never stored. Relay to OTHERS in the room
   // (socket.to excludes the sender) so you never see your own "typing…".
+  // Gated on the verified set, not the DB: this fires on every keystroke burst, and
+  // a socket can only be in the set by having passed the check in group:join.
   const emitTyping = (groupId, isTyping) => {
-    if (groupId == null) return;
+    if (!verifiedGroups.has(groupId)) return;
     socket.to(room(groupId)).emit('typing:update', {
       groupId,
       userId: socket.data.userId ?? null,

@@ -1,25 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { Link, useParams } from 'react-router'
 import type { EventRecord } from '@/types'
 import { Avatar, Badge, Icon } from '@/components/ui'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { memberColor } from '@/constants/memberColors'
 import { useEventListStore } from '@/stores/eventListStore'
+import { idFromSlug, toSlugId } from '@/utils/slug'
 
 // A cuisine/dietary emoji is not on the API row, so pick a stable default.
 const EVENT_EMOJI = '🍽️'
 
-function EventRow({
-  e,
-  active,
-  onSelect,
-}: {
-  e: EventRecord
-  active: boolean
-  onSelect: () => void
-}) {
+function EventRow({ e, active }: { e: EventRecord; active: boolean }) {
   return (
-    <button
-      onClick={onSelect}
+    <Link
+      to={`/events/${toSlugId(`${e.group_name ?? ''} ${e.restaurant_name}`, e.id)}`}
       className={
         active
           ? 'flex w-full items-center gap-3 border-b border-border bg-surface-sunken px-4 py-3 text-left transition-colors duration-150 ease-out'
@@ -39,7 +33,7 @@ function EventRow({
           {e.group_name ?? 'Group'}
         </p>
       </div>
-    </button>
+    </Link>
   )
 }
 
@@ -47,17 +41,21 @@ export function EventsPage() {
   const events = useEventListStore((s) => s.events)
   const loaded = useEventListStore((s) => s.loaded)
   const load = useEventListStore((s) => s.load)
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  // Which event the detail pane shows comes from the URL — `/events/:eventId` — so a
+  // booked outing is linkable and survives a refresh. The list read (GET /api/events)
+  // is the only source; there's no fetch-by-id endpoint, so an unknown id simply
+  // falls back to the newest event rather than 404ing.
+  const { eventId } = useParams()
 
   useEffect(() => {
     void load()
   }, [load])
 
-  const active = events.find((e) => e.id === selectedId) ?? events[0] ?? null
+  const active = events.find((e) => e.id === idFromSlug(eventId)) ?? events[0] ?? null
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-raised">
-      <AppSidebar activeTab="events" eyebrow="Events">
+      <AppSidebar eyebrow="Events">
         <p className="px-4 pt-3 text-overline font-semibold uppercase tracking-wide text-text-muted">
           Your events
         </p>
@@ -67,12 +65,7 @@ export function EventsPage() {
           </p>
         )}
         {events.map((e) => (
-          <EventRow
-            key={e.id}
-            e={e}
-            active={active?.id === e.id}
-            onSelect={() => setSelectedId(e.id)}
-          />
+          <EventRow key={e.id} e={e} active={active?.id === e.id} />
         ))}
       </AppSidebar>
 
