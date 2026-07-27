@@ -35,8 +35,18 @@ export function useSessionSync() {
     }
     socket.on('session:picks', handlePicks)
 
+    // Live restaurant voting on the results page (ephemeral, never persisted). The
+    // gateway relays vote:cast → vote:update to each member's per-user room, so a
+    // voter on the results page (who has left the group room) still gets everyone's
+    // votes live. Idempotent single-choice toggle keyed by the payload's voter id.
+    const handleVote = (p: { groupId: number; restaurantId: number; userId: number }) => {
+      useSessionStore.getState().receiveVote(p.groupId, p.restaurantId, p.userId)
+    }
+    socket.on('vote:update', handleVote)
+
     return () => {
       socket.off('session:picks', handlePicks)
+      socket.off('vote:update', handleVote)
     }
   }, [userId])
 }
