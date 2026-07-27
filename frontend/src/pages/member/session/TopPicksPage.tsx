@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { Navigate, useNavigate } from 'react-router'
 import { motion, useReducedMotion } from 'framer-motion'
 import { GroupsSidebar } from '@/components/session/GroupsSidebar'
 import { RankedRestaurantCard } from '@/components/restaurant/RankedRestaurantCard'
@@ -19,6 +19,8 @@ import {
 import { useRestaurantStore } from '@/stores/restaurantStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useGroupId } from '@/hooks/useGroupId'
+import { useSessionId } from '@/hooks/useSessionId'
+import { useBindSession } from '@/hooks/useBindSession'
 import { EASE } from '@/lib/motion'
 import { closeSession } from '@/api/sessionApi'
 
@@ -26,6 +28,10 @@ export function TopPicksPage() {
   const reduce = useReducedMotion()
   const navigate = useNavigate()
   const groupId = useGroupId()
+  const urlSessionId = useSessionId()
+  // Cold entry (refresh or a pasted link) reaches these results without having gone
+  // through the group chat, so bind the group's session from the gateway first.
+  const binding = useBindSession(groupId)
   // Session state is keyed by group — read THIS group's slice via selectors.
   const session = useSessionStore(selectSession(groupId))
   const activeSessionId = useSessionStore(selectActiveSessionId(groupId))
@@ -75,10 +81,14 @@ export function TopPicksPage() {
   const active = picks.find((p) => p.restaurant_id === activeId)
 
   // Distinct results states (replacing a single permanent "Loading picks…"):
-  //   loading → a fetch (or restaurant catalog load) is in flight
+  //   loading → the session binding, a fetch, or the restaurant catalog is in flight
   //   error   → the read-back failed; offer a retry
   //   else    → a recommendation exists but nothing renders (no match / not loaded)
-  const isLoading = recommendationLoading || !restaurantsLoaded || (!recommendation && !recommendationError)
+  const isLoading =
+    binding === 'resolving' ||
+    recommendationLoading ||
+    !restaurantsLoaded ||
+    (!recommendation && !recommendationError)
   const isError = recommendationError && picks.length === 0
 
   const handleConfirm = async () => {
@@ -99,6 +109,13 @@ export function TopPicksPage() {
     // Back to the group chat, where the session card now reads "complete" — that
     // state is derived from the recommendation/roster, so it needs no dedicated URL.
     navigate(`/groups/${groupId}`)
+  }
+
+  // Guards (after every hook): a stale URL — the group has no open session, or this
+  // one names a different session than the live one — goes back to the group chat.
+  // activeSessionId is the source of truth; the param is only validated against it.
+  if (binding === 'none' || (binding === 'bound' && activeSessionId !== urlSessionId)) {
+    return <Navigate to={`/groups/${groupId}`} replace />
   }
 
   // While the group's picks are still being fetched/generated, take over the whole

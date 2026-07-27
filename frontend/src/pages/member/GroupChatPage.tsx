@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import type { Session } from '@/types'
@@ -37,7 +37,7 @@ import {
   selectSessionStartIndex,
   selectTypers,
 } from '@/stores/groupChatStore'
-import { fetchCurrentGroupSession } from '@/api/groupsApi'
+import { useBindSession } from '@/hooks/useBindSession'
 import { useSocket } from '@/hooks/useSocket'
 import { useScrollToBottom } from '@/hooks/useScrollToBottom'
 import { useNewItemIds } from '@/hooks/useNewItemIds'
@@ -55,8 +55,6 @@ export function GroupChatPage() {
   const recommendation = useSessionStore(selectRecommendation(groupId))
   const phase = useSessionStore(selectPhase(groupId))
   const join = useSessionStore((s) => s.join)
-  const loadSession = useSessionStore((s) => s.load)
-  const loadRecommendation = useSessionStore((s) => s.loadRecommendation)
   const setSession = useSessionStore((s) => s.setSession)
   const hydrateMembers = useSessionStore((s) => s.hydrateMembers)
   const startedAt = useSessionStore(selectStartedAt(groupId))
@@ -84,7 +82,6 @@ export function GroupChatPage() {
   const sendMessage = useGroupChatStore((s) => s.sendMessage)
   const startSession = useGroupChatStore((s) => s.startSession)
   const clearSessionStart = useGroupChatStore((s) => s.clearSessionStart)
-  const receiveSessionStart = useGroupChatStore((s) => s.receiveSessionStart)
   const setTyping = useGroupChatStore((s) => s.setTyping)
   const typers = useGroupChatStore(selectTypers(groupId))
 
@@ -115,35 +112,10 @@ export function GroupChatPage() {
   // Host "Force finish" request in flight (disables the card's button).
   const [forcing, setForcing] = useState(false)
 
-  // Reload survival: on a fresh page load the socket `session:start` was already
-  // missed and isn't replayed on join, so an in-progress session would otherwise
-  // vanish. If THIS group's slice has no active session yet, ask the gateway for
-  // the group's current OPEN session and rebind it — reusing the same
-  // load()/loadRecommendation() the socket path uses, plus receiveSessionStart so
-  // the inline card renders. Returns null (→ no-op) when the group has none; keyed
-  // on activeSessionId so once bound it won't re-fetch.
-  useEffect(() => {
-    if (!isMember || activeSessionId != null) return
-    let cancelled = false
-    void (async () => {
-      const session = await fetchCurrentGroupSession(groupId)
-      if (cancelled || session == null) return
-      await loadSession(groupId, session.id, currentUserId)
-      receiveSessionStart(groupId, session.id)
-      void loadRecommendation(groupId)
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [
-    isMember,
-    activeSessionId,
-    groupId,
-    currentUserId,
-    loadSession,
-    loadRecommendation,
-    receiveSessionStart,
-  ])
+  // Reload survival: rebind the group's in-progress session, which the socket's
+  // session:start announced before this page existed. Gated on membership so we
+  // never probe a room the user isn't in.
+  useBindSession(groupId, isMember)
 
   // History loads async over the socket (chat:history) after joining. Show a
   // loader until it arrives.

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { Navigate, useNavigate } from 'react-router'
 import { GroupsSidebar } from '@/components/session/GroupsSidebar'
 import { ChatStream } from '@/components/session/ChatStream'
 import { GroupProgressPanel } from '@/components/session/GroupProgressPanel'
@@ -28,6 +28,8 @@ import {
 } from '@/stores/sessionStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useGroupId } from '@/hooks/useGroupId'
+import { useSessionId } from '@/hooks/useSessionId'
+import { useBindSession } from '@/hooks/useBindSession'
 import { useSocket } from '@/hooks/useSocket'
 import { setReady } from '@/api/sessionApi'
 import { chipsForMissing } from '@/constants/agentChat'
@@ -42,6 +44,10 @@ export interface AgentChatPageProps {
 export function AgentChatPage({ done = false }: AgentChatPageProps) {
   const navigate = useNavigate()
   const groupId = useGroupId()
+  const urlSessionId = useSessionId()
+  // Cold entry (refresh or a pasted link) has no session in the store yet — the
+  // socket's session:start fired before this page existed. Bind it from the gateway.
+  const binding = useBindSession(groupId)
 
   // Agent-chat transcript + session state are both keyed by group.
   const messages = useChatStore(selectChatMessages(groupId))
@@ -160,6 +166,23 @@ export function AgentChatPage({ done = false }: AgentChatPageProps) {
       setMemberDone(groupId, currentUserId)
     }
     if (sessionPath) navigate(`${sessionPath}/done`)
+  }
+
+  // Guards (after every hook, so the hook order never changes):
+  //   none     → the group has no open session, so this URL is stale. Back to the chat.
+  //   mismatch → the URL names a DIFFERENT session than the live one (an old link).
+  //              activeSessionId is the source of truth; the param is only validated.
+  // `replace` keeps the dead URL out of the history stack.
+  if (binding === 'none' || (binding === 'bound' && activeSessionId !== urlSessionId)) {
+    return <Navigate to={`/groups/${groupId}`} replace />
+  }
+  // Still asking the gateway — hold the frame rather than flashing an empty chat.
+  if (binding !== 'bound') {
+    return (
+      <div className="flex h-screen items-center justify-center bg-surface">
+        <Spinner size="lg" className="text-primary" />
+      </div>
+    )
   }
 
   return (
