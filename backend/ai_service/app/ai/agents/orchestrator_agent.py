@@ -24,6 +24,15 @@ from app.ai.rag.retriever import similarity_search
 # well-located pick must survive the cut on cosine similarity alone.
 _CANDIDATE_LIMIT = 40
 
+# How many of those candidates (top-N by cosine similarity, after the hours hard
+# filter) are actually sent to the LLM re-rank. Kept well below _CANDIDATE_LIMIT
+# because the re-rank's wall-clock is dominated by how much the model READS (the
+# serialized candidate payload) and WRITES (the ranked JSON). The retriever still
+# pulls the full _CANDIDATE_LIMIT so proximity/hours filtering has room; only the
+# strongest survivors reach the model, which cuts "view results" latency without
+# hurting quality (the frontend only shows the top 5).
+_RERANK_LIMIT = 20
+
 # Default search radius (miles) applied when the host set a location but no
 # explicit radius (the common case — the analyze prompt doesn't ask for one, so
 # Qa.radius_miles is usually null). Without this the retriever's bounding box is
@@ -304,23 +313,33 @@ async def orchestrate(state: PipelineState) -> PipelineState:
         state.ranked = []
         return state
 
+    # Only the strongest-by-similarity survivors go to the LLM. Candidates keep the
+    # retriever's cosine order (best first), so this is the top-_RERANK_LIMIT slice.
+    # Shrinking the payload the model reads and the array it must write back is the
+    # main "view results" latency win — the frontend only shows the top 5 anyway.
+    rerank_candidates = candidates[:_RERANK_LIMIT]
+
     messages = build_group_rerank_messages(
         reconciled=reconciled.model_dump(),
-        candidates=[c.model_dump() for c in candidates],
+        candidates=[c.model_dump() for c in rerank_candidates],
     )
     # NOTE: do NOT pass response_format={"type": "json_object"} here. The active
     # Salesforce/Claude gateway does not honor OpenAI JSON mode and returns an
     # empty "{}" when it's set. The prompt already demands strict JSON and
     # `_parse_ranked` strips code fences, so plain completion is the robust path.
-    raw = await chat_completion(messages, temperature=0.2)
+    # max_tokens caps the ranked JSON array (~8 short items) so a chatty model
+    # can't stall the pipeline with a long completion.
+    raw = await chat_completion(messages, temperature=0.2, max_tokens=900)
 
-    valid_ids = {c.id for c in candidates}
+    # valid_ids / tier_by_id come from the SAME sliced list the model saw, so an id
+    # it couldn't have been given is rejected and every returned id has a tier.
+    valid_ids = {c.id for c in rerank_candidates}
     ranked = _parse_ranked(raw or "", valid_ids)
 
     # Blend the proximity bonus into the LLM's scores and RE-SORT, so the
     # between-host-and-member geometry the prompt was told about is also enforced
     # deterministically (the LLM sees the tiers but we don't rely on it alone).
-    tier_by_id = {c.id: c.proximity_tier for c in candidates}
+    tier_by_id = {c.id: c.proximity_tier for c in rerank_candidates}
     if ranked:
         for item in ranked:
             item.match_score = _blend_proximity(

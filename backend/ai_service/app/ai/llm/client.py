@@ -44,12 +44,16 @@ async def chat_completion(
     model: str | None = None,
     temperature: float = 0.2,
     response_format: dict[str, Any] | None = None,
+    max_tokens: int | None = None,
 ) -> str:
     """Run a chat completion and return the assistant message content.
 
     `model` defaults to settings.active_llm_model (the model for the selected
     provider). `response_format` (e.g. JSON mode) is passed through when provided;
-    providers that ignore it simply return text.
+    providers that ignore it simply return text. `max_tokens`, when set, caps the
+    completion length — LLM latency is dominated by output tokens, so callers that
+    know their response is bounded (e.g. the group re-rank returns a short JSON
+    array) pass it to hard-stop runaway generation.
     """
     kwargs: dict[str, Any] = {
         "model": model or settings.active_llm_model,
@@ -58,6 +62,8 @@ async def chat_completion(
     }
     if response_format is not None:
         kwargs["response_format"] = response_format
+    if max_tokens is not None:
+        kwargs["max_tokens"] = max_tokens
 
     response = await get_llm_client().chat.completions.create(**kwargs)
     return response.choices[0].message.content
