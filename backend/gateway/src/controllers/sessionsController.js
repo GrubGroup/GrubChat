@@ -734,6 +734,7 @@ const closeSession = async (req, res, next) => {
       include: {
         group: { select: { name: true } },
         members: { select: { user_id: true } },
+        host: { select: { display_name: true, username: true } },
       },
     });
     if (!session) {
@@ -809,15 +810,47 @@ const closeSession = async (req, res, next) => {
       prisma.qa.deleteMany({ where: { session_id: sessionId } }),
     ]);
 
-    // Announce the confirmed pick in the group chat (best-effort) so members see
-    // the event was booked without polling.
+    // Announce the confirmed pick (best-effort — never fail the close on a socket/DB
+    // hiccup). Two things fan out:
+    //   1. A persisted SYSTEM chat message ("X picked <restaurant> for this session")
+    //      over the existing chat pipeline, so live clients append it and reloads
+    //      replay it in history (mirrors the add/remove-member system lines).
+    //   2. session:confirmed to the group room AND every member's per-user room, so a
+    //      member viewing the results page (who has left the group room) still learns
+    //      the session closed and can be redirected back to the group chat.
     if (session.group_id != null) {
-      broadcastToGroup(req, session.group_id, 'session:confirmed', {
-        groupId: session.group_id,
-        sessionId,
-        event,
-        at: closedSession.closed_at?.toISOString?.() ?? new Date().toISOString(),
-      });
+      const io = req.app.get('io');
+      const closedAt = closedSession.closed_at?.toISOString?.() ?? new Date().toISOString();
+
+      try {
+        const hostName =
+          session.host?.display_name ?? session.host?.username ?? 'The host';
+        const row = await prisma.groupMessage.create({
+          data: {
+            group_id: session.group_id,
+            user_id: session.host_user_id,
+            content: `${restaurant.name} was picked by ${hostName}`,
+            message_type: 'SYSTEM',
+          },
+        });
+        io?.to(`group:${session.group_id}`).emit('chat:message', {
+          id: String(row.id),
+          groupId: session.group_id,
+          userId: session.host_user_id,
+          name: hostName,
+          text: row.content,
+          at: row.created_at.toISOString(),
+          type: 'system',
+        });
+      } catch (msgErr) {
+        console.error('confirm system message failed', msgErr);
+      }
+
+      const payload = { groupId: session.group_id, sessionId, event, closedAt, at: closedAt };
+      io?.to(`group:${session.group_id}`).emit('session:confirmed', payload);
+      for (const { user_id } of session.members) {
+        io?.to(`user:${user_id}`).emit('session:confirmed', payload);
+      }
     }
 
     return res.status(200).json({ session: closedSession, event });
