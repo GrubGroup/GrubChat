@@ -14,6 +14,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useGroupsStore, mostRecentGroup } from '@/stores/groupsStore'
 import { useSession } from '@/lib/authClient'
 import { useGroupSync } from '@/hooks/useGroupSync'
+import { useSessionSync } from '@/hooks/useSessionSync'
 import { fetchProfile } from '@/api/profileApi'
 import type { SessionUser } from '@/stores/authStore'
 
@@ -39,6 +40,9 @@ function App() {
   // Keep the sidebar's group list live: refresh it when the gateway signals this
   // user was added to / removed from a group (no-op when signed out / in mock mode).
   useGroupSync()
+  // Adopt session picks live on any screen (chat or results) so force-finish /
+  // auto-complete results appear without a wait or reload (no-op signed out / mock).
+  useSessionSync()
 
   const isAuthScreen = screen === 'sign-in' || screen === 'sign-up'
   // Public screens a logged-out user may view without being bounced to sign-in.

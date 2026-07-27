@@ -25,6 +25,7 @@ import {
   selectPhase,
   selectStartedAt,
   selectIsHost,
+  selectSessionFinalizing,
 } from '@/stores/sessionStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useNavStore } from '@/stores/navStore'
@@ -72,6 +73,7 @@ export function GroupChatPage() {
   const triggerExpiryGeneration = useSessionStore((s) => s.triggerExpiryGeneration)
   const forceFinish = useSessionStore((s) => s.forceFinish)
   const isHost = useSessionStore(selectIsHost(groupId))
+  const sessionFinalizing = useSessionStore(selectSessionFinalizing(groupId))
   const currentUserId = useAuthStore((s) => s.user?.id ?? 0)
 
   // Resolve membership BEFORE connecting the socket, so we never join a room the
@@ -176,7 +178,12 @@ export function GroupChatPage() {
   //     others" (#6).
   //   else     → the screen-derived state (continue if mid-session, else Join).
   const allDone = total > 0 && doneCount === total
-  const isComplete = recommendation != null || allDone || sessionObj?.closed_at != null
+  // sessionFinalizing: the host force-finished / the timer expired (session:member_done
+  // with allDone). Flips the card to complete for EVERY member the instant it arrives —
+  // before the recommendation is generated — so no one is left on a stale "in progress /
+  // Join" card. `recommendation != null` is the later "results ready" signal.
+  const isComplete =
+    recommendation != null || allDone || sessionFinalizing || sessionObj?.closed_at != null
   const iAmDone =
     phase === 'done' || members.find((m) => m.user_id === currentUserId)?.status === true
   const cardState = isComplete
@@ -221,22 +228,23 @@ export function GroupChatPage() {
     go('agent-chat')
   }
 
-  // Host ends the session early: generate over the answers gathered so far, then
-  // open the results screen. The gateway broadcasts session:picks so every
-  // member's card flips to complete; loadRecommendation on the picks screen polls
-  // until the generation lands. Guard against a double-click during the request.
-  const handleForceFinish = async () => {
+  // Host ends the session early: kick off generation over the answers gathered so
+  // far and open the results screen IMMEDIATELY — don't block navigation on the
+  // up-to-120s generate POST. forceFinish sets recommendationLoading synchronously,
+  // so TopPicks shows its spinner, then fills from whichever lands first: the HTTP
+  // adopt (this host), the session:picks socket broadcast (every member, via
+  // useSessionSync), or the TopPicks loadRecommendation poll fallback — all
+  // idempotent. This is what makes results appear with no wait and no reload.
+  const handleForceFinish = () => {
     if (forcing) return
     setForcing(true)
-    try {
-      await forceFinish(groupId)
-      go('top-picks')
-    } catch {
-      // Generation failed to kick off — leave the user on the chat so they can
-      // retry (or let the timer fall back); the button re-enables below.
-    } finally {
-      setForcing(false)
-    }
+    void forceFinish(groupId)
+      .catch(() => {
+        // Generation failed to kick off — the socket broadcast / poll fallback on
+        // the results screen still recover it; nothing to do here.
+      })
+      .finally(() => setForcing(false))
+    go('top-picks')
   }
 
   // After leaving, the group is gone from the (refreshed) list. Jump to the next

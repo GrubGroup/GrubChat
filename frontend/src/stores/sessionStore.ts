@@ -48,6 +48,12 @@ export interface SessionSlice {
   // is set when the read-back fails on a session that should already have results.
   recommendationLoading: boolean
   recommendationError: boolean
+  // True once the session is finalizing (the host force-finished, or the timer
+  // expired) — set from a session:member_done{allDone:true} broadcast so EVERY
+  // member's card flips to complete immediately, before the recommendation (which
+  // takes 10–60s to generate) exists. Distinct from `recommendation != null`, which
+  // is the later "results are ready" signal. Cleared on a fresh session.
+  sessionFinalizing: boolean
   phase: SessionPhase
   votes: Record<number, number[]> // restaurantId -> userIds who voted
   chosenRestaurantId: number | null
@@ -63,6 +69,7 @@ const makeSlice = (): SessionSlice => ({
   recommendation: null,
   recommendationLoading: false,
   recommendationError: false,
+  sessionFinalizing: false,
   phase: 'joining',
   votes: {},
   chosenRestaurantId: null,
@@ -105,6 +112,9 @@ interface SessionState {
     total: number,
     userId: number,
     status: boolean,
+    // When true (the session:member_done{allDone} flag), the WHOLE session is done —
+    // flip every roster member and set sessionFinalizing so the card completes now.
+    allDone?: boolean,
   ) => void
   // Adopt a recommendation delivered live over the socket (session:picks), so the
   // "Results" affordance appears without a fetch. Stores the recommendation only —
@@ -173,6 +183,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
         recommendation: null,
         recommendationLoading: false,
         recommendationError: false,
+        sessionFinalizing: false,
         votes: {},
         chosenRestaurantId: null,
       })
@@ -231,6 +242,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
           recommendation: null,
           recommendationLoading: false,
           recommendationError: false,
+          sessionFinalizing: false,
           votes: {},
           chosenRestaurantId: null,
         }
@@ -268,10 +280,10 @@ export const useSessionStore = create<SessionState>((set, get) => {
         ...(userId === get().currentUserId ? { phase: 'done' as const } : {}),
       })),
 
-    applyProgress: (groupId, _doneCount, total, userId, status) =>
+    applyProgress: (groupId, _doneCount, total, userId, status, allDone = false) =>
       patch(groupId, (prev) => {
         const known = prev.members.some((m) => m.user_id === userId)
-        const members = known
+        const upserted = known
           ? prev.members.map((m) =>
               m.user_id === userId
                 ? // Backfill the current user's name if this row was created bare
@@ -289,13 +301,22 @@ export const useSessionStore = create<SessionState>((set, get) => {
                 ...selfNameFields(userId),
               },
             ]
+        // On an allDone broadcast (host force-finish / timer expiry) the WHOLE session
+        // is done — flip every member so this client's `doneCount === total` and the
+        // card completes immediately, not just the one user in the payload.
+        const members = allDone ? upserted.map((m) => ({ ...m, status: true })) : upserted
         return {
           members,
           // Trust the server's authoritative total so the denominator is right even
           // if this client's roster load hasn't landed (or was missed on reload).
           serverTotal: Math.max(total, members.length, prev.serverTotal),
+          // allDone marks the session as finalizing so the card flips to complete even
+          // before the recommendation (10–60s away) lands — the shared loading state.
+          ...(allDone ? { sessionFinalizing: true } : {}),
           // Reflect the current user's own completion in their local UI phase.
-          ...(userId === get().currentUserId && status ? { phase: 'done' as const } : {}),
+          ...((allDone || (userId === get().currentUserId && status))
+            ? { phase: 'done' as const }
+            : {}),
         }
       }),
 
@@ -447,6 +468,8 @@ export const selectRecommendationLoading = (groupId: number) => (s: SessionState
   (s.byGroup[groupId] ?? EMPTY_SLICE).recommendationLoading
 export const selectRecommendationError = (groupId: number) => (s: SessionState) =>
   (s.byGroup[groupId] ?? EMPTY_SLICE).recommendationError
+export const selectSessionFinalizing = (groupId: number) => (s: SessionState) =>
+  (s.byGroup[groupId] ?? EMPTY_SLICE).sessionFinalizing
 export const selectVotes = (groupId: number) => (s: SessionState) =>
   (s.byGroup[groupId] ?? EMPTY_SLICE).votes
 
