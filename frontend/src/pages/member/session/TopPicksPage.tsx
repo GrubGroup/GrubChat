@@ -18,6 +18,8 @@ import {
 } from '@/stores/sessionStore'
 import { useRestaurantStore } from '@/stores/restaurantStore'
 import { useAuthStore } from '@/stores/authStore'
+import { useGroupsStore } from '@/stores/groupsStore'
+import { toSlugId } from '@/utils/slug'
 import { useGroupId } from '@/hooks/useGroupId'
 import { useSessionId } from '@/hooks/useSessionId'
 import { useBindSession } from '@/hooks/useBindSession'
@@ -29,6 +31,10 @@ export function TopPicksPage() {
   const navigate = useNavigate()
   const groupId = useGroupId()
   const urlSessionId = useSessionId()
+  // Readable slug for this group's URLs (`foodie-friends-42`). Falls back to the
+  // bare id when the group list hasn't landed — still a valid, resolvable path.
+  const groupName = useGroupsStore((s) => s.groups.find((g) => g.id === groupId)?.name)
+  const groupSlug = toSlugId(groupName, groupId)
   // Cold entry (refresh or a pasted link) reaches these results without having gone
   // through the group chat, so bind the group's session from the gateway first.
   const binding = useBindSession(groupId)
@@ -108,14 +114,14 @@ export function TopPicksPage() {
     }
     // Back to the group chat, where the session card now reads "complete" — that
     // state is derived from the recommendation/roster, so it needs no dedicated URL.
-    navigate(`/groups/${groupId}`)
+    navigate(`/groups/${groupSlug}`)
   }
 
   // Guards (after every hook): a stale URL — the group has no open session, or this
   // one names a different session than the live one — goes back to the group chat.
   // activeSessionId is the source of truth; the param is only validated against it.
   if (binding === 'none' || (binding === 'bound' && activeSessionId !== urlSessionId)) {
-    return <Navigate to={`/groups/${groupId}`} replace />
+    return <Navigate to={`/groups/${groupSlug}`} replace />
   }
 
   // While the group's picks are still being fetched/generated, take over the whole
@@ -148,7 +154,7 @@ export function TopPicksPage() {
         <div className="px-4 pb-2 pt-4">
           {/* Back to the group chat — same muted chevron style as Profile/Edit. */}
           <button
-            onClick={() => navigate(`/groups/${groupId}`)}
+            onClick={() => navigate(`/groups/${groupSlug}`)}
             className="mb-2 flex items-center gap-1 text-sm text-text-muted hover:text-text"
           >
             <Icon name="chevron-left" size={14} /> Back

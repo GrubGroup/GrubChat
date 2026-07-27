@@ -7,6 +7,7 @@ import { GroupsSidebar } from '@/components/session/GroupsSidebar'
 import { NewGroupModal } from '@/components/session/NewGroupModal'
 import { useGroupsStore } from '@/stores/groupsStore'
 import { memberColor } from '@/constants/memberColors'
+import { toSlugId } from '@/utils/slug'
 
 // "How it works" steps — emoji tiles, mirroring the no-groups Figma reference.
 const HOW_IT_WORKS: { emoji: string; title: string; body: string }[] = [
@@ -81,7 +82,7 @@ export function EmptyGroupsPage() {
     setCreating(true)
     try {
       const group = await addGroup(name, memberIds)
-      navigate(`/groups/${group.id}`)
+      navigate(`/groups/${toSlugId(group.name, group.id)}`)
       setModalOpen(false)
     } finally {
       setCreating(false)

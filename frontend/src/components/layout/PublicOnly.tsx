@@ -5,6 +5,7 @@ import { useSession } from '@/lib/authClient'
 import { useAuthStore } from '@/stores/authStore'
 import { useGroupsStore, mostRecentGroup } from '@/stores/groupsStore'
 import { fetchProfile } from '@/api/profileApi'
+import { toSlugId } from '@/utils/slug'
 
 // Wraps the public routes (/, /login, /signup) and forwards an already-authenticated
 // visitor into the app. This is the path a Google OAuth return takes: the browser
@@ -43,7 +44,9 @@ export function PublicOnly() {
         }
         await useGroupsStore.getState().load()
         const latest = mostRecentGroup(useGroupsStore.getState().groups)
-        navigate(latest ? `/groups/${latest.id}` : '/groups', { replace: true })
+        navigate(latest ? `/groups/${toSlugId(latest.name, latest.id)}` : '/groups', {
+          replace: true,
+        })
       } finally {
         setForwarding(false)
         setRouted(true)

@@ -5,6 +5,7 @@ import { Avatar, Badge, Icon } from '@/components/ui'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { memberColor } from '@/constants/memberColors'
 import { useEventListStore } from '@/stores/eventListStore'
+import { idFromSlug, toSlugId } from '@/utils/slug'
 
 // A cuisine/dietary emoji is not on the API row, so pick a stable default.
 const EVENT_EMOJI = '🍽️'
@@ -12,7 +13,7 @@ const EVENT_EMOJI = '🍽️'
 function EventRow({ e, active }: { e: EventRecord; active: boolean }) {
   return (
     <Link
-      to={`/events/${e.id}`}
+      to={`/events/${toSlugId(`${e.group_name ?? ''} ${e.restaurant_name}`, e.id)}`}
       className={
         active
           ? 'flex w-full items-center gap-3 border-b border-border bg-surface-sunken px-4 py-3 text-left transition-colors duration-150 ease-out'
@@ -50,7 +51,7 @@ export function EventsPage() {
     void load()
   }, [load])
 
-  const active = events.find((e) => e.id === Number(eventId)) ?? events[0] ?? null
+  const active = events.find((e) => e.id === idFromSlug(eventId)) ?? events[0] ?? null
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-raised">

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router'
 import { Button, Input } from '@/components/ui'
 import { useGroupsStore, mostRecentGroup } from '@/stores/groupsStore'
+import { toSlugId } from '@/utils/slug'
 import { useAuthStore } from '@/stores/authStore'
 import { signIn, signUp } from '@/lib/authClient'
 import { fetchProfile } from '@/api/profileApi'
@@ -76,7 +77,7 @@ export function AuthForm({ mode }: AuthFormProps) {
     setForwarding(true)
     await loadGroups()
     const latest = mostRecentGroup(useGroupsStore.getState().groups)
-    navigate(latest ? `/groups/${latest.id}` : '/groups')
+    navigate(latest ? `/groups/${toSlugId(latest.name, latest.id)}` : '/groups')
   }
 
   const handleSubmit = async () => {

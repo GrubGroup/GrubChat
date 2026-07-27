@@ -27,6 +27,8 @@ import {
   selectIsHost,
 } from '@/stores/sessionStore'
 import { useAuthStore } from '@/stores/authStore'
+import { useGroupsStore } from '@/stores/groupsStore'
+import { toSlugId } from '@/utils/slug'
 import { useGroupId } from '@/hooks/useGroupId'
 import { useSessionId } from '@/hooks/useSessionId'
 import { useBindSession } from '@/hooks/useBindSession'
@@ -45,6 +47,10 @@ export function AgentChatPage({ done = false }: AgentChatPageProps) {
   const navigate = useNavigate()
   const groupId = useGroupId()
   const urlSessionId = useSessionId()
+  // Readable slug for this group's URLs (`foodie-friends-42`). Falls back to the
+  // bare id when the group list hasn't landed — still a valid, resolvable path.
+  const groupName = useGroupsStore((s) => s.groups.find((g) => g.id === groupId)?.name)
+  const groupSlug = toSlugId(groupName, groupId)
   // Cold entry (refresh or a pasted link) has no session in the store yet — the
   // socket's session:start fired before this page existed. Bind it from the gateway.
   const binding = useBindSession(groupId)
@@ -127,7 +133,8 @@ export function AgentChatPage({ done = false }: AgentChatPageProps) {
   const [forcing, setForcing] = useState(false)
 
   // Base path for this session, so the sub-screens can be reached from here.
-  const sessionPath = activeSessionId != null ? `/groups/${groupId}/session/${activeSessionId}` : null
+  const sessionPath =
+    activeSessionId != null ? `/groups/${groupSlug}/session/${activeSessionId}` : null
 
   const handleSend = (text: string) => void sendUserMessage(groupId, text, activeSessionId)
 
@@ -174,7 +181,7 @@ export function AgentChatPage({ done = false }: AgentChatPageProps) {
   //              activeSessionId is the source of truth; the param is only validated.
   // `replace` keeps the dead URL out of the history stack.
   if (binding === 'none' || (binding === 'bound' && activeSessionId !== urlSessionId)) {
-    return <Navigate to={`/groups/${groupId}`} replace />
+    return <Navigate to={`/groups/${groupSlug}`} replace />
   }
   // Still asking the gateway — hold the frame rather than flashing an empty chat.
   if (binding !== 'bound') {
@@ -198,7 +205,7 @@ export function AgentChatPage({ done = false }: AgentChatPageProps) {
           {/* Dark chat header — matches column header height */}
           <div className={cn('flex items-center gap-3 bg-surface-inverse px-4', COLUMN_HEADER_H)}>
             <button
-              onClick={() => navigate(`/groups/${groupId}`)}
+              onClick={() => navigate(`/groups/${groupSlug}`)}
               className="flex h-8 w-8 items-center justify-center rounded-pill text-white/80 hover:bg-white/10"
             >
               <Icon name="chevron-left" size={18} />

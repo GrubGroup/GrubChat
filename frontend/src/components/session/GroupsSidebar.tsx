@@ -10,6 +10,7 @@ import { useGroupsStore } from '@/stores/groupsStore'
 import { useGroupChatStore } from '@/stores/groupChatStore'
 import { timeAgo } from '@/utils/timeAgo'
 import { cn } from '@/utils/cn'
+import { toSlugId } from '@/utils/slug'
 import type { Group } from '@/types'
 
 // Resolve the preview line + relative time for a group's sidebar row. Prefers a
@@ -50,7 +51,7 @@ function GroupRow({ group }: { group: Group }) {
 
   return (
     <Link
-      to={`/groups/${group.id}`}
+      to={`/groups/${toSlugId(group.name, group.id)}`}
       className={cn(
         'flex w-full items-center gap-2.5 rounded-[10px] p-2 text-left',
         'transition-colors duration-150 ease-out',
@@ -111,7 +112,7 @@ export function GroupsSidebar() {
     setCreating(true)
     try {
       const group = await addGroup(name, memberIds)
-      navigate(`/groups/${group.id}`)
+      navigate(`/groups/${toSlugId(group.name, group.id)}`)
       setModalOpen(false)
     } finally {
       setCreating(false)

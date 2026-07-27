@@ -16,6 +16,7 @@ import { TypingIndicator } from '@/components/session/TypingIndicator'
 import { cn } from '@/utils/cn'
 import { memberColor } from '@/constants/memberColors'
 import { nameForMember } from '@/utils/memberName'
+import { toSlugId } from '@/utils/slug'
 import {
   useSessionStore,
   selectMembers,
@@ -151,7 +152,10 @@ export function GroupChatPage() {
   // Base path for this group's live session. Null until a session is bound, which
   // is why every session affordance below is guarded — the card can render from a
   // socket echo a beat before activeSessionId lands.
-  const sessionPath = activeSessionId != null ? `/groups/${groupId}/session/${activeSessionId}` : null
+  const sessionPath =
+    activeSessionId != null
+      ? `/groups/${toSlugId(group?.name, groupId)}/session/${activeSessionId}`
+      : null
 
   // Host finished the pre-session modal: adopt the created session locally, then
   // broadcast session:start WITH its id so every member's client can adopt it and
@@ -203,7 +207,7 @@ export function GroupChatPage() {
   const handleLeft = () => {
     setEditing(false)
     const next = mostRecentGroup(useGroupsStore.getState().groups)
-    navigate(next ? `/groups/${next.id}` : '/groups')
+    navigate(next ? `/groups/${toSlugId(next.name, next.id)}` : '/groups')
   }
 
   // Bounce a user who isn't a member of the group the URL names — but only once

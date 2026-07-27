@@ -2,6 +2,7 @@ import { Navigate } from 'react-router'
 import { AppSplash } from '@/components/layout/AppSplash'
 import { EmptyGroupsPage } from './EmptyGroupsPage'
 import { useGroupsStore, mostRecentGroup } from '@/stores/groupsStore'
+import { toSlugId } from '@/utils/slug'
 
 // The /groups index — "take me to my groups" with no specific one named. Lands the
 // user wherever the post-auth forward would: their most recently active chat, or the
@@ -22,7 +23,7 @@ export function GroupsIndex() {
   const latest = mostRecentGroup(groups)
   // `replace` keeps /groups out of the history stack, so Back doesn't land on a URL
   // that immediately redirects again.
-  if (latest) return <Navigate to={`/groups/${latest.id}`} replace />
+  if (latest) return <Navigate to={`/groups/${toSlugId(latest.name, latest.id)}`} replace />
 
   return <EmptyGroupsPage />
 }
