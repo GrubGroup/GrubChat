@@ -2,15 +2,22 @@
 
 The catalog rows exist in the Prisma-owned DB (the ~100 mock restaurants); only the
 `vector(1024)` `embedding` column is missing. This script fetches every row with a
-NULL embedding, computes it via OpenRouter (Qwen3-embedding-8b, 1024-dim), and writes
-it back. It is idempotent — rows that already have an embedding are skipped, so it can
-be re-run safely and will resume where an interrupted run left off (commits per batch).
+NULL embedding, computes it via OpenRouter (settings.embedding_model, 1024-dim), and
+writes it back. It is idempotent — rows that already have an embedding are skipped, so
+it can be re-run safely and will resume where an interrupted run left off (commits per
+batch).
+
+Pass `--all` to re-embed EVERY row instead of only NULL ones. Required after changing
+EMBEDDING_MODEL: vectors from different models are not comparable, so a mixed table
+makes cosine ranking meaningless. `--all` overwrites in place (no NULL window), so
+retrieval keeps working throughout the run.
 
 Run it (from backend/ai_service, uses that dir's .env). Must be run as a module
 (-m) so the `app` package resolves — running the file path directly fails with
 ModuleNotFoundError: No module named 'app':
 
-    uv run python -m scripts.backfill_embeddings
+    uv run python -m scripts.backfill_embeddings          # NULL rows only
+    uv run python -m scripts.backfill_embeddings --all    # re-embed everything
 
 Env used (already in backend/ai_service/.env): DATABASE_URL, OPENROUTER_API_KEY,
 OPENROUTER_BASE_URL, EMBEDDING_MODEL.
@@ -19,10 +26,12 @@ OPENROUTER_BASE_URL, EMBEDDING_MODEL.
 from __future__ import annotations
 
 import asyncio
+import sys
 
 from sqlmodel import select
 
 from app.ai.rag.embeddings import embed_text
+from app.core.config import settings
 from app.db.session import async_session_factory
 from app.models.restaurant import Restaurant
 
@@ -62,14 +71,17 @@ async def _embed_with_retry(text: str) -> list[float]:
     raise last_exc
 
 
-async def main() -> None:
-    """Fetch NULL-embedding restaurants, embed concurrently, and persist in batches."""
+async def main(*, embed_all: bool = False) -> None:
+    """Embed restaurants concurrently and persist in batches.
+
+    By default only NULL-embedding rows are processed. With `embed_all`, every row is
+    re-embedded in place — use that after an EMBEDDING_MODEL change.
+    """
     async with async_session_factory() as session:
-        result = await session.execute(
-            select(Restaurant)
-            .where(Restaurant.embedding.is_(None))
-            .order_by(Restaurant.id)
-        )
+        statement = select(Restaurant).order_by(Restaurant.id)
+        if not embed_all:
+            statement = statement.where(Restaurant.embedding.is_(None))
+        result = await session.execute(statement)
         pending = list(result.scalars().all())
 
         total = len(pending)
@@ -77,9 +89,10 @@ async def main() -> None:
             print("Nothing to do: every restaurant already has an embedding.")
             return
 
+        scope = "RE-embedding ALL" if embed_all else "Backfilling"
         print(
-            f"Backfilling embeddings for {total} restaurant(s) "
-            f"(concurrency={_CONCURRENCY}, model=qwen/qwen3-embedding-8b)..."
+            f"{scope} embeddings for {total} restaurant(s) "
+            f"(concurrency={_CONCURRENCY}, model={settings.embedding_model})..."
         )
 
         sem = asyncio.Semaphore(_CONCURRENCY)
@@ -114,4 +127,4 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main(embed_all="--all" in sys.argv[1:]))

@@ -17,11 +17,17 @@ class Settings(BaseSettings):
     # set LLM_PROVIDER=salesforce locally, leave unset (or =openrouter) on deploy.
     llm_provider: str = "openrouter"  # env LLM_PROVIDER
 
-    # Embeddings (active): OpenRouter / Qwen, 1024-dim. OpenRouter also serves chat
-    # when llm_provider == "openrouter".
+    # Embeddings (active): served via OpenRouter's /embeddings API, 1024-dim.
+    # OpenRouter also serves chat when llm_provider == "openrouter".
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    embedding_model: str = "qwen/qwen3-embedding-8b"
+    # LATENCY FIX (2026-07-27): was "qwen/qwen3-embedding-8b" (measured 24-60s per
+    # call — no dedicated OpenRouter provider, so each request cold-started a
+    # serverless GPU; this was ~90% of "view results" latency). text-embedding-3-small
+    # measured 0.42s and also supports dimensions=1024, so vector(1024) is unchanged.
+    # TO REVERT: restore the Qwen model here AND in .env, then re-embed all
+    # Restaurant rows (cross-model vectors are not comparable).
+    embedding_model: str = "openai/text-embedding-3-small"
     # OpenRouter chat model (env LLM_MODEL). Used when llm_provider == "openrouter".
     openrouter_llm_model: str = Field(
         default="deepseek/deepseek-chat",
