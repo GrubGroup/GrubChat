@@ -30,15 +30,28 @@ const broadcastToGroup = (req, groupId, event, payload) => {
  * persisted GroupMessage). Shared by the manual generate path and the auto-
  * complete path so both emit an identical `session:picks` event.
  */
-const broadcastPicks = (io, groupId, sessionId, recommendation) => {
-  if (groupId == null) return;
+const broadcastPicks = async (io, groupId, sessionId, recommendation) => {
+  if (groupId == null || !io) return;
+  const payload = {
+    groupId,
+    sessionId,
+    recommendationId: recommendation.id,
+    items: recommendation.items ?? [],
+  };
   try {
-    io?.to(`group:${groupId}`).emit('session:picks', {
-      groupId,
-      sessionId,
-      recommendationId: recommendation.id,
-      items: recommendation.items ?? [],
+    io.to(`group:${groupId}`).emit('session:picks', payload);
+    // Also deliver to each member's always-joined per-user room (user:{id}, joined
+    // on connect in sockets/index.js). A member viewing the results page has left
+    // the group room (useSocket's unmount emits group:leave), so the group-room
+    // emit above never reaches them — the per-user room does. Duplicate delivery to
+    // a member still in the group room is harmless: receivePicks is idempotent.
+    const members = await prisma.sessionMember.findMany({
+      where: { session_id: sessionId },
+      select: { user_id: true },
     });
+    for (const { user_id } of members) {
+      io.to(`user:${user_id}`).emit('session:picks', payload);
+    }
   } catch (err) {
     console.error('socket broadcast session:picks failed', err);
   }
@@ -73,7 +86,7 @@ const maybeAutoComplete = async (io, sessionId, groupId) => {
     if (existing) return; // already generated (timer/manual/another finisher)
 
     const recommendation = await fetchRecommendations(sessionId, { forcePartial: false });
-    broadcastPicks(io, groupId, sessionId, recommendation);
+    await broadcastPicks(io, groupId, sessionId, recommendation);
   } catch (err) {
     // 409 (not all confirmed — shouldn't happen here), 502 (upstream), etc. The
     // timer fallback / manual generate remain as recovery paths.
@@ -159,7 +172,7 @@ const getRecommendations = async (req, res, next) => {
         where: { id: sessionId },
         select: { group_id: true },
       });
-      broadcastPicks(req.app.get('io'), session?.group_id, sessionId, recommendation);
+      await broadcastPicks(req.app.get('io'), session?.group_id, sessionId, recommendation);
     } catch (deliveryErr) {
       console.error('top-picks broadcast failed', deliveryErr);
     }
