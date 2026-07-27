@@ -33,6 +33,21 @@ DOC-VERIFIED DETAILS THAT DIFFER FROM THE OBVIOUS GUESS
     doc page is titled "Close Stream".
   * As a query param the biasing key is singular ``keyterm``, repeated once per
     term (the JSON ``Configure`` message uses plural ``keyterms``).
+
+``EndOfTurn`` IS NOT GUARANTEED — plan for its absence
+------------------------------------------------------
+A session can end having produced only ``Update`` frames. Measured: one sample
+clip yielded 145 ``Update``s, ``StartOfTurn``, and **no** ``EndOfTurn``; adding
+1 s of trailing silence did not change that, and only a ~6 s tail (past the
+``eot_timeout_ms`` default of 5000) finalized it. Sending ``CloseStream`` did NOT
+force a final either.
+
+So a consumer that only acts on ``event.is_final`` can silently drop a user's
+whole answer. Callers must keep the last non-empty transcript and fall back to it
+when the stream ends without a final — ``consume_turns`` below does exactly that,
+and is the recommended entry point for that reason. Lowering
+``eot_timeout_ms`` (range 500-60000) makes finalization more eager and is worth
+tuning for short question-answer turns, where the 5 s default is far too patient.
 """
 
 from __future__ import annotations
@@ -94,11 +109,19 @@ def build_flux_url(
     keyterms: list[str] | None = None,
     eot_threshold: float | None = None,
     eot_timeout_ms: int | None = None,
+    eager_eot_threshold: float | None = None,
 ) -> str:
     """Build the Flux WebSocket URL.
 
     ``keyterms`` is passed as a REPEATED singular ``keyterm`` param — the plural
     form belongs to the JSON ``Configure`` message, not the query string.
+
+    ``eager_eot_threshold`` (0.3-0.9, must be <= ``eot_threshold``) OPTS IN to
+    ``EagerEndOfTurn`` events. Flux does not emit them otherwise — a session
+    without this parameter sees only StartOfTurn/Update/EndOfTurn. Enabling it
+    changes nothing about when ``EndOfTurn`` arrives; it only adds an earlier,
+    retractable guess (retracted by ``TurnResumed``), which is what a speculative
+    dispatch would key on.
     """
     params: list[tuple[str, str]] = [
         ("model", model),  # required — no Flux default
@@ -109,6 +132,8 @@ def build_flux_url(
         params.append(("eot_threshold", str(eot_threshold)))
     if eot_timeout_ms is not None:
         params.append(("eot_timeout_ms", str(eot_timeout_ms)))
+    if eager_eot_threshold is not None:
+        params.append(("eager_eot_threshold", str(eager_eot_threshold)))
     for term in keyterms or []:
         params.append(("keyterm", term))
     return f"{FLUX_URL}?{urlencode(params)}"
@@ -156,6 +181,8 @@ async def stream_transcription(
     encoding: str = DEFAULT_ENCODING,
     sample_rate: int = DEFAULT_SAMPLE_RATE,
     eot_threshold: float | None = None,
+    eot_timeout_ms: int | None = None,
+    eager_eot_threshold: float | None = None,
     on_event: Callable[[TurnEvent], Awaitable[None]] | None = None,
 ) -> AsyncIterator[TurnEvent]:
     """Stream `audio` chunks to Flux and yield TurnEvents as they arrive.
@@ -177,6 +204,8 @@ async def stream_transcription(
         sample_rate=sample_rate,
         keyterms=keyterms,
         eot_threshold=eot_threshold,
+        eot_timeout_ms=eot_timeout_ms,
+        eager_eot_threshold=eager_eot_threshold,
     )
     # "Token", not "Bearer" — Deepgram's documented scheme.
     headers = {"Authorization": f"Token {settings.deepgram_api_key}"}
@@ -235,3 +264,63 @@ async def stream_transcription(
             for task in (sender, receiver):
                 if not task.done():
                     task.cancel()
+
+
+async def consume_turns(
+    audio: AsyncIterator[bytes],
+    **kwargs,
+) -> AsyncIterator[str]:
+    """Yield COMPLETE user turns as text — the safe entry point for /analyze.
+
+    Wraps ``stream_transcription`` with the one guarantee callers actually need:
+    **no answer is dropped**. It yields on every ``EndOfTurn``, and if the stream
+    ends without one, it yields the last non-empty interim transcript instead.
+
+    That fallback is not defensive padding — ``EndOfTurn`` genuinely does not
+    always arrive (see the module docstring: a real clip produced 145 interims and
+    no final). Filtering on ``is_final`` alone would have discarded that entire
+    turn, so a member would have spoken and had nothing recorded.
+
+    Accepts the same keyword arguments as ``stream_transcription``.
+
+    IMPORTANT — ``Update`` transcripts are NOT cumulative. Measured on one clip:
+    59 non-empty interims whose lengths rose and fell (max 14 chars, last 5), with
+    the final interim being ``"wife."`` — a fragment, not the turn. So the fallback
+    ACCUMULATES fragments rather than keeping the latest one; keeping the latest
+    would silently truncate a whole answer down to its last word. Fragments are
+    de-duplicated because Flux revises a fragment in place as it refines it, which
+    would otherwise repeat words.
+    """
+    fragments: list[str] = []
+
+    def _collect(text: str) -> None:
+        """Append a fragment unless it merely revises the previous one."""
+        clean = text.strip()
+        if not clean:
+            return
+        if fragments:
+            last = fragments[-1]
+            # A revision of the same fragment (either direction) replaces it.
+            if clean.startswith(last) or last.startswith(clean):
+                fragments[-1] = clean if len(clean) >= len(last) else last
+                return
+        fragments.append(clean)
+
+    async for event in stream_transcription(audio, **kwargs):
+        if event.is_final:
+            # A final carries the authoritative text for its turn when present.
+            text = event.transcript.strip() or " ".join(fragments).strip()
+            if text:
+                yield text
+            fragments.clear()
+        elif event.transcript:
+            _collect(event.transcript)
+
+    # Stream ended with an unfinalized turn — do not lose what was said.
+    leftover = " ".join(fragments).strip()
+    if leftover:
+        logger.info(
+            "stream ended without EndOfTurn; recovered %d interim fragment(s)",
+            len(fragments),
+        )
+        yield leftover
