@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { Recommendation, Session, SessionMember, SessionPhase } from '@/types'
 import { fetchRecommendation, fetchSession, generateRecommendation } from '@/api/sessionApi'
 import { useAuthStore } from '@/stores/authStore'
+import { getSocket } from '@/lib/socket'
 
 // Which groups have a host-expiry generation in flight — keyed by groupId so two
 // groups' timers can each generate independently (a single module boolean would
@@ -138,7 +139,14 @@ interface SessionState {
   // Same server operation as the expiry fallback (marks remaining members done,
   // generates, broadcasts session:picks); host-only and guarded per group.
   forceFinish: (groupId: number) => Promise<void>
-  castVote: (groupId: number, restaurantId: number, userId: number) => void
+  // Cast the current user's vote for a restaurant on the results page. Emit-only:
+  // the server echoes vote:update back to every member (incl. the sender) and
+  // receiveVote applies it — single source of truth, no local double-toggle. Falls
+  // back to a local apply in mock mode (no socket). Ephemeral / never persisted.
+  castVote: (groupId: number, restaurantId: number) => void
+  // Apply a live vote:update echo: single-choice toggle for `userId`. The voter id
+  // comes from the socket payload (the gateway's authenticated identity), not local.
+  receiveVote: (groupId: number, restaurantId: number, userId: number) => void
   chooseRestaurant: (groupId: number, restaurantId: number) => void
   close: (groupId: number) => void
 }
@@ -422,7 +430,20 @@ export const useSessionStore = create<SessionState>((set, get) => {
       }
     },
 
-    castVote: (groupId, restaurantId, userId) =>
+    castVote: (groupId, restaurantId) => {
+      const socket = getSocket()
+      if (socket) {
+        // Fire-and-forget: the vote applies when the server echoes vote:update back
+        // (single source of truth — no local/echo double-toggle). The server injects
+        // the authoritative voter id from the authenticated socket.
+        socket.emit('vote:cast', { groupId, restaurantId })
+      } else {
+        // Mock mode (no socket): apply locally so the demo still toggles.
+        get().receiveVote(groupId, restaurantId, get().currentUserId)
+      }
+    },
+
+    receiveVote: (groupId, restaurantId, userId) =>
       patch(groupId, (prev) => {
         const next: Record<number, number[]> = {}
         // A user has at most one vote — remove them from all lists first.
@@ -430,7 +451,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
           next[Number(rid)] = voters.filter((u) => u !== userId)
         }
         const current = next[restaurantId] ?? []
-        // Toggle: clicking your current pick removes the vote.
+        // Toggle: casting for your current pick removes the vote.
         const already = (prev.votes[restaurantId] ?? []).includes(userId)
         next[restaurantId] = already ? current : [...current, userId]
         return { votes: next }

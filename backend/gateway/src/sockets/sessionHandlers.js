@@ -190,6 +190,33 @@ const registerSessionHandlers = (io, socket) => {
   };
   socket.on('typing:start', ({ groupId }) => emitTyping(groupId, true));
   socket.on('typing:stop', ({ groupId }) => emitTyping(groupId, false));
+
+  // A member voted for a restaurant on the results page. Ephemeral — never persisted;
+  // it exists only to show the group's live consensus before the host confirms a pick.
+  // Relay to EVERY group member's per-user room (not the group room): a member on the
+  // results page has left the group room (useSocket's unmount emits group:leave), so a
+  // group-room emit wouldn't reach them — the per-user room does (same reason
+  // group:preview / session:picks fan out per-user). The echo also reaches the sender,
+  // so their own client applies the vote from the single source of truth (no local
+  // double-toggle). voterId comes from the authenticated socket, never the client.
+  socket.on('vote:cast', async ({ groupId, restaurantId }) => {
+    const gid = Number(groupId);
+    const rid = Number(restaurantId);
+    if (!Number.isInteger(gid) || !Number.isInteger(rid)) return;
+    try {
+      if (!(await isGroupMember(gid, userId))) return;
+      const payload = { groupId: gid, restaurantId: rid, userId };
+      const members = await prisma.groupMember.findMany({
+        where: { group_id: gid },
+        select: { user_id: true },
+      });
+      for (const { user_id } of members) {
+        io.to(`user:${user_id}`).emit('vote:update', payload);
+      }
+    } catch (err) {
+      console.error('vote:cast relay failed', err);
+    }
+  });
 };
 
 export { registerSessionHandlers };

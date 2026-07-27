@@ -150,7 +150,7 @@ export function TopPicksPage() {
               pick={pick}
               selected={pick.restaurant_id === activeId}
               hasVoted={(votes[pick.restaurant_id] ?? []).includes(currentUserId)}
-              onVote={() => castVote(groupId, pick.restaurant_id, currentUserId)}
+              onVote={() => castVote(groupId, pick.restaurant_id)}
               onSelect={() => setSelectedId(pick.restaurant_id)}
               showHours
             />
