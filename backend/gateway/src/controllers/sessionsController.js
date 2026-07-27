@@ -626,7 +626,8 @@ const submitQa = async (req, res, next) => {
 
 /**
  * GET /api/sessions/:session_id/recommendations — fetch the latest stored
- * recommendation for the session (gateway-direct Prisma read). 404 when none.
+ * recommendation for the session (gateway-direct Prisma read). Member-scoped.
+ * 403 for a non-member, 404 when the session has no results yet.
  */
 const getLatestRecommendation = async (req, res, next) => {
   const sessionId = toPositiveInt(req.params.session_id);
@@ -635,6 +636,18 @@ const getLatestRecommendation = async (req, res, next) => {
   }
 
   try {
+    // Membership guard: a recommendation carries the group's picks AND the LLM's
+    // justifications, which describe their dietary needs and budget — private to
+    // that session's members. Mirrors getRecommendations / submitQa / analyzeTurn.
+    // Checked BEFORE the lookup so a non-member gets 403 whether or not results
+    // exist — a 403-vs-404 split would otherwise leak which sessions have results.
+    const member = await prisma.sessionMember.findUnique({
+      where: { session_id_user_id: { session_id: sessionId, user_id: req.user.id } },
+    });
+    if (!member) {
+      return res.status(403).json({ error: 'Not a session member.' });
+    }
+
     const recommendation = await prisma.recommendation.findFirst({
       where: { session_id: sessionId },
       orderBy: { created_at: 'desc' },
