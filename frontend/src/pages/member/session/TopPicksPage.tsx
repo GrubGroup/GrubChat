@@ -18,6 +18,7 @@ import {
 import { useRestaurantStore } from '@/stores/restaurantStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useNavStore } from '@/stores/navStore'
+import { useSocket } from '@/hooks/useSocket'
 import { EASE } from '@/lib/motion'
 import { closeSession } from '@/api/sessionApi'
 
@@ -43,6 +44,13 @@ export function TopPicksPage() {
 
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [confirming, setConfirming] = useState(false)
+
+  // Subscribe to the live socket while the results screen is up, so a session:picks
+  // broadcast renders picks IMMEDIATELY instead of waiting for the next poll tick.
+  // Without this the group-chat page is unmounted (its cleanup emits group:leave and
+  // detaches session:picks), leaving polling as the only delivery path on this screen.
+  // Same reasoning as AgentChatPage; the singleton socket makes the join idempotent.
+  useSocket(groupId)
 
   useEffect(() => {
     if (!restaurantsLoaded) void loadRestaurants()
@@ -74,10 +82,19 @@ export function TopPicksPage() {
   const active = picks.find((p) => p.restaurant_id === activeId)
 
   // Distinct results states (replacing a single permanent "Loading picks…"):
-  //   loading → a fetch (or restaurant catalog load) is in flight
+  //   loading → nothing renderable YET (no picks resolved against the catalog)
   //   error   → the read-back failed; offer a retry
   //   else    → a recommendation exists but nothing renders (no match / not loaded)
-  const isLoading = recommendationLoading || !restaurantsLoaded || (!recommendation && !recommendationError)
+  //
+  // Spin ONLY while there is nothing to show AND something is still coming. The
+  // moment any pick resolves against the restaurant catalog, render it — gating on
+  // `recommendationLoading || !restaurantsLoaded` instead would hold the spinner up
+  // with renderable picks in hand (e.g. a socket delivery landing while the catalog
+  // fetch is still in flight, or a stale loading flag). The in-flight clause keeps a
+  // recommendation whose restaurants never resolve from spinning forever — it falls
+  // through to the empty state as before.
+  const picksStillComing = recommendationLoading || !restaurantsLoaded || !recommendation
+  const isLoading = picks.length === 0 && !recommendationError && picksStillComing
   const isError = recommendationError && picks.length === 0
 
   const handleConfirm = async () => {

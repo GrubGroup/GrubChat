@@ -307,6 +307,12 @@ export const useSessionStore = create<SessionState>((set, get) => {
           created_at: new Date().toISOString(),
           items,
         },
+        // Socket-delivered picks are ready to render, so drop the spinner HERE
+        // rather than waiting for the poll loop to come back around and notice.
+        // (Still deliberately not setting phase:'picks' — navigation stays
+        // user-driven; this only clears the results-fetch UI state.)
+        recommendationLoading: false,
+        recommendationError: false,
       }),
 
     loadRecommendation: async (groupId) => {
@@ -321,9 +327,31 @@ export const useSessionStore = create<SessionState>((set, get) => {
       // while. A live session:picks delivery (receivePicks) can populate this
       // group's recommendation meanwhile, which ends the poll early. Only after
       // we've exhausted our patience do we surface a retryable error.
-      const MAX_ATTEMPTS = 20
-      const RETRY_MS = 3000
-      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      //
+      // The wait between attempts is SLICED into short ticks rather than one long
+      // sleep: a socket delivery mid-wait must show picks immediately, and an
+      // uninterruptible `setTimeout(3000)` would keep the spinner up for the rest
+      // of the sleep even though renderable results were already in the store.
+      // Backoff starts short (generation is now ~2-5s, so the first retries should
+      // be eager) and widens toward MAX_WAIT_MS for the long tail of a slow run.
+      const TOTAL_PATIENCE_MS = 60_000
+      const FIRST_WAIT_MS = 300
+      const MAX_WAIT_MS = 3000
+      const TICK_MS = 100
+
+      // Resolves early (true) as soon as a socket delivery lands, so the caller can
+      // stop polling the instant renderable picks exist.
+      const waitForPicksOr = async (ms: number): Promise<boolean> => {
+        for (let waited = 0; waited < ms; waited += TICK_MS) {
+          await new Promise((resolve) => setTimeout(resolve, Math.min(TICK_MS, ms - waited)))
+          if (slice(groupId).recommendation) return true
+        }
+        return false
+      }
+
+      const startedAt = Date.now()
+      let wait = FIRST_WAIT_MS
+      while (Date.now() - startedAt < TOTAL_PATIENCE_MS) {
         // A socket delivery may already have filled this group's recommendation.
         if (slice(groupId).recommendation) {
           patch(groupId, { recommendationLoading: false, recommendationError: false })
@@ -341,9 +369,11 @@ export const useSessionStore = create<SessionState>((set, get) => {
         } catch {
           // Not ready yet (usually a 404 while generation runs). Wait, then retry —
           // keeping the loading state up so the UI never shows an error mid-flight.
-          if (attempt < MAX_ATTEMPTS - 1) {
-            await new Promise((resolve) => setTimeout(resolve, RETRY_MS))
+          if (await waitForPicksOr(wait)) {
+            patch(groupId, { recommendationLoading: false, recommendationError: false })
+            return
           }
+          wait = Math.min(wait * 2, MAX_WAIT_MS)
         }
       }
       // Gave up after repeated attempts — surface a retryable error state (the user
