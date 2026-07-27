@@ -149,7 +149,11 @@ export function AgentChatPage() {
     } else {
       setMemberDone(groupId, currentUserId)
     }
-    go('agent-chat-done')
+    // Auto-return to the group messenger instead of stranding the user in the private
+    // agent chat's "waiting" state. The group-chat session card derives its own
+    // waiting → complete/Results state from session state (iAmDone / isComplete) and
+    // updates live over the socket, so no manual back-navigation is needed.
+    go('group-chat')
   }
 
   return (
