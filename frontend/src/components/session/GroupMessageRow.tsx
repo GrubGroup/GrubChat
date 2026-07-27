@@ -20,6 +20,25 @@ function formatTime(iso: string): string {
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 }
 
+// Format an ISO timestamp as a short local date, e.g. "Jul 27, 2026".
+function formatDate(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+// Parse a restaurant-confirm system line into { restaurant, host } so the renderer
+// can bold the restaurant. Handles the current format ("<restaurant> was picked by
+// <host>") AND the legacy one ("<host> picked <restaurant> for this session") so
+// already-persisted messages reformat too. Returns null for non-confirm system lines.
+function parseConfirm(text: string): { restaurant: string; host: string } | null {
+  const current = text.split(' was picked by ')
+  if (current.length === 2) return { restaurant: current[0], host: current[1] }
+  const legacy = text.match(/^(.*) picked (.*) for this session$/)
+  if (legacy) return { restaurant: legacy[2], host: legacy[1] }
+  return null
+}
+
 export function GroupMessageRow({ message, currentUserId, isNew = false, members }: GroupMessageRowProps) {
   // Restaurant recommendations no longer appear in the group chat — they live in
   // the session/results flow only. Swallow any legacy SESSION_BLOCK row (its text
@@ -33,12 +52,19 @@ export function GroupMessageRow({ message, currentUserId, isNew = false, members
   const pop = isNew ? 'animate-bubble-pop' : undefined
 
   // System lines (e.g. "Sophie has left the group") render as a centered divider,
-  // matching the "… started a session" style.
+  // matching the "… started a session" style. The confirm line
+  // ("<restaurant> was picked by <host>") bolds the restaurant name; all system
+  // lines show the date inline after a dot.
   if (message.type === 'system') {
+    const confirm = parseConfirm(message.text)
+    const date = formatDate(message.at)
     return (
-      <div className={cn('flex items-center gap-3 py-1 text-caption text-text-muted', pop)}>
+      <div className={cn('flex w-full items-center gap-3 py-1 text-caption text-text-muted', pop)}>
         <span className="h-px flex-1 bg-border" />
-        {message.text}
+        <span>
+          {confirm ? `${confirm.restaurant} was picked by ${confirm.host}` : message.text}
+          {date && <> · {date}</>}
+        </span>
         <span className="h-px flex-1 bg-border" />
       </div>
     )

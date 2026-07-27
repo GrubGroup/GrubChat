@@ -95,7 +95,10 @@ export function TopPicksPage() {
         setConfirming(false)
       }
     }
-    go('session-complete')
+    // Return to the group chat — where the confirmation SYSTEM message and the closed
+    // session card appear. Every other member is pulled here too via session:confirmed
+    // (useSessionSync), so the whole group lands in the same place.
+    go('group-chat')
   }
 
   // While the group's picks are still being fetched/generated, take over the whole

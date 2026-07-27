@@ -145,7 +145,9 @@ export function GroupChatPage() {
     let cancelled = false
     void (async () => {
       const session = await fetchCurrentGroupSession(groupId)
-      if (cancelled || session == null) return
+      // Never re-arm the card for a CLOSED session (host already confirmed). The
+      // gateway only returns open sessions, but this closes the close-commit race.
+      if (cancelled || session == null || session.closed_at != null) return
       await loadSession(groupId, session.id, currentUserId)
       receiveSessionStart(groupId, session.id)
       void loadRecommendation(groupId)
@@ -196,7 +198,7 @@ export function GroupChatPage() {
   // in which "Start session" is disabled (you can't run two at once). Once
   // complete (or none started), the button is clickable again so the group can
   // kick off another session in the same chat.
-  const sessionOngoing = sessionStartIndex !== null && !isComplete
+  const sessionOngoing = sessionStartIndex !== null && !isComplete && sessionObj?.closed_at == null
 
   // Header "X members" reflects the real group membership from GET /api/groups
   // (member_count); falls back to the session total when absent.
@@ -305,7 +307,7 @@ export function GroupChatPage() {
               {memberCount} members
               {/* "Session active" only while a live session is in progress — not
                   before one starts, and not once it's complete. */}
-              {sessionStartIndex !== null && !isComplete && (
+              {sessionStartIndex !== null && !isComplete && sessionObj?.closed_at == null && (
                 <> · <span className="text-primary">session active</span></>
               )}
             </p>
@@ -352,8 +354,11 @@ export function GroupChatPage() {
             />
           ))}
 
-          {/* Session-started divider + card — inline at the point the user started it */}
-          {sessionStartIndex !== null && (
+          {/* Session-started divider + card — inline at the point the user started it.
+              Hidden once the session is CLOSED (host confirmed a restaurant): closed_at
+              is server truth, so the card + Results access vanish for every member
+              regardless of the ephemeral sessionStartIndex marker's state. */}
+          {sessionStartIndex !== null && sessionObj?.closed_at == null && (
             <>
               {/* The session announcement rises into the transcript like a message. */}
               <motion.div
