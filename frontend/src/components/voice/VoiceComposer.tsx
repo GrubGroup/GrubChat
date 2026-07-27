@@ -10,7 +10,13 @@ import { cn } from '@/utils/cn'
 const WAVE_BARS = [6, 12, 20, 10, 16, 8, 22, 12, 6, 14, 9, 18, 7, 15]
 
 export interface VoiceComposerProps {
-  onSend: (text: string) => void
+  /**
+   * Send the composed message. `source` reports how it was entered — 'voice'
+   * when it came from the mic transcript, 'text' when typed. The analyze
+   * endpoint uses this to tolerate speech-to-text noise (`message_source`), so
+   * losing it here would silently disable that tolerance.
+   */
+  onSend: (text: string, source: 'voice' | 'text') => void
   disabled?: boolean
   /** Placeholder for the text input. */
   placeholder?: string
@@ -73,7 +79,10 @@ export function VoiceComposer({
   const handleSend = () => {
     const value = displayValue.trim()
     if (!value) return
-    onSend(value)
+    // `listening` is the authoritative source marker: displayValue reads from the
+    // live transcript while the mic is on, and from `text` otherwise. Captured
+    // before stop() below, which would flip it to false.
+    onSend(value, listening ? 'voice' : 'text')
     setText('')
     resetTranscript()
     stopTyping()

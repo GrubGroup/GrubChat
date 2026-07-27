@@ -113,7 +113,11 @@ export function AgentChatPage() {
   const [marking, setMarking] = useState(false)
   const [forcing, setForcing] = useState(false)
 
-  const handleSend = (text: string) => void sendUserMessage(groupId, text, activeSessionId)
+  // `source` comes from the composer (mic vs keyboard) and rides through to the
+  // analyze endpoint's message_source, so a dictated turn gets transcription-noise
+  // tolerance from the prompt.
+  const handleSend = (text: string, source: 'voice' | 'text') =>
+    void sendUserMessage(groupId, text, activeSessionId, source)
 
   // Host ends the session early over the answers gathered so far, then opens
   // results. The gateway broadcasts session:picks; the picks screen polls until
@@ -186,11 +190,13 @@ export function AgentChatPage() {
               {/* Quick-reply chips — follow the question the agent just asked. */}
               {quickReplies.length > 0 && (
                 <div className="flex flex-wrap gap-2 px-5 pb-1 pt-2">
+                  {/* A tapped chip is canned text, never dictation — so it sends
+                      as 'text' even if the user has been speaking. */}
                   {quickReplies.map((q) => (
                     <button
                       key={q}
                       disabled={sending}
-                      onClick={() => handleSend(q)}
+                      onClick={() => handleSend(q, 'text')}
                       className="rounded-pill border border-border-strong bg-surface-raised px-3 py-1.5 text-xs font-medium text-text hover:bg-surface-sunken disabled:opacity-50"
                     >
                       {q}

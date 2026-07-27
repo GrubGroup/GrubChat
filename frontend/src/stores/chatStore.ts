@@ -72,7 +72,15 @@ interface ChatState {
   // message immediately, then the agent reply when it returns — always to the
   // ORIGIN group's slice, even if the user switched groups mid-round-trip.
   // `sessionId` is the live session; null falls back to the mock/canned path.
-  sendUserMessage: (groupId: number, text: string, sessionId: number | null) => Promise<void>
+  // `source` ('voice' when dictated, 'text' when typed) rides through to the
+  // analyze endpoint's `message_source`, which makes the model forgiving of
+  // speech-to-text transcription noise.
+  sendUserMessage: (
+    groupId: number,
+    text: string,
+    sessionId: number | null,
+    source?: 'voice' | 'text',
+  ) => Promise<void>
 }
 
 let idCounter = 100
@@ -129,7 +137,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       if (slice(groupId).sessionId !== sessionId) patchChat(groupId, { sessionId })
     },
 
-    sendUserMessage: async (groupId, text, sessionId) => {
+    sendUserMessage: async (groupId, text, sessionId, source = 'text') => {
       const cur = slice(groupId)
       const trimmed = text.trim()
       if (!trimmed || cur.sending) return
@@ -146,7 +154,10 @@ export const useChatStore = create<ChatState>((set, get) => {
       try {
         const res = await analyzeTurn(sessionId ?? 0, {
           message: trimmed,
-          message_source: 'text',
+          // Real source, not a constant: the backend prompt branches on this to
+          // forgive transcription noise on dictated turns (prompts.py
+          // MESSAGE_SOURCE), so hardcoding 'text' silently disabled that path.
+          message_source: source,
           conversation_history: history,
           // Read the CURRENT signals for THIS group at send time (the slice may have
           // advanced since we captured `cur`); the origin group is fixed by groupId.
