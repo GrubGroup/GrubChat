@@ -13,6 +13,7 @@ import { useNavStore } from '@/stores/navStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useGroupsStore, mostRecentGroup } from '@/stores/groupsStore'
 import { useSession } from '@/lib/authClient'
+import { useGroupSync } from '@/hooks/useGroupSync'
 import { fetchProfile } from '@/api/profileApi'
 import type { SessionUser } from '@/stores/authStore'
 
@@ -34,6 +35,10 @@ function App() {
   useEffect(() => {
     setSessionUser((session?.user as SessionUser | undefined) ?? null)
   }, [session, setSessionUser])
+
+  // Keep the sidebar's group list live: refresh it when the gateway signals this
+  // user was added to / removed from a group (no-op when signed out / in mock mode).
+  useGroupSync()
 
   const isAuthScreen = screen === 'sign-in' || screen === 'sign-up'
   // Public screens a logged-out user may view without being bounced to sign-in.

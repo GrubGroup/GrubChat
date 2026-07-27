@@ -131,7 +131,28 @@ const registerSessionHandlers = (io, socket) => {
         data: { group_id: groupId, user_id: userId, content: trimmed },
         include: { user: { select: { display_name: true, username: true } } },
       });
-      io.to(room(groupId)).emit('chat:message', toWireMessage(row, socket.data.name));
+      const wire = toWireMessage(row, socket.data.name);
+      io.to(room(groupId)).emit('chat:message', wire);
+
+      // Update EVERY member's sidebar preview live — including members not currently
+      // viewing this group, who aren't in its room and so never see the chat:message
+      // above. Emit a lightweight preview to each member's per-user room (joined on
+      // connect in sockets/index.js). Best-effort — a failure must not break send.
+      try {
+        const members = await prisma.groupMember.findMany({
+          where: { group_id: groupId },
+          select: { user_id: true },
+        });
+        const preview = {
+          groupId,
+          last_message: { text: wire.text, name: wire.name, user_id: wire.userId, at: wire.at },
+        };
+        for (const { user_id } of members) {
+          io.to(`user:${user_id}`).emit('group:preview', preview);
+        }
+      } catch (previewErr) {
+        console.error('group:preview broadcast failed', previewErr);
+      }
     } catch (err) {
       console.error('chat:message persist failed', err);
     }

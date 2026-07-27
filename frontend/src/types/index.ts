@@ -7,7 +7,7 @@ export type { Recommendation, RecommendationItem, RankedPick } from './recommend
 export type { MenuItem, EventItem } from './menu'
 export type { ChatRole, ChatMessage } from './chat'
 export type { GroupMessage } from './groupChat'
-export type { Group, GroupMember, GroupDetail } from './group'
+export type { Group, GroupLastMessage, GroupMember, GroupDetail } from './group'
 export type {
   ExtractedSignals,
   ConversationTurn,

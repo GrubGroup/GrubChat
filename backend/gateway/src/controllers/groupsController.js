@@ -15,6 +15,26 @@ const toPositiveInt = (value) => {
 };
 
 /**
+ * Notify a set of users that their group membership changed, so their client can
+ * live-refresh the sidebar without a manual reload. Emits to per-user rooms
+ * (`user:{id}`, joined on connect in sockets/index.js) — NOT the group room, since
+ * a newly-added member hasn't joined that yet. The payload carries only `groupId`;
+ * the client re-fetches the full list (reusing listGroups' shaping). Best-effort:
+ * a socket/emit failure must never block the REST response.
+ */
+const notifyMembership = (req, event, userIds, groupId) => {
+  try {
+    const io = req.app.get('io');
+    if (!io) return;
+    for (const userId of userIds) {
+      io.to(`user:${userId}`).emit(event, { groupId });
+    }
+  } catch (err) {
+    console.error(`${event} notify failed`, err);
+  }
+};
+
+/**
  * Resolve membership: returns true when `userId` belongs to `groupId`.
  * Used to guard every group-scoped read/write with a 403.
  */
@@ -95,6 +115,9 @@ const createGroup = async (req, res, next) => {
       },
       include: { members: { select: { user_id: true, joined_at: true } } },
     });
+    // Tell every seeded member (including the caller) to refresh their sidebar so
+    // the new group appears live without a reload.
+    notifyMembership(req, 'group:added', memberIds, group.id);
     return res.status(201).json(group);
   } catch (err) {
     return next(err);
@@ -216,6 +239,11 @@ const addMember = async (req, res, next) => {
       console.error('add-member system message failed', broadcastErr);
     }
 
+    // Tell the added user to refresh their sidebar so the group appears live. Sent
+    // to their per-user room — they haven't joined the group's room yet, so the
+    // system chat:message above never reaches them.
+    notifyMembership(req, 'group:added', [target.id], groupId);
+
     return res.status(201).json(member);
   } catch (err) {
     return next(err);
@@ -280,6 +308,9 @@ const removeMember = async (req, res, next) => {
     } catch (broadcastErr) {
       console.error('leave-group system message failed', broadcastErr);
     }
+
+    // Tell the removed user to refresh their sidebar so the group drops off live.
+    notifyMembership(req, 'group:removed', [targetId], groupId);
 
     return res.status(204).send();
   } catch (err) {

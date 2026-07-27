@@ -83,6 +83,13 @@ const createSocketServer = (httpServer) => {
   });
 
   io.on('connection', (socket) => {
+    // Join a per-user room so membership changes (added to / removed from a group)
+    // can reach THIS user regardless of which group rooms they've joined — a newly
+    // added member isn't in the group's room yet, so a group-scoped emit can't find
+    // them. userId is a string on socket.data (Better Auth); coerce to match the Int
+    // used as the emit target (see groupsController `user:${id}`).
+    const userId = Number(socket.data.userId);
+    if (Number.isInteger(userId)) socket.join(`user:${userId}`);
     registerSessionHandlers(io, socket);
   });
 
