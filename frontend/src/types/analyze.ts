@@ -65,6 +65,10 @@ export interface CreateSessionBody {
   occasion?: string | null
   scheduled_for?: string | 'now' | null
   location_address?: string | null
+  // Coordinates from a picked Places suggestion. When present the gateway trusts
+  // them and skips its own geocode; when null it geocodes location_address.
+  location_lat?: number | null
+  location_lon?: number | null
 }
 
 // A dining-history event as returned by GET /api/events (gateway `listEvents`).

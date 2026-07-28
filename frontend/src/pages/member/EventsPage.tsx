@@ -1,25 +1,29 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useParams } from 'react-router'
 import type { EventRecord } from '@/types'
-import { Avatar, Badge, Icon } from '@/components/ui'
+import { Avatar, Badge, Button, Icon } from '@/components/ui'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { memberColor } from '@/constants/memberColors'
 import { useEventListStore } from '@/stores/eventListStore'
+import { idFromSlug, toSlugId } from '@/utils/slug'
 
 // A cuisine/dietary emoji is not on the API row, so pick a stable default.
 const EVENT_EMOJI = '🍽️'
 
-function EventRow({
-  e,
-  active,
-  onSelect,
-}: {
-  e: EventRecord
-  active: boolean
-  onSelect: () => void
-}) {
+// Sidebar subtitle: the event date + time, e.g. "Mon, Jul 28 · 7:00 PM".
+// Invalid dates render "".
+function formatEventDate(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const date = d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  return `${date} · ${time}`
+}
+
+function EventRow({ e, active }: { e: EventRecord; active: boolean }) {
   return (
-    <button
-      onClick={onSelect}
+    <Link
+      to={`/events/${toSlugId(`${e.group_name ?? ''} ${e.restaurant_name}`, e.id)}`}
       className={
         active
           ? 'flex w-full items-center gap-3 border-b border-border bg-surface-sunken px-4 py-3 text-left transition-colors duration-150 ease-out'
@@ -30,50 +34,89 @@ function EventRow({
         {EVENT_EMOJI}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-item-title font-semibold text-text">{e.restaurant_name}</span>
-          <span className="shrink-0 text-caption text-text-muted">{e.time_slot ?? ''}</span>
-        </div>
-        <p className="truncate text-caption text-text-muted">
-          {e.occasion ? `${e.occasion} · ` : ''}
-          {e.group_name ?? 'Group'}
-        </p>
+        <span className="block truncate text-item-title font-semibold text-text">
+          {e.restaurant_name}
+        </span>
+        <p className="truncate text-caption text-text-muted">{formatEventDate(e.date)}</p>
       </div>
-    </button>
+    </Link>
+  )
+}
+
+// A labeled group of event rows in the sidebar ("Upcoming" / "Previous").
+// Renders nothing when empty, so a user with only past outings sees just one header.
+function EventSection({
+  label,
+  list,
+  activeId,
+}: {
+  label: string
+  list: EventRecord[]
+  activeId: number | null
+}) {
+  if (list.length === 0) return null
+  return (
+    <>
+      <p className="px-4 pt-3 text-overline font-semibold uppercase tracking-wide text-text-muted">
+        {label}
+      </p>
+      {list.map((e) => (
+        <EventRow key={e.id} e={e} active={activeId === e.id} />
+      ))}
+    </>
   )
 }
 
 export function EventsPage() {
   const events = useEventListStore((s) => s.events)
   const loaded = useEventListStore((s) => s.loaded)
+  const error = useEventListStore((s) => s.error)
   const load = useEventListStore((s) => s.load)
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  // Which event the detail pane shows comes from the URL — `/events/:eventId` — so a
+  // booked outing is linkable and survives a refresh. The list read (GET /api/events)
+  // is the only source; there's no fetch-by-id endpoint, so an unknown id simply
+  // falls back to the newest event rather than 404ing.
+  const { eventId } = useParams()
+  // Snapshot "now" once at mount (lazy initializer keeps render pure) — it's the
+  // upcoming/previous cutoff. A mid-session tick past an event's time isn't worth
+  // a re-render; the split refreshes on next mount / navigation.
+  const [now] = useState(() => Date.now())
 
   useEffect(() => {
     void load()
   }, [load])
 
-  const active = events.find((e) => e.id === selectedId) ?? events[0] ?? null
+  const active = events.find((e) => e.id === idFromSlug(eventId)) ?? events[0] ?? null
+
+  // Split the flat list into outings still ahead (upcoming) vs. past (previous).
+  // Cutoff is the exact current time, so an outing earlier today reads as previous.
+  // Upcoming is soonest-first; previous is newest-first.
+  const { upcoming, previous } = useMemo(() => {
+    const up: EventRecord[] = []
+    const prev: EventRecord[] = []
+    for (const e of events) {
+      ;(new Date(e.date).getTime() >= now ? up : prev).push(e)
+    }
+    up.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    prev.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    return { upcoming: up, previous: prev }
+  }, [events, now])
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-raised">
-      <AppSidebar activeTab="events" eyebrow="Events">
-        <p className="px-4 pt-3 text-overline font-semibold uppercase tracking-wide text-text-muted">
-          Your events
-        </p>
-        {loaded && events.length === 0 && (
+      <AppSidebar eyebrow="Events">
+        {loaded && !error && events.length === 0 && (
           <p className="px-4 py-6 text-body text-text-muted">
             No events yet. Start a session and confirm a pick to book one.
           </p>
         )}
-        {events.map((e) => (
-          <EventRow
-            key={e.id}
-            e={e}
-            active={active?.id === e.id}
-            onSelect={() => setSelectedId(e.id)}
-          />
-        ))}
+        {error && events.length === 0 && (
+          <p className="px-4 py-6 text-body text-text-muted">
+            Couldn't load your events.
+          </p>
+        )}
+        <EventSection label="Upcoming" list={upcoming} activeId={active?.id ?? null} />
+        <EventSection label="Previous" list={previous} activeId={active?.id ?? null} />
       </AppSidebar>
 
       {/* Detail */}
@@ -145,10 +188,28 @@ export function EventsPage() {
               )}
             </div>
           </>
+        ) : error ? (
+          <EventsErrorState onRetry={() => void load()} />
         ) : (
           <EventsEmptyState />
         )}
       </div>
+    </div>
+  )
+}
+
+// Shown when GET /api/events failed — an honest error with a retry, so a read
+// failure surfaces instead of rendering a silent blank page.
+function EventsErrorState({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+      <p className="text-sm font-medium text-text">Couldn't load your events</p>
+      <p className="max-w-xs text-xs text-text-muted">
+        Something went wrong fetching your outings. Give it another try.
+      </p>
+      <Button variant="primary" size="sm" onClick={onRetry}>
+        Retry
+      </Button>
     </div>
   )
 }

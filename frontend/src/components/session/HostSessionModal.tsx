@@ -56,6 +56,14 @@ export function HostSessionModal({
   const [occasion, setOccasion] = useState("");
   const location = usePlacesInput("");
   const [geoStatus, setGeoStatus] = useState<GeoStatus>("idle");
+  // Coordinates from a picked Places suggestion — sent straight through so the
+  // gateway can skip re-geocoding and the pin matches what the host saw.
+  const [selectedCoords, setSelectedCoords] = useState<{
+    lat: number;
+    lon: number;
+  } | null>(null);
+  // Whether the autocomplete dropdown is open (suppressed right after a pick/blur).
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const [timeMode, setTimeMode] = useState<"now" | "schedule">("now");
   const [date, setDate] = useState(todayIso());
@@ -82,10 +90,26 @@ export function HostSessionModal({
     }
   };
 
-  // Editing the address invalidates a prior geocode result.
+  // Editing the address invalidates a prior geocode result + picked coords.
   const handleAddressChange = (value: string) => {
     location.setValue(value);
+    setShowSuggestions(true);
+    if (selectedCoords) setSelectedCoords(null);
     if (geoStatus !== "idle") setGeoStatus("idle");
+  };
+
+  // Pick a suggestion: resolve its address + coordinates (from the cached
+  // autocomplete result — no extra request), confirm the field.
+  const handleSelectSuggestion = (placeId: string) => {
+    setShowSuggestions(false);
+    const place = location.select(placeId);
+    if (place) {
+      setSelectedCoords({ lat: place.lat, lon: place.lon });
+      setGeoStatus("ok");
+    } else {
+      setSelectedCoords(null);
+      setGeoStatus("notfound");
+    }
   };
 
   const canSubmit =
@@ -110,6 +134,10 @@ export function HostSessionModal({
         occasion: occasion.trim() || null,
         scheduled_for: buildScheduledFor(),
         location_address: trimmedAddress,
+        // Coords from a picked Places suggestion (omitted when the host typed a
+        // raw address — the gateway then geocodes server-side as before).
+        location_lat: selectedCoords?.lat ?? null,
+        location_lon: selectedCoords?.lon ?? null,
       });
       onCreated(session);
     } catch {
@@ -155,13 +183,22 @@ export function HostSessionModal({
             Where should we meet?
           </label>
           <div className="flex items-start gap-2">
-            <div className="flex-1">
+            <div className="relative flex-1">
               <Input
                 leftIcon={<Icon name="map-pin" size={14} />}
-                placeholder="Downtown San Francisco, CA"
+                placeholder="Search a place, e.g. Salesforce Tower"
                 value={location.value}
                 onChange={(e) => handleAddressChange(e.target.value)}
-                onBlur={() => void validateLocation()}
+                onBlur={() => {
+                  // Delay so a suggestion click registers before we close/validate.
+                  window.setTimeout(() => {
+                    setShowSuggestions(false);
+                    if (!selectedCoords) void validateLocation();
+                  }, 150);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setShowSuggestions(false);
+                }}
                 error={
                   geoStatus === "notfound"
                     ? "Couldn't find that place — try another."
@@ -169,6 +206,34 @@ export function HostSessionModal({
                 }
                 hint={geoStatus === "ok" ? "✓ Location confirmed" : undefined}
               />
+              {showSuggestions && location.suggestions.length > 0 && (
+                <ul
+                  className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-input border border-border bg-surface py-1 shadow-lg"
+                  role="listbox"
+                >
+                  {location.suggestions.map((s) => (
+                    <li key={s.placeId}>
+                      <button
+                        type="button"
+                        // onMouseDown fires before the input's onBlur, so the pick
+                        // isn't lost to the blur-close above.
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSelectSuggestion(s.placeId);
+                        }}
+                        className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm text-text hover:bg-surface-sunken"
+                      >
+                        <Icon
+                          name="map-pin"
+                          size={14}
+                          className="mt-0.5 shrink-0 text-text-muted"
+                        />
+                        <span>{s.description}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             <Button
               variant="ghost"

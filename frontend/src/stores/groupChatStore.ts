@@ -17,6 +17,8 @@ import { getSocket } from '@/lib/socket'
 export interface Typer {
   userId: number | null
   name: string | null
+  // OAuth photo carried on the typing broadcast; null → colored-initials fallback.
+  avatarUrl: string | null
   at: number
 }
 
@@ -24,6 +26,7 @@ interface TypingUpdate {
   groupId: number
   userId: number | null
   name: string | null
+  avatarUrl?: string | null
   isTyping: boolean
 }
 
@@ -129,11 +132,13 @@ export const useGroupChatStore = create<GroupChatState>((set) => ({
 
   // A typing:update arrived from another member. Add/refresh them (bump `at`) or
   // remove them from this group's list. De-duped by userId; immutable spread.
-  receiveTyping: ({ groupId, userId, name, isTyping }) =>
+  receiveTyping: ({ groupId, userId, name, avatarUrl, isTyping }) =>
     set((s) => {
       const current = s.typingByGroup[groupId] ?? EMPTY_TYPERS
       const without = current.filter((t) => t.userId !== userId)
-      const next = isTyping ? [...without, { userId, name, at: Date.now() }] : without
+      const next = isTyping
+        ? [...without, { userId, name, avatarUrl: avatarUrl ?? null, at: Date.now() }]
+        : without
       return { typingByGroup: { ...s.typingByGroup, [groupId]: next } }
     }),
 }))

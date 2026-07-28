@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { Recommendation, Session, SessionMember, SessionPhase } from '@/types'
 import { fetchRecommendation, fetchSession, generateRecommendation } from '@/api/sessionApi'
 import { useAuthStore } from '@/stores/authStore'
+import { getSocket } from '@/lib/socket'
 
 // Which groups have a host-expiry generation in flight — keyed by groupId so two
 // groups' timers can each generate independently (a single module boolean would
@@ -48,6 +49,12 @@ export interface SessionSlice {
   // is set when the read-back fails on a session that should already have results.
   recommendationLoading: boolean
   recommendationError: boolean
+  // True once the session is finalizing (the host force-finished, or the timer
+  // expired) — set from a session:member_done{allDone:true} broadcast so EVERY
+  // member's card flips to complete immediately, before the recommendation (which
+  // takes 10–60s to generate) exists. Distinct from `recommendation != null`, which
+  // is the later "results are ready" signal. Cleared on a fresh session.
+  sessionFinalizing: boolean
   phase: SessionPhase
   votes: Record<number, number[]> // restaurantId -> userIds who voted
   chosenRestaurantId: number | null
@@ -63,6 +70,7 @@ const makeSlice = (): SessionSlice => ({
   recommendation: null,
   recommendationLoading: false,
   recommendationError: false,
+  sessionFinalizing: false,
   phase: 'joining',
   votes: {},
   chosenRestaurantId: null,
@@ -105,6 +113,9 @@ interface SessionState {
     total: number,
     userId: number,
     status: boolean,
+    // When true (the session:member_done{allDone} flag), the WHOLE session is done —
+    // flip every roster member and set sessionFinalizing so the card completes now.
+    allDone?: boolean,
   ) => void
   // Adopt a recommendation delivered live over the socket (session:picks), so the
   // "Results" affordance appears without a fetch. Stores the recommendation only —
@@ -128,7 +139,14 @@ interface SessionState {
   // Same server operation as the expiry fallback (marks remaining members done,
   // generates, broadcasts session:picks); host-only and guarded per group.
   forceFinish: (groupId: number) => Promise<void>
-  castVote: (groupId: number, restaurantId: number, userId: number) => void
+  // Cast the current user's vote for a restaurant on the results page. Emit-only:
+  // the server echoes vote:update back to every member (incl. the sender) and
+  // receiveVote applies it — single source of truth, no local double-toggle. Falls
+  // back to a local apply in mock mode (no socket). Ephemeral / never persisted.
+  castVote: (groupId: number, restaurantId: number) => void
+  // Apply a live vote:update echo: single-choice toggle for `userId`. The voter id
+  // comes from the socket payload (the gateway's authenticated identity), not local.
+  receiveVote: (groupId: number, restaurantId: number, userId: number) => void
   chooseRestaurant: (groupId: number, restaurantId: number) => void
   close: (groupId: number) => void
 }
@@ -173,6 +191,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
         recommendation: null,
         recommendationLoading: false,
         recommendationError: false,
+        sessionFinalizing: false,
         votes: {},
         chosenRestaurantId: null,
       })
@@ -231,6 +250,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
           recommendation: null,
           recommendationLoading: false,
           recommendationError: false,
+          sessionFinalizing: false,
           votes: {},
           chosenRestaurantId: null,
         }
@@ -268,10 +288,10 @@ export const useSessionStore = create<SessionState>((set, get) => {
         ...(userId === get().currentUserId ? { phase: 'done' as const } : {}),
       })),
 
-    applyProgress: (groupId, _doneCount, total, userId, status) =>
+    applyProgress: (groupId, _doneCount, total, userId, status, allDone = false) =>
       patch(groupId, (prev) => {
         const known = prev.members.some((m) => m.user_id === userId)
-        const members = known
+        const upserted = known
           ? prev.members.map((m) =>
               m.user_id === userId
                 ? // Backfill the current user's name if this row was created bare
@@ -289,13 +309,22 @@ export const useSessionStore = create<SessionState>((set, get) => {
                 ...selfNameFields(userId),
               },
             ]
+        // On an allDone broadcast (host force-finish / timer expiry) the WHOLE session
+        // is done — flip every member so this client's `doneCount === total` and the
+        // card completes immediately, not just the one user in the payload.
+        const members = allDone ? upserted.map((m) => ({ ...m, status: true })) : upserted
         return {
           members,
           // Trust the server's authoritative total so the denominator is right even
           // if this client's roster load hasn't landed (or was missed on reload).
           serverTotal: Math.max(total, members.length, prev.serverTotal),
+          // allDone marks the session as finalizing so the card flips to complete even
+          // before the recommendation (10–60s away) lands — the shared loading state.
+          ...(allDone ? { sessionFinalizing: true } : {}),
           // Reflect the current user's own completion in their local UI phase.
-          ...(userId === get().currentUserId && status ? { phase: 'done' as const } : {}),
+          ...((allDone || (userId === get().currentUserId && status))
+            ? { phase: 'done' as const }
+            : {}),
         }
       }),
 
@@ -376,9 +405,17 @@ export const useSessionStore = create<SessionState>((set, get) => {
       if (sl.activeSessionId == null || sl.recommendation != null || !isHost) return
       if (expiryGenerating.has(groupId)) return
       expiryGenerating.add(groupId)
-      // Mark this group's results as loading so the caller (and the picks screen)
-      // shows the loading circle until generation returns — not an empty list.
-      patch(groupId, { recommendationLoading: true, recommendationError: false })
+      // Mark this group's results as loading AND the session as finalizing right away.
+      // sessionFinalizing flips the group-chat card to "complete" (Results) for the
+      // host IMMEDIATELY — so force-finish is a one-time action: if the host backs out
+      // of the loading screen, the card shows the results state, not another
+      // "Force finish" button. It doesn't depend on the session:member_done broadcast
+      // (which the host may miss after leaving the group room to view picks).
+      patch(groupId, {
+        recommendationLoading: true,
+        recommendationError: false,
+        sessionFinalizing: true,
+      })
       try {
         // force_partial: the gateway marks any un-finished members done, generates
         // over whatever answers exist, and broadcasts session:picks. We ALSO adopt
@@ -393,15 +430,29 @@ export const useSessionStore = create<SessionState>((set, get) => {
           recommendationError: false,
         })
       } catch {
-        // Release the guard on failure so the host can retry (or the timer can),
-        // and clear the loading flag so the caller can react.
+        // Release the guard on failure so the host can retry (or the timer can), clear
+        // the loading flag, and revert the finalizing flag so the card returns to its
+        // in-progress state and the host can force-finish again.
         expiryGenerating.delete(groupId)
-        patch(groupId, { recommendationLoading: false })
+        patch(groupId, { recommendationLoading: false, sessionFinalizing: false })
         throw new Error('force-finish failed')
       }
     },
 
-    castVote: (groupId, restaurantId, userId) =>
+    castVote: (groupId, restaurantId) => {
+      const socket = getSocket()
+      if (socket) {
+        // Fire-and-forget: the vote applies when the server echoes vote:update back
+        // (single source of truth — no local/echo double-toggle). The server injects
+        // the authoritative voter id from the authenticated socket.
+        socket.emit('vote:cast', { groupId, restaurantId })
+      } else {
+        // Mock mode (no socket): apply locally so the demo still toggles.
+        get().receiveVote(groupId, restaurantId, get().currentUserId)
+      }
+    },
+
+    receiveVote: (groupId, restaurantId, userId) =>
       patch(groupId, (prev) => {
         const next: Record<number, number[]> = {}
         // A user has at most one vote — remove them from all lists first.
@@ -409,7 +460,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
           next[Number(rid)] = voters.filter((u) => u !== userId)
         }
         const current = next[restaurantId] ?? []
-        // Toggle: clicking your current pick removes the vote.
+        // Toggle: casting for your current pick removes the vote.
         const already = (prev.votes[restaurantId] ?? []).includes(userId)
         next[restaurantId] = already ? current : [...current, userId]
         return { votes: next }
@@ -447,6 +498,8 @@ export const selectRecommendationLoading = (groupId: number) => (s: SessionState
   (s.byGroup[groupId] ?? EMPTY_SLICE).recommendationLoading
 export const selectRecommendationError = (groupId: number) => (s: SessionState) =>
   (s.byGroup[groupId] ?? EMPTY_SLICE).recommendationError
+export const selectSessionFinalizing = (groupId: number) => (s: SessionState) =>
+  (s.byGroup[groupId] ?? EMPTY_SLICE).sessionFinalizing
 export const selectVotes = (groupId: number) => (s: SessionState) =>
   (s.byGroup[groupId] ?? EMPTY_SLICE).votes
 

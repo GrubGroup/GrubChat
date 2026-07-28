@@ -26,6 +26,13 @@ function displayName(t: Typer, members?: SessionMember[]): string {
   return t.name ?? nameForMember(t.userId, members)
 }
 
+// Prefer the avatar carried on the typing broadcast (works even when the typer
+// isn't in the session roster, e.g. a plain group-chat typer); fall back to the
+// roster by id. Null → the Avatar shows colored initials.
+function avatarForTyper(t: Typer, members?: SessionMember[]): string | null {
+  return t.avatarUrl ?? members?.find((m) => m.user_id === t.userId)?.avatar_url ?? null
+}
+
 // A single merged "typing" bubble: stacked avatars of everyone currently typing
 // (no names) followed by animated dots. One bubble regardless of how many people
 // are typing.
@@ -62,6 +69,7 @@ export function TypingIndicator({ typers, members }: TypingIndicatorProps) {
               <Avatar
                 key={t.userId ?? displayName(t, members)}
                 name={displayName(t, members)}
+                src={avatarForTyper(t, members)}
                 size="sm"
                 colorClass={memberColor(t.userId ?? -1)}
                 className="border border-surface-raised"

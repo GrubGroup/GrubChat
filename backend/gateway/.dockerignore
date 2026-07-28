@@ -1,0 +1,10 @@
+# Keep the build context clean and the image portable.
+# node_modules is rebuilt inside the image (a mac-built one has the wrong Prisma
+# engine for Linux). Never ship secrets.
+node_modules
+.env
+.env.*
+.git
+.gitignore
+.DS_Store
+npm-debug.log

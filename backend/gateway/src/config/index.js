@@ -37,6 +37,12 @@ const config = {
   // time (services/geocodeClient.js). Optional: absent key degrades gracefully
   // (addresses save with null coordinates rather than blocking the request).
   geocodioApiKey: process.env.GEOCODIO_API || '',
+
+  // Cross-site cookies (prod only). When the frontend and gateway are on
+  // DIFFERENT domains (e.g. Render frontend ↔ Fly gateway), the Better Auth
+  // session cookie must be SameSite=None; Secure to ride cross-site. Off by
+  // default so local http dev keeps first-party Lax cookies via the Vite proxy.
+  crossSiteCookies: process.env.CROSS_SITE_COOKIES === 'true',
 };
 
 export { config };

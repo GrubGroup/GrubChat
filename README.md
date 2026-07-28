@@ -17,6 +17,10 @@ Project Code Repository Links
 
 A consumer-facing, "voice-first" web app where a group of friends each talk to their own AI agent about what they want to eat. A master AI orchestrator agent collects everyone's dietary preferences, budget, and location in real-time, finds restaurants that satisfy the whole group, lets each person browse and order from a shared menu, and connects everything into one group cart. This is all driven by a conversational, voice-enabled interface. Think Uber Eats but a group chat based on preference based on profile information.
 
+- **`frontend/`** — React 19 + TypeScript + Vite 8 SPA. Routed with react-router v8 (`/groups/:groupId`, `/groups/:groupId/sessions/:sessionId`, `/events/:eventId`, …); zustand for client state. Auth via Better Auth client (cookie session). Managed with **Bun**.
+- **`backend/gateway/`** — Node.js + Express 4 + Socket.IO 4. Frontend-facing service: runs Better Auth (cookie sessions, email/password + Google OAuth), Socket.IO live group chat and session sync, Prisma (owns DB schema + migrations + pgvector extension), proxies AI requests to `ai_service`. Managed with **Bun**.
+- **`backend/ai_service/`** — Python 3.14 + FastAPI + SQLModel + asyncpg. The AI/data brain: LangGraph multi-agent pipeline (per-member preference agent → group orchestrator), RAG (Qwen embeddings via OpenRouter + pgvector similarity search), LLM chat. Read-side SQLModel mirror of the Prisma schema; also writes `Recommendation`/`RecommendationItem` + `Qa` rows. Managed with **uv**.
+
 Deployment Website: **Add Link to Deployed Project**
 
 ### Open-source libraries used
