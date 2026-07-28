@@ -134,20 +134,18 @@ export function EventsPage() {
         <EventSection label="Previous" list={previous} activeId={active?.id ?? null} />
       </AppSidebar>
 
-      {/* MOBILE list root (<md) — the same list, as the Events tab's own screen. */}
+      {/* MOBILE list root (<md) — the same list, as the Events tab's own screen.
+          `bg-surface-panel` gives it the same two-tone beige as the Groups tab
+          root: rows sit transparent on the beige panel and tint only on state. */}
       <div
         className={cn(
-          'w-full flex-col overflow-y-auto md:hidden',
+          'w-full flex-col overflow-y-auto bg-surface-panel md:hidden',
           mobileDetailOpen ? 'hidden' : 'flex',
         )}
       >
         {/* `brand` matches the Groups tab root: at ≥md the sidebar panel header
             carries the wordmark, and it's hidden here. */}
-        <MobileHeader
-          brand
-          title="Events"
-          subtitle={loaded ? `${events.length} booked` : undefined}
-        />
+        <MobileHeader brand title="Events" />
         {loaded && events.length === 0 && (
           <p className="px-4 py-6 text-body text-text-muted">
             No events yet. Start a session and confirm a pick to book one.
