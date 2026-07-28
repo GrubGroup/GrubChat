@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router'
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { motion, useReducedMotion } from 'framer-motion'
 import type { Session } from '@/types'
 import { EASE } from '@/lib/motion'
 import { GroupsSidebar } from '@/components/session/GroupsSidebar'
@@ -8,13 +8,12 @@ import { GroupMessageRow } from '@/components/session/GroupMessageRow'
 import { SessionCard } from '@/components/session/SessionCard'
 import { GroupDetailPanel } from '@/components/session/GroupDetailPanel'
 import { HostSessionModal } from '@/components/session/HostSessionModal'
-import { Avatar, Icon, Spinner } from '@/components/ui'
+import { Icon, Spinner } from '@/components/ui'
 import { AppSplash } from '@/components/layout/AppSplash'
 import { COLUMN_HEADER_H } from '@/components/layout/AppSidebar'
 import { VoiceComposer } from '@/components/voice/VoiceComposer'
 import { TypingIndicator } from '@/components/session/TypingIndicator'
 import { cn } from '@/utils/cn'
-import { memberColor } from '@/constants/memberColors'
 import { nameForMember } from '@/utils/memberName'
 import { toSlugId } from '@/utils/slug'
 import {
@@ -126,7 +125,6 @@ export function GroupChatPage() {
   // loader until it arrives.
   const loadingHistory = isMember && groupId > 0 && !historyLoaded
 
-  const memberIds = members.map((m) => m.user_id)
   const total = progressTotal || members.length || 0
 
   // The card state is derived entirely from SESSION STATE, so it reflects reality
@@ -258,31 +256,6 @@ export function GroupChatPage() {
           <div>
             <div className="flex items-center gap-2">
               <span className="font-display text-item-title font-bold text-text">{groupName}</span>
-              {/* Overlapping member stack — a newly added member pops into the
-                  cluster (spring scale-in) when the roster grows. */}
-              <div className="flex -space-x-1.5">
-                <AnimatePresence initial={false}>
-                  {memberIds.slice(0, 5).map((id) => (
-                    <motion.span
-                      key={id}
-                      layout={!reduce}
-                      initial={{ opacity: 0, scale: reduce ? 1 : 0.4 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: reduce ? 1 : 0.4 }}
-                      transition={
-                        reduce ? { duration: 0.15 } : { type: 'spring', stiffness: 520, damping: 26 }
-                      }
-                    >
-                      <Avatar
-                        name={nameForMember(id, members)}
-                        size="sm"
-                        colorClass={memberColor(id)}
-                        className="h-4 w-4 border border-surface-raised text-[7px]"
-                      />
-                    </motion.span>
-                  ))}
-                </AnimatePresence>
-              </div>
             </div>
             <p className="text-caption text-text-muted">
               {memberCount} members
