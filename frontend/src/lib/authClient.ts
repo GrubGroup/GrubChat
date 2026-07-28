@@ -12,4 +12,4 @@ export const authClient = createAuthClient({
   plugins: [usernameClient()],
 })
 
-export const { signIn, signUp, signOut, useSession } = authClient
+export const { signIn, signUp, signOut, useSession, changeEmail, changePassword } = authClient

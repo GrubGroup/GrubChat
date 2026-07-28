@@ -1,28 +1,66 @@
 import type { ReactNode } from 'react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Button, Icon, Input, Modal } from '@/components/ui'
 import { EASE } from '@/lib/motion'
+import { changeEmail, changePassword } from '@/lib/authClient'
+import { fetchAuthMethods, type AuthMethods } from '@/api/authApi'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/utils/cn'
 
 // Account settings screen. Mirrors the "Account settings" wireframe (Account /
 // Connected accounts / Danger zone) and reuses the full-page shell from
-// ProfilePage. This surface is intentionally NOT wired to any API: the inline
-// editors and destructive actions are visual stubs — Save is disabled, the
-// Disconnect confirm is a no-op, and Delete is a disabled button. See the
-// account-settings plan for the rationale.
+// ProfilePage. Edit email and change password are wired to Better Auth (via the
+// gateway's /api/auth/* endpoints). Google-only accounts have no password
+// credential, so those two controls are greyed out for them. Disconnect and
+// Delete remain visual stubs (out of scope for now).
 export function SettingsPage() {
   const reduce = useReducedMotion()
   const navigate = useNavigate()
   const location = useLocation()
   const user = useAuthStore((s) => s.user)
+  const patchUser = useAuthStore((s) => s.patchUser)
 
-  // Inline-edit / dialog UI state (local only — nothing persists).
+  // Which auth providers this account has. Email/password lives on a 'credential'
+  // provider (→ authMethods.password); Google-only accounts can't change email or
+  // password, so we grey those controls out. Default false (while loading / on
+  // error) so a Google user never briefly sees editable controls.
+  const [authMethods, setAuthMethods] = useState<AuthMethods | null>(null)
+  const canEditCredentials = authMethods?.password === true
+
+  useEffect(() => {
+    const email = user?.email
+    if (!email) return
+    let active = true
+    fetchAuthMethods(email)
+      .then((m) => {
+        if (active) setAuthMethods(m)
+      })
+      .catch(() => {
+        /* leave null → controls stay greyed; a settings edit can retry on reload */
+      })
+    return () => {
+      active = false
+    }
+  }, [user?.email])
+
+  // Email editor state.
   const [editingEmail, setEditingEmail] = useState(false)
-  const [email, setEmail] = useState(() => user?.email ?? '')
+  const [email, setEmail] = useState('')
+  const [emailSaving, setEmailSaving] = useState(false)
+  const [emailError, setEmailError] = useState<string | null>(null)
+  const [emailSaved, setEmailSaved] = useState(false)
+
+  // Password editor state.
   const [editingPassword, setEditingPassword] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [pwSaving, setPwSaving] = useState(false)
+  const [pwError, setPwError] = useState<string | null>(null)
+  const [pwSaved, setPwSaved] = useState(false)
+
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
 
   // Illustrative connected-account address: the frontend has no connected-account
@@ -34,6 +72,90 @@ export function SettingsPage() {
   // rather than leaving the site. (Same rule as ProfilePage.)
   const goBack = () =>
     location.key === 'default' ? navigate('/groups') : navigate(-1)
+
+  const openEmailEditor = () => {
+    setEmail(user?.email ?? '')
+    setEmailError(null)
+    setEmailSaved(false)
+    setEditingEmail(true)
+  }
+
+  const cancelEmail = () => {
+    setEditingEmail(false)
+    setEmailError(null)
+  }
+
+  const saveEmail = async () => {
+    setEmailError(null)
+    const next = email.trim()
+    if (!next.includes('@')) {
+      setEmailError('Enter a valid email address.')
+      return
+    }
+    if (next === (user?.email ?? '')) {
+      setEditingEmail(false)
+      return
+    }
+    setEmailSaving(true)
+    // Better Auth client methods resolve with { data, error } (no throw).
+    const { error } = await changeEmail({ newEmail: next })
+    setEmailSaving(false)
+    if (error) {
+      setEmailError(error.message ?? 'Could not update your email. Please try again.')
+      return
+    }
+    // Reflect the change immediately; the useSession refetch on /change-email also
+    // re-syncs the store via RootLayout, so this just avoids a flicker.
+    patchUser({ email: next })
+    setEditingEmail(false)
+    setEmailSaved(true)
+  }
+
+  const openPasswordEditor = () => {
+    setCurrentPassword('')
+    setNewPassword('')
+    setConfirmPassword('')
+    setPwError(null)
+    setPwSaved(false)
+    setEditingPassword(true)
+  }
+
+  const cancelPassword = () => {
+    setEditingPassword(false)
+    setPwError(null)
+  }
+
+  const savePassword = async () => {
+    setPwError(null)
+    if (!currentPassword) {
+      setPwError('Enter your current password.')
+      return
+    }
+    if (newPassword.length < 8) {
+      setPwError('New password must be at least 8 characters.')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPwError('New passwords do not match.')
+      return
+    }
+    setPwSaving(true)
+    const { error } = await changePassword({
+      currentPassword,
+      newPassword,
+      revokeOtherSessions: false,
+    })
+    setPwSaving(false)
+    if (error) {
+      setPwError(error.message ?? 'Could not update your password. Please try again.')
+      return
+    }
+    setCurrentPassword('')
+    setNewPassword('')
+    setConfirmPassword('')
+    setEditingPassword(false)
+    setPwSaved(true)
+  }
 
   return (
     <motion.div
@@ -68,22 +190,18 @@ export function SettingsPage() {
                     label="Email"
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value)
+                      if (emailError) setEmailError(null)
+                    }}
+                    error={emailError ?? undefined}
                     placeholder="you@example.com"
                   />
                   <div className="flex justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setEmail(user?.email ?? '')
-                        setEditingEmail(false)
-                      }}
-                    >
+                    <Button variant="ghost" size="sm" onClick={cancelEmail} disabled={emailSaving}>
                       Cancel
                     </Button>
-                    {/* Stub: not wired to any API, so saving is disabled. */}
-                    <Button variant="primary" size="sm" disabled>
+                    <Button variant="primary" size="sm" onClick={saveEmail} isLoading={emailSaving}>
                       Save
                     </Button>
                   </div>
@@ -93,7 +211,15 @@ export function SettingsPage() {
                   label="Email"
                   value={user?.email ?? '—'}
                   actionLabel="Edit"
-                  onAction={() => setEditingEmail(true)}
+                  onAction={openEmailEditor}
+                  actionDisabled={!canEditCredentials}
+                  hint={
+                    !canEditCredentials ? (
+                      <span className="text-xs text-text-muted">Managed by Google</span>
+                    ) : emailSaved ? (
+                      <span className="text-xs text-success">Email updated</span>
+                    ) : undefined
+                  }
                 />
               )}
 
@@ -102,23 +228,33 @@ export function SettingsPage() {
               {/* Password — view / inline change */}
               {editingPassword ? (
                 <div className="flex flex-col gap-3 px-4 py-4">
-                  <Input label="Current password" type="password" placeholder="••••••••" />
+                  <Input
+                    label="Current password"
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="••••••••"
+                  />
                   <Input
                     label="New password"
                     type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="At least 8 characters"
                   />
                   <Input
                     label="Confirm new password"
                     type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Re-enter new password"
                   />
+                  {pwError && <p className="text-sm text-error">{pwError}</p>}
                   <div className="flex justify-end gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => setEditingPassword(false)}>
+                    <Button variant="ghost" size="sm" onClick={cancelPassword} disabled={pwSaving}>
                       Cancel
                     </Button>
-                    {/* Stub: not wired to any API, so saving is disabled. */}
-                    <Button variant="primary" size="sm" disabled>
+                    <Button variant="primary" size="sm" onClick={savePassword} isLoading={pwSaving}>
                       Save
                     </Button>
                   </div>
@@ -129,7 +265,15 @@ export function SettingsPage() {
                   value="••••••••••"
                   valueClassName="tracking-widest"
                   actionLabel="Change"
-                  onAction={() => setEditingPassword(true)}
+                  onAction={openPasswordEditor}
+                  actionDisabled={!canEditCredentials}
+                  hint={
+                    !canEditCredentials ? (
+                      <span className="text-xs text-text-muted">Managed by Google</span>
+                    ) : pwSaved ? (
+                      <span className="text-xs text-success">Password updated</span>
+                    ) : undefined
+                  }
                 />
               )}
             </div>
@@ -206,29 +350,42 @@ export function SettingsPage() {
 }
 
 // A read-mode settings row: label + value on the left, an inline text action
-// (orange for edits) on the right. Matches the wireframe's Account card rows.
+// (orange for edits) on the right. When `actionDisabled` the action is greyed and
+// non-interactive (e.g. Google-only accounts can't change email/password).
 function SettingRow({
   label,
   value,
   valueClassName,
   actionLabel,
   onAction,
+  actionDisabled = false,
+  hint,
 }: {
   label: string
   value: string
   valueClassName?: string
   actionLabel: string
   onAction: () => void
+  actionDisabled?: boolean
+  hint?: ReactNode
 }) {
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-4">
       <div className="flex flex-col gap-0.5">
         <span className="text-sm text-text-muted">{label}</span>
         <span className={cn('text-sm font-semibold text-text', valueClassName)}>{value}</span>
+        {hint}
       </div>
       <button
-        onClick={onAction}
-        className="shrink-0 text-sm font-semibold text-primary hover:opacity-80"
+        type="button"
+        onClick={actionDisabled ? undefined : onAction}
+        disabled={actionDisabled}
+        className={cn(
+          'shrink-0 text-sm font-semibold',
+          actionDisabled
+            ? 'cursor-not-allowed text-text-muted'
+            : 'text-primary hover:opacity-80',
+        )}
       >
         {actionLabel}
       </button>
