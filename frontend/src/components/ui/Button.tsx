@@ -2,7 +2,7 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { cn } from '@/utils/cn'
 import { Spinner } from './Spinner'
 
-type ButtonVariant = 'primary' | 'accent' | 'secondary' | 'ghost' | 'danger'
+type ButtonVariant = 'primary' | 'accent' | 'secondary' | 'ghost' | 'danger' | 'danger-subtle'
 type ButtonSize = 'sm' | 'md' | 'lg'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -22,6 +22,9 @@ const variantClasses: Record<ButtonVariant, string> = {
   secondary: 'bg-primary text-on-primary hover:bg-primary-hover',
   ghost: 'bg-transparent text-text hover:bg-surface-sunken',
   danger: 'bg-error text-on-primary hover:opacity-90',
+  // Light-red fill + darker red text — mirrors the "disliked" preference pill.
+  // Destructive without shouting (sign out, etc.).
+  'danger-subtle': 'bg-error/12 text-error hover:bg-error/20',
 }
 
 // Heights stay bespoke (touch targets); the LABEL sizes come off the type scale so

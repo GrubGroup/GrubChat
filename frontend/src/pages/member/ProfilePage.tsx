@@ -1,7 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { motion, useReducedMotion } from 'framer-motion'
-import { Avatar, Badge, Button, Icon } from '@/components/ui'
+import { Avatar, Badge, Button, Icon, Modal } from '@/components/ui'
 import { BottomTabBar, TabBarSpacer } from '@/components/layout/BottomTabBar'
 import { EASE } from '@/lib/motion'
 import { PreferenceTag } from '@/components/profile/PreferenceTag'
@@ -33,6 +33,20 @@ export function ProfilePage() {
   const loadRestaurants = useRestaurantStore((s) => s.load)
   // Same flow the sidebar rail's AccountMenu uses, so the two can't drift.
   const handleSignOut = useSignOut()
+  // Sign-out is destructive-ish (drops local state, ends the session), so it's
+  // gated behind a confirm modal, mirroring the "Leave group?" flow.
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
+
+  const confirmSignOut = async () => {
+    setSigningOut(true)
+    try {
+      await handleSignOut()
+    } finally {
+      // On success we've navigated away; on failure re-enable so it's retryable.
+      setSigningOut(false)
+    }
+  }
 
   useEffect(() => {
     if (!profile) void load()
@@ -236,11 +250,44 @@ export function ProfilePage() {
               AccountMenu, but that rail is hidden below `md`, so this is the only
               way out of the app at phone width. */}
           <div className="border-t border-border pt-5 md:hidden">
-            <Button variant="ghost" fullWidth className="text-error" onClick={() => void handleSignOut()}>
+            {/* Light-red fill + darker red text (matches the "disliked" pill).
+                Confirms before acting. */}
+            <Button
+              variant="danger-subtle"
+              fullWidth
+              onClick={() => setConfirmingSignOut(true)}
+            >
               Sign out
             </Button>
           </div>
         </div>
+
+        {/* Sign-out confirmation — mirrors the "Leave group?" modal. */}
+        <Modal
+          open={confirmingSignOut}
+          onClose={() => (signingOut ? undefined : setConfirmingSignOut(false))}
+          title="Sign out?"
+          size="sm"
+        >
+          <div className="flex flex-col gap-5">
+            <p className="text-body text-text-muted">
+              You'll be signed out of GrubGroup and returned to the login screen.
+              Your saved profile and groups stay put — just sign back in anytime.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => setConfirmingSignOut(false)}
+                disabled={signingOut}
+              >
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={() => void confirmSignOut()} isLoading={signingOut}>
+                Sign out
+              </Button>
+            </div>
+          </div>
+        </Modal>
 
         {/* Clears the fixed tab bar so the last row isn't trapped under it. */}
         <TabBarSpacer />
