@@ -20,6 +20,16 @@ import { useEventListStore } from '@/stores/eventListStore'
 // this pattern must change with it, or the confirm-redirect silently stops firing.
 const SESSION_ROUTE = /^\/groups\/([^/]+)\/sessions(?:\/|$)/
 
+// The AGENT-CHAT screens a member sits on WHILE the session runs: the live chat
+// (`/sessions/:id`) and its "you're done, waiting for the group" state
+// (`/sessions/:id/done`). Deliberately does NOT match the results page
+// (`/sessions/:id/picks`) — someone already viewing results must not be yanked —
+// nor the group chat or anywhere else. Capture group 1 is the group slug (id at
+// its tail). Used to auto-forward a member to the results page the moment picks
+// land (e.g. the session timer expired), so they don't have to leave the chat by
+// hand. Mirror App.tsx's session route tree; if it changes, change this too.
+const AGENT_CHAT_ROUTE = /^\/groups\/([^/]+)\/sessions\/[^/]+(?:\/done)?$/
+
 // App-level session sync. Adopts session:picks regardless of the current screen —
 // group chat OR the results page (TopPicksPage), where useSocket is NOT mounted and
 // the user has already left the group room (useSocket's unmount emits group:leave).
@@ -58,6 +68,16 @@ export function useSessionSync() {
         sessionId: p.sessionId,
         items: p.items,
       })
+      // Picks are ready (all members finished, or the timer expired and the host's
+      // client force-generated). Auto-forward a member still sitting in THIS group's
+      // agent chat straight to the results page, so they don't have to leave the chat
+      // by hand. Scoped to the agent-chat screens only — a member already on the
+      // results page, the group chat, or elsewhere is left alone. `replace` keeps the
+      // dead chat URL out of history so Back doesn't return to a finished session.
+      const match = AGENT_CHAT_ROUTE.exec(pathRef.current)
+      if (match && idFromSlug(match[1]) === p.groupId) {
+        navigate(`/groups/${match[1]}/sessions/${p.sessionId}/picks`, { replace: true })
+      }
     }
     socket.on('session:picks', handlePicks)
 
