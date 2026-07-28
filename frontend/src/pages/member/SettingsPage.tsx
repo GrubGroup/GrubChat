@@ -320,13 +320,15 @@ export function SettingsPage() {
                   </div>
                 </div>
                 {authMethodsLoaded && !googleConnected && (
-                  <button
+                  <Button
+                    variant="primary"
+                    size="sm"
                     onClick={linkGoogle}
-                    disabled={linking}
-                    className="shrink-0 text-sm font-semibold text-primary hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+                    isLoading={linking}
+                    className="shrink-0"
                   >
                     Link Google account
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>
@@ -384,19 +386,16 @@ function SettingRow({
         <span className={cn('text-sm font-semibold text-text', valueClassName)}>{value}</span>
         {hint}
       </div>
-      <button
-        type="button"
-        onClick={actionDisabled ? undefined : onAction}
+      <Button
+        variant="primary"
+        size="sm"
+        leftIcon={<Icon name="pencil" size={14} />}
+        onClick={onAction}
         disabled={actionDisabled}
-        className={cn(
-          'shrink-0 text-sm font-semibold',
-          actionDisabled
-            ? 'cursor-not-allowed text-text-muted'
-            : 'text-primary hover:opacity-80',
-        )}
+        className="shrink-0"
       >
         {actionLabel}
-      </button>
+      </Button>
     </div>
   )
 }
