@@ -28,6 +28,7 @@ import {
 import { useAuthStore } from '@/stores/authStore'
 import { useNavStore } from '@/stores/navStore'
 import { useSocket } from '@/hooks/useSocket'
+import { useVoiceSession } from '@/hooks/useVoiceSession'
 import { setReady } from '@/api/sessionApi'
 import { chipsForMissing } from '@/constants/agentChat'
 
@@ -79,6 +80,12 @@ export function AgentChatPage() {
   // progress + a session:picks delivery still update this page (the group-chat page
   // is unmounted here). The singleton socket makes the room join idempotent.
   useSocket(groupId)
+
+  // Hands-free voice loop for THIS group's session. Owns mic capture, the voice:*
+  // socket events, and TTS playback; feeds turns into chatStore server-side (so it
+  // never fires a duplicate HTTP /analyze). Inert until the member taps the mic and
+  // there's a real session — guarded internally on sessionId != null.
+  const voice = useVoiceSession(groupId, activeSessionId)
 
   useEffect(() => {
     // Seed the conversation when there's none yet, or re-seed when it belongs to
@@ -204,7 +211,7 @@ export function AgentChatPage() {
                   ))}
                 </div>
               )}
-              <VoiceComposer onSend={handleSend} disabled={sending} privacyNote />
+              <VoiceComposer onSend={handleSend} disabled={sending} privacyNote controller={voice} />
               {/* "All set" banner: once the agent has nothing left to ask, nudge
                   the user to finish while making clear they can still make changes. */}
               {allSet && (

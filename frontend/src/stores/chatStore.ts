@@ -81,6 +81,34 @@ interface ChatState {
     sessionId: number | null,
     source?: 'voice' | 'text',
   ) => Promise<void>
+  // --- voice hands-free loop ingestion ---
+  // For a VOICE turn the analyze POST happens SERVER-SIDE (ai_service, via the WS
+  // relay), so sendUserMessage — which does its own POST — can't be the ingestion
+  // path. These two mirror the halves of sendUserMessage without the HTTP call:
+  //
+  // appendVoiceTranscript: the member's finalized spoken turn arrived (turn_final).
+  // Append the user row and set sending:true. Returns false when a turn is already
+  // in flight (sending) so the caller can drop/queue an overlapping hands-free
+  // turn — the sole client-side turn serializer, which the voice path otherwise
+  // bypasses (sendUserMessage's `cur.sending` re-entrancy guard never runs here).
+  appendVoiceTranscript: (groupId: number, text: string) => boolean
+  // applyVoiceTurn: the analyzed result arrived (turn_result). Append the agent row
+  // and patch signals/missing/complete/sending — the SAME patch shape as the tail
+  // of sendUserMessage, so NotedSoFarPanel and the "All set" banner light up
+  // identically for a spoken turn.
+  applyVoiceTurn: (
+    groupId: number,
+    result: {
+      agent_reply: string
+      extracted_signals: ExtractedSignals
+      missing_signals: string[]
+      is_complete?: boolean
+    },
+  ) => void
+  // A voice turn failed upstream (analyze error / relay drop). Clear `sending` and
+  // surface an honest system notice, mirroring sendUserMessage's catch — WITHOUT
+  // touching signals (the answer wasn't processed).
+  failVoiceTurn: (groupId: number, message?: string) => void
 }
 
 let idCounter = 100
@@ -196,6 +224,54 @@ export const useChatStore = create<ChatState>((set, get) => {
         }
         patchChat(groupId, (prev) => ({ messages: [...prev.messages, errorNotice], sending: false }))
       }
+    },
+
+    appendVoiceTranscript: (groupId, text) => {
+      const cur = slice(groupId)
+      const trimmed = text.trim()
+      // Same guard sendUserMessage uses: refuse an empty turn or one while another
+      // is already in flight. The WS loop serializes turns server-side too, but a
+      // barge-in retranscription can still arrive fast — drop it here so two agent
+      // replies never interleave in the transcript.
+      if (!trimmed || cur.sending) return false
+      const userMsg: ChatMessage = {
+        id: nextId(),
+        role: 'user',
+        text: trimmed,
+        at: new Date().toISOString(),
+      }
+      patchChat(groupId, (prev) => ({ messages: [...prev.messages, userMsg], sending: true }))
+      return true
+    },
+
+    applyVoiceTurn: (groupId, result) => {
+      const agentMsg: ChatMessage = {
+        id: nextId(),
+        role: 'agent',
+        text: result.agent_reply,
+        at: new Date().toISOString(),
+      }
+      patchChat(groupId, (prev) => ({
+        messages: [...prev.messages, agentMsg],
+        currentSignals: result.extracted_signals,
+        missingSignals: result.missing_signals,
+        // Same precedence as the text path: prefer the server flag, else infer from
+        // an empty missing list. (turn_result always carries is_complete, but keep
+        // the fallback so both ingestion paths read identically.)
+        isComplete: result.is_complete ?? result.missing_signals.length === 0,
+        sending: false,
+      }))
+    },
+
+    failVoiceTurn: (groupId, message) => {
+      const errorNotice: ChatMessage = {
+        id: nextId(),
+        role: 'system',
+        text: message ?? "Couldn't reach your food agent — check your connection and try again.",
+        at: new Date().toISOString(),
+      }
+      // Clear `sending` and leave signals untouched — same as sendUserMessage's catch.
+      patchChat(groupId, (prev) => ({ messages: [...prev.messages, errorNotice], sending: false }))
     },
   }
 })

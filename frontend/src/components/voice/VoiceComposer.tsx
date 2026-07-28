@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Icon } from '@/components/ui'
 import { useVoiceInput } from '@/hooks/useVoiceInput'
+import type { VoiceController } from '@/types/voice'
 import { cn } from '@/utils/cn'
 
 // Resting bar heights (px) for the listening waveform. When motion is allowed
@@ -27,6 +28,15 @@ export interface VoiceComposerProps {
    * keystroke and `false` after a ~2s pause or on send. Agent chat omits it.
    */
   onTyping?: (isTyping: boolean) => void
+  /**
+   * Optional externally-supplied voice controller. When provided (agent chat's
+   * hands-free loop), it drives the mic/caption/mute instead of the built-in
+   * Web Speech `useVoiceInput`. In this mode a spoken turn is submitted
+   * SERVER-SIDE by the WS loop, so the composer must NOT also call `onSend` for
+   * dictation (that would fire a duplicate HTTP /analyze). Omitted in group chat,
+   * where dictation still flows through `onSend`.
+   */
+  controller?: VoiceController
 }
 
 // How long after the last keystroke we consider the user "stopped typing".
@@ -42,12 +52,25 @@ export function VoiceComposer({
   placeholder = 'Or type a message...',
   privacyNote = false,
   onTyping,
+  controller,
 }: VoiceComposerProps) {
-  const { transcript, listening, resetTranscript, supported, start, stop } = useVoiceInput()
+  // Hoist the fallback hook so it's ALWAYS called (rules of hooks — a conditional
+  // `controller ?? useVoiceInput()` both violates the hooks rule AND fails to
+  // typecheck against the union). Annotate the seam so the optional loop-only
+  // fields (speaking/muted/amplitude/toggleMute) are visible either way.
+  const fallback: VoiceController = useVoiceInput()
+  const v: VoiceController = controller ?? fallback
+  const { transcript, listening, resetTranscript, supported, start, stop } = v
+  // In controller mode a dictated turn is submitted server-side by the WS loop, so
+  // the composer must not treat the transcript as a to-be-sent value.
+  const voiceLoop = controller != null
   const [text, setText] = useState('')
   const reduce = useReducedMotion()
 
-  const displayValue = listening ? transcript : text
+  // While the mic is on we show the caption in the pill's waveform strip, never in
+  // the text input's value — in voice-loop mode the transcript is NOT a draft to
+  // send, so it must not populate `displayValue` (which the send button reads).
+  const displayValue = voiceLoop ? text : listening ? transcript : text
 
   // Typing-presence debounce: fire onTyping(true) on the first keystroke of a
   // burst, then reset a timer; when it lapses (or on send/unmount) fire (false).
@@ -79,14 +102,19 @@ export function VoiceComposer({
   const handleSend = () => {
     const value = displayValue.trim()
     if (!value) return
-    // `listening` is the authoritative source marker: displayValue reads from the
-    // live transcript while the mic is on, and from `text` otherwise. Captured
-    // before stop() below, which would flip it to false.
-    onSend(value, listening ? 'voice' : 'text')
+    // In voice-loop mode displayValue is ALWAYS the typed `text` (never the
+    // transcript), so a manual send is always a typed turn — the spoken turn was
+    // already submitted server-side by the WS loop. Outside voice-loop mode,
+    // `listening` marks a dictated Web Speech turn (group chat). Capture the source
+    // before stop() flips `listening`.
+    const source: 'voice' | 'text' = !voiceLoop && listening ? 'voice' : 'text'
+    onSend(value, source)
     setText('')
     resetTranscript()
     stopTyping()
-    if (listening) stop()
+    // Only the Web Speech path stops the mic on send; the hands-free loop keeps
+    // listening across turns.
+    if (!voiceLoop && listening) stop()
   }
 
   const toggleMic = () => {
@@ -100,12 +128,15 @@ export function VoiceComposer({
   return (
     <div className="border-t border-border bg-surface-raised px-4 pb-3 pt-3">
       <div className="flex items-center gap-3">
-        {/* Distinct circular mic button */}
+        {/* Distinct circular mic button. NOTE: in voice-loop mode this is NOT gated
+            on `disabled` — the agent-chat page passes disabled={sending}, and during
+            the ~1s analyze window barge-in and mute are exactly when the mic controls
+            must stay live. The Web Speech path keeps the original disabled behavior. */}
         {supported && (
           <button
             type="button"
             aria-label={listening ? 'Stop listening' : 'Start voice input'}
-            disabled={disabled}
+            disabled={voiceLoop ? false : disabled}
             onClick={toggleMic}
             className={cn(
               'relative flex h-11 w-11 shrink-0 items-center justify-center rounded-pill shadow-sm transition-colors',
@@ -126,12 +157,46 @@ export function VoiceComposer({
           </button>
         )}
 
+        {/* Mute button — voice-loop only, and only while the mic is live. Muting
+            keeps the loop running (the client streams silence upstream so Flux's
+            ~60s idle cap never fires); it just stops sending real mic bytes. */}
+        {voiceLoop && listening && v.toggleMute && (
+          <button
+            type="button"
+            aria-label={v.muted ? 'Unmute microphone' : 'Mute microphone'}
+            onClick={v.toggleMute}
+            className={cn(
+              'flex h-9 w-9 shrink-0 items-center justify-center rounded-pill transition-colors',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+              v.muted
+                ? 'bg-primary/15 text-primary'
+                : 'bg-surface-sunken text-text-muted hover:bg-surface-inverse hover:text-white',
+            )}
+          >
+            <Icon name="mic" size={15} filled={!v.muted} />
+          </button>
+        )}
+
         {/* Rounded pill input (or waveform while listening) */}
         {listening ? (
           <div className="flex h-11 flex-1 items-center gap-3 rounded-pill bg-surface-sunken px-5">
             <div className="flex items-center gap-0.5" aria-hidden="true">
               {WAVE_BARS.map((h, i) =>
-                reduce ? (
+                // In voice-loop mode drive the bars off the REAL input level
+                // (controller.amplitude) so the waveform reflects the actual mic,
+                // not a canned animation. Muted → flat. Web Speech path keeps the
+                // original oscillation (it has no amplitude signal).
+                voiceLoop ? (
+                  <span
+                    key={i}
+                    className="w-0.5 rounded-pill bg-text/70 transition-[height] duration-100"
+                    style={{
+                      height: v.muted
+                        ? '3px'
+                        : `${Math.max(3, Math.min(24, h * (0.35 + (v.amplitude ?? 0) * 1.6)))}px`,
+                    }}
+                  />
+                ) : reduce ? (
                   <span
                     key={i}
                     className="w-0.5 rounded-pill bg-text/70"
@@ -153,7 +218,17 @@ export function VoiceComposer({
                 ),
               )}
             </div>
-            <span className="text-sm text-text-muted">Listening…</span>
+            <span className="text-sm text-text-muted">
+              {voiceLoop
+                ? v.muted
+                  ? 'Muted'
+                  : v.speaking
+                    ? 'Agent speaking…'
+                    : transcript
+                      ? transcript
+                      : 'Listening…'
+                : 'Listening…'}
+            </span>
           </div>
         ) : (
           <input
@@ -191,6 +266,13 @@ export function VoiceComposer({
           <Icon name="send" size={15} />
         </button>
       </div>
+
+      {/* Transient voice-loop status/error (e.g. "voice busy — showing text only",
+          mic-permission denied). Only in controller mode; group chat has no such
+          field. Non-blocking — the text composer stays usable underneath. */}
+      {voiceLoop && v.error && (
+        <p className="mt-2 text-center text-caption text-error">{v.error}</p>
+      )}
 
       {privacyNote && (
         <p className="mt-2 text-center text-caption text-text-subtle">
