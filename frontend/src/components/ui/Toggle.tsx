@@ -35,7 +35,7 @@ export function Toggle({ checked, onChange, label, disabled = false, className }
         />
       </button>
       {label && (
-        <label htmlFor={id} className="text-sm text-text">
+        <label htmlFor={id} className="text-body text-text">
           {label}
         </label>
       )}

@@ -24,12 +24,12 @@ export function MenuList({ restaurantId }: MenuListProps) {
   }, [restaurantId, loadMenu])
 
   if (menu.length === 0) {
-    return <p className="text-sm text-text-muted">Menu coming soon.</p>
+    return <p className="text-body text-text-muted">Menu coming soon.</p>
   }
 
   return (
     <div className="flex flex-col">
-      <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
+      <h3 className="mb-1 text-overline font-semibold uppercase tracking-wide text-text-muted">
         Menu highlights
       </h3>
       {menu.map((item) => (

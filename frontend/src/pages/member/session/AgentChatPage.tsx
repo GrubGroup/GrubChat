@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
+import { Navigate, useNavigate } from 'react-router'
 import { GroupsSidebar } from '@/components/session/GroupsSidebar'
 import { ChatStream } from '@/components/session/ChatStream'
 import { GroupProgressPanel } from '@/components/session/GroupProgressPanel'
+import { MobileSessionStrip } from '@/components/session/MobileSessionStrip'
 import { NotedSoFarPanel } from '@/components/session/NotedSoFarPanel'
 import { SessionTopBar } from '@/components/session/SessionTopBar'
 import { VoiceComposer } from '@/components/voice/VoiceComposer'
 import { Button, Icon, Spinner } from '@/components/ui'
 import { COLUMN_HEADER_H } from '@/components/layout/AppSidebar'
+import { MobileHeader } from '@/components/layout/MobileHeader'
 import { cn } from '@/utils/cn'
 import {
   useChatStore,
@@ -24,18 +27,39 @@ import {
   selectRecommendation,
   selectActiveSessionId,
   selectIsHost,
+  selectSession,
+  selectStartedAt,
 } from '@/stores/sessionStore'
 import { useAuthStore } from '@/stores/authStore'
-import { useNavStore } from '@/stores/navStore'
+import { useGroupsStore } from '@/stores/groupsStore'
+import { toSlugId } from '@/utils/slug'
+import { useGroupId } from '@/hooks/useGroupId'
+import { useSessionId } from '@/hooks/useSessionId'
+import { useBindSession } from '@/hooks/useBindSession'
 import { useSocket } from '@/hooks/useSocket'
 import { useVoiceSession } from '@/hooks/useVoiceSession'
+import { useSessionCountdown } from '@/hooks/useSessionCountdown'
 import { setReady } from '@/api/sessionApi'
 import { chipsForMissing } from '@/constants/agentChat'
 
-export function AgentChatPage() {
-  const screen = useNavStore((s) => s.screen)
-  const groupId = useNavStore((s) => s.groupId)
-  const go = useNavStore((s) => s.go)
+export interface AgentChatPageProps {
+  /** Route-supplied: `…/sessions/:sessionId/done` renders the finished state, where
+   * the transcript stays visible for review and the composer becomes a waiting
+   * footer. */
+  done?: boolean
+}
+
+export function AgentChatPage({ done = false }: AgentChatPageProps) {
+  const navigate = useNavigate()
+  const groupId = useGroupId()
+  const urlSessionId = useSessionId()
+  // Readable slug for this group's URLs (`foodie-friends-42`). Falls back to the
+  // bare id when the group list hasn't landed — still a valid, resolvable path.
+  const groupName = useGroupsStore((s) => s.groups.find((g) => g.id === groupId)?.name)
+  const groupSlug = toSlugId(groupName, groupId)
+  // Cold entry (refresh or a pasted link) has no session in the store yet — the
+  // socket's session:start fired before this page existed. Bind it from the gateway.
+  const binding = useBindSession(groupId)
 
   // Agent-chat transcript + session state are both keyed by group.
   const messages = useChatStore(selectChatMessages(groupId))
@@ -54,6 +78,8 @@ export function AgentChatPage() {
   const progressTotal = useSessionStore(selectProgressTotal(groupId))
   const recommendation = useSessionStore(selectRecommendation(groupId))
   const activeSessionId = useSessionStore(selectActiveSessionId(groupId))
+  const session = useSessionStore(selectSession(groupId))
+  const startedAt = useSessionStore(selectStartedAt(groupId))
   const forceFinish = useSessionStore((s) => s.forceFinish)
   const isHost = useSessionStore(selectIsHost(groupId))
   const currentUserId = useAuthStore((s) => s.user?.id ?? 0)
@@ -115,10 +141,29 @@ export function AgentChatPage() {
   ])
 
   // The conversation ALWAYS stays visible (matches wireframe). Only the bottom
-  // bar changes: composer → done pill. 'agent-chat-done' shows the pill.
-  const isDone = screen === 'agent-chat-done'
+  // bar changes: composer → done pill, driven by the `/done` child route.
+  const isDone = done
   const [marking, setMarking] = useState(false)
   const [forcing, setForcing] = useState(false)
+
+  // Base path for this session, so the sub-screens can be reached from here.
+  const sessionPath =
+    activeSessionId != null ? `/groups/${groupSlug}/sessions/${activeSessionId}` : null
+
+  // When the session timer runs out, auto-close the chat for EVERYONE (host and
+  // non-host) and land on the results page — the "Time's up" banner alone left
+  // members stranded here. This is a LOCAL redirect, independent of the socket:
+  // the host still kicks off generation (SessionTopBar → triggerExpiryGeneration),
+  // but navigation must not depend on a session:picks event arriving. The picks
+  // page tolerates results-not-ready-yet (it polls + shows a Back button), so
+  // navigating early is safe. Composes with useSessionSync's socket redirect —
+  // whichever fires first wins; the other is a no-op once we're on /picks.
+  const { expired } = useSessionCountdown(startedAt, session?.time_limit ?? 0)
+  useEffect(() => {
+    if (expired && sessionPath) {
+      navigate(`${sessionPath}/picks`, { replace: true })
+    }
+  }, [expired, sessionPath, navigate])
 
   // `source` comes from the composer (mic vs keyboard) and rides through to the
   // analyze endpoint's message_source, so a dictated turn gets transcription-noise
@@ -134,7 +179,7 @@ export function AgentChatPage() {
     setForcing(true)
     try {
       await forceFinish(groupId)
-      go('top-picks')
+      if (sessionPath) navigate(`${sessionPath}/picks`)
     } catch {
       // Generation failed to start — stay put so the host can retry / the timer
       // can fall back; the button re-enables below.
@@ -160,23 +205,62 @@ export function AgentChatPage() {
     } else {
       setMemberDone(groupId, currentUserId)
     }
-    go('agent-chat-done')
+    // Auto-return to the group messenger instead of stranding the user in the private
+    // agent chat's "waiting" state. The group-chat session card derives its own
+    // waiting → complete/Results state from session state (iAmDone / isComplete) and
+    // updates live over the socket, so no manual back-navigation is needed. The
+    // `/done` route stays addressable — the card's "Review" button links to it — it
+    // just isn't where finishing dumps you.
+    navigate(`/groups/${groupSlug}`)
+  }
+
+  // Guards (after every hook, so the hook order never changes):
+  //   none     → the group has no open session, so this URL is stale. Back to the chat.
+  //   mismatch → the URL names a DIFFERENT session than the live one (an old link).
+  //              activeSessionId is the source of truth; the param is only validated.
+  // `replace` keeps the dead URL out of the history stack.
+  if (binding === 'none' || (binding === 'bound' && activeSessionId !== urlSessionId)) {
+    return <Navigate to={`/groups/${groupSlug}`} replace />
+  }
+  // Still asking the gateway — hold the frame rather than flashing an empty chat.
+  if (binding !== 'bound') {
+    return (
+      <div className="flex h-screen items-center justify-center bg-surface">
+        <Spinner size="lg" className="text-primary" />
+      </div>
+    )
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-surface">
+    <div className="flex h-dvh flex-col overflow-hidden bg-surface">
       {/* Full-width session bar: "Your food agent" + live countdown (center) */}
       <SessionTopBar groupId={groupId} />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         <GroupsSidebar />
 
         {/* Center: chat (always visible) */}
-        <div className="flex flex-1 flex-col">
-          {/* Dark chat header — matches column header height */}
-          <div className={cn('flex items-center gap-3 bg-surface-inverse px-4', COLUMN_HEADER_H)}>
+        <div className="flex min-w-0 flex-1 flex-col">
+          {/* MOBILE dark header (<md) — the same identity + back affordance, using
+              the shared header so its 44px chevron and notch padding come free. */}
+          <MobileHeader
+            className="md:hidden"
+            inverse
+            onBack={() => navigate(`/groups/${groupSlug}`)}
+            overline={
+              <>
+                <Icon name="lock" size={10} /> Private · only you can see this
+              </>
+            }
+            title="Your food agent"
+          />
+
+          {/* DESKTOP dark chat header (≥md) — matches column header height */}
+          <div
+            className={cn('hidden items-center gap-3 bg-surface-inverse px-4 md:flex', COLUMN_HEADER_H)}
+          >
             <button
-              onClick={() => go('group-chat')}
+              onClick={() => navigate(`/groups/${groupSlug}`)}
               className="flex h-8 w-8 items-center justify-center rounded-pill text-white/80 hover:bg-white/10"
             >
               <Icon name="chevron-left" size={18} />
@@ -185,26 +269,38 @@ export function AgentChatPage() {
               <p className="flex items-center gap-1.5 text-overline uppercase tracking-wide text-white/50">
                 <Icon name="lock" size={10} /> Private · only you can see this
               </p>
-              <p className="text-sm font-semibold text-white">Your food agent</p>
+              <p className="text-body font-semibold text-white">Your food agent</p>
             </div>
           </div>
+
+          {/* MOBILE (<md): the SessionTopBar + the w-60 aside collapsed into one
+              tappable row — progress, countdown, and a sheet with the rest. */}
+          <MobileSessionStrip groupId={groupId} />
 
           {/* Conversation always visible; the done pill renders in-stream. */}
           <ChatStream done={isDone} groupId={groupId} />
 
           {!isDone ? (
             <>
-              {/* Quick-reply chips — follow the question the agent just asked. */}
+              {/* Quick-reply chips — follow the question the agent just asked.
+                  Below `md` they scroll horizontally in one row instead of wrapping
+                  to two or three, which would eat the conversation; `md:flex-wrap`
+                  restores the desktop behavior. The taller mobile padding is
+                  load-bearing: overflow-x-auto makes this a scroll container, which
+                  CLIPS each chip's 44px tap-target ::after unless the row is tall
+                  enough to contain it. */}
               {quickReplies.length > 0 && (
-                <div className="flex flex-wrap gap-2 px-5 pb-1 pt-2">
-                  {/* A tapped chip is canned text, never dictation — so it sends
-                      as 'text' even if the user has been speaking. */}
+                <div className="flex gap-2 overflow-x-auto px-5 pb-2 pt-2.5 [scrollbar-width:none] md:flex-wrap md:overflow-x-visible md:pb-1 md:pt-2">
                   {quickReplies.map((q) => (
                     <button
                       key={q}
                       disabled={sending}
+                      // A tapped chip is canned text, never dictation — so it sends
+                      // as 'text' even if the user has been speaking.
                       onClick={() => handleSend(q, 'text')}
-                      className="rounded-pill border border-border-strong bg-surface-raised px-3 py-1.5 text-xs font-medium text-text hover:bg-surface-sunken disabled:opacity-50"
+                      // tap-target: the 31px pill keeps its size, the hit area grows
+                      // to 44px. shrink-0 so labels don't compress in the scroll row.
+                      className="tap-target shrink-0 rounded-pill border border-border-strong bg-surface-raised px-3 py-1.5 text-caption font-medium text-text hover:bg-surface-sunken disabled:opacity-50"
                     >
                       {q}
                     </button>
@@ -215,7 +311,7 @@ export function AgentChatPage() {
               {/* "All set" banner: once the agent has nothing left to ask, nudge
                   the user to finish while making clear they can still make changes. */}
               {allSet && (
-                <div className="mx-4 mt-2 flex items-start gap-2 rounded-input border border-success/40 bg-success/10 px-3 py-2 text-xs text-text">
+                <div className="mx-4 mt-2 flex items-start gap-2 rounded-input border border-success/40 bg-success/10 px-3 py-2 text-caption text-text">
                   <span className="mt-0.5 text-success">
                     <Icon name="check" size={14} />
                   </span>
@@ -226,65 +322,73 @@ export function AgentChatPage() {
                 </div>
               )}
               {/* Prominent finish CTA — the primary way to end the conversation.
-                  Turns accent once the agent is satisfied, to signal it's ready. */}
-              <div className="border-t border-border bg-surface-raised p-4">
-                <Button
-                  fullWidth
-                  size="lg"
-                  variant={allSet ? 'accent' : 'primary'}
-                  isLoading={marking}
-                  rightIcon={<Icon name="arrow-right" size={16} />}
-                  onClick={() => void handleDone()}
-                >
-                  I'm Finished
-                </Button>
+                  Turns accent once the agent is satisfied, to signal it's ready.
+                  Outer div carries pb-safe-b so the button clears the iOS home
+                  indicator while its own padding stays a constant 1rem. */}
+              <div className="shrink-0 border-t border-border bg-surface-raised pb-safe-b">
+                <div className="p-4">
+                  <Button
+                    fullWidth
+                    size="lg"
+                    variant={allSet ? 'accent' : 'primary'}
+                    isLoading={marking}
+                    rightIcon={<Icon name="arrow-right" size={16} />}
+                    onClick={() => void handleDone()}
+                  >
+                    I'm Finished
+                  </Button>
+                </div>
               </div>
             </>
           ) : (
             // Done: the conversation + noted panel stay visible for review. The
             // footer shows a waiting state until the group's results are ready,
             // then a prominent way into them.
-            <div className="border-t border-border bg-surface-raised p-4">
-              {recommendation != null ? (
-                <Button
-                  fullWidth
-                  size="lg"
-                  variant="accent"
-                  rightIcon={<Icon name="arrow-right" size={16} />}
-                  onClick={() => go('top-picks')}
-                >
-                  See the group's results
-                </Button>
-              ) : (
-                <div className="flex flex-col items-center gap-2 py-1 text-center">
-                  <span className="flex items-center gap-2 text-sm font-medium text-text">
-                    <Spinner size="sm" /> Waiting for others
-                  </span>
-                  <span className="text-xs text-text-muted">
-                    {doneCount} of {progressTotal} finished · you can review your
-                    answers while you wait
-                  </span>
-                  {/* Host can stop waiting and generate results over the answers so
-                      far, rather than blocking on every member finishing. */}
-                  {isHost && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      isLoading={forcing}
-                      leftIcon={<Icon name="sparkles" size={14} />}
-                      onClick={() => void handleForceFinish()}
-                    >
-                      Force finish &amp; see results
-                    </Button>
-                  )}
-                </div>
-              )}
+            <div className="shrink-0 border-t border-border bg-surface-raised pb-safe-b">
+              <div className="p-4">
+                {recommendation != null ? (
+                  <Button
+                    fullWidth
+                    size="lg"
+                    variant="accent"
+                    rightIcon={<Icon name="arrow-right" size={16} />}
+                    onClick={() => sessionPath && navigate(`${sessionPath}/picks`)}
+                  >
+                    See the group's results
+                  </Button>
+                ) : (
+                  <div className="flex flex-col items-center gap-2 py-1 text-center">
+                    <span className="flex items-center gap-2 text-body font-medium text-text">
+                      <Spinner size="sm" /> Waiting for others
+                    </span>
+                    <span className="text-caption text-text-muted">
+                      {doneCount} of {progressTotal} finished · you can review your
+                      answers while you wait
+                    </span>
+                    {/* Host can stop waiting and generate results over the answers so
+                        far, rather than blocking on every member finishing. */}
+                    {isHost && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="tap-target"
+                        isLoading={forcing}
+                        leftIcon={<Icon name="sparkles" size={14} />}
+                        onClick={() => void handleForceFinish()}
+                      >
+                        Force finish &amp; see results
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
 
-        {/* Right: progress + noted */}
-        <aside className="flex w-60 shrink-0 flex-col border-l border-border bg-surface-panel">
+        {/* Right: progress + noted. Desktop only — below `md` this column's content
+            is reachable through MobileSessionStrip's sheet instead. */}
+        <aside className="hidden w-60 shrink-0 flex-col border-l border-border bg-surface-panel md:flex">
           <div className={cn('flex flex-col justify-center border-b border-border px-4', COLUMN_HEADER_H)}>
             <GroupProgressPanel headerOnly groupId={groupId} />
           </div>

@@ -139,181 +139,198 @@ export function VoiceComposer({
   }
 
   return (
-    <div className="border-t border-border bg-surface-raised px-4 pb-3 pt-3">
-      <div className="flex items-center gap-3">
-        {/* Distinct circular mic button. NOTE: in voice-loop mode this is NOT gated
-            on `disabled` — the agent-chat page passes disabled={sending}, and during
-            the ~1s analyze window barge-in and mute are exactly when the mic controls
-            must stay live. The Web Speech path keeps the original disabled behavior. */}
-        {supported && (
-          <button
-            type="button"
-            aria-label={listening ? 'Stop listening' : 'Start voice input'}
-            disabled={voiceLoop ? false : disabled}
-            onClick={toggleMic}
-            className={cn(
-              'relative flex h-11 w-11 shrink-0 items-center justify-center rounded-pill shadow-sm transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
-              'disabled:cursor-not-allowed disabled:opacity-50',
-              listening
-                ? 'bg-primary text-on-primary'
-                : 'bg-surface-inverse text-white hover:opacity-90',
-            )}
-          >
-            {/* Radiating ring while listening — feels active without the whole
-                button pulsing. Reduced-motion users get the solid fill only. */}
-            {listening && !reduce && (
-              <span className="pointer-events-none absolute inset-0 animate-wave rounded-pill bg-primary" />
-            )}
-            {/* In the hands-free voice loop, tapping the orange button STOPS the
-                recording — so it shows a filled stop square, not a mic. Elsewhere
-                (Web Speech dictation) the mic glyph still reads as "on". */}
-            {voiceLoop && listening ? (
-              <Icon name="square" size={24} filled className="relative" />
-            ) : (
-              <Icon name="mic" size={18} filled={listening} className="relative" />
-            )}
-          </button>
-        )}
-
-        {/* Mute button — voice-loop only, and only while the mic is live. Muting
-            keeps the loop running (the client streams silence upstream so Flux's
-            ~60s idle cap never fires); it just stops sending real mic bytes. */}
-        {voiceLoop && listening && v.toggleMute && (
-          <button
-            type="button"
-            aria-label={v.muted ? 'Unmute microphone' : 'Mute microphone'}
-            onClick={v.toggleMute}
-            className={cn(
-              'flex h-9 w-9 shrink-0 items-center justify-center rounded-pill transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
-              v.muted
-                ? 'bg-primary/15 text-primary'
-                : 'bg-surface-sunken text-text-muted hover:bg-surface-inverse hover:text-white',
-            )}
-          >
-            {/* Action-semantics like the stop button: the glyph shows what a tap
-                DOES. Live → slashed mic ("tap to mute"); muted → plain mic ("tap to
-                unmute"). Current state is conveyed by the button's color (orange
-                tint when muted). No `filled` — mic-off is open strokes with no solid
-                variant, so filling it would self-intersect into artifacts. */}
-            <Icon name={v.muted ? 'mic' : 'mic-off'} size={15} />
-          </button>
-        )}
-
-        {/* Rounded pill input (or waveform while listening) */}
-        {listening ? (
-          <div className="flex h-11 flex-1 items-center gap-3 rounded-pill bg-surface-sunken px-5">
-            <div className="flex items-center gap-0.5" aria-hidden="true">
-              {WAVE_BARS.map((h, i) =>
-                // In voice-loop mode drive the bars off the REAL input level
-                // (controller.amplitude) so the waveform reflects the actual mic,
-                // not a canned animation. Muted → flat. Web Speech path keeps the
-                // original oscillation (it has no amplitude signal).
-                voiceLoop ? (
-                  <span
-                    key={i}
-                    className="w-0.5 rounded-pill bg-text/70 transition-[height] duration-100"
-                    style={{
-                      height: v.muted
-                        ? '3px'
-                        : `${Math.max(3, Math.min(24, h * (0.35 + (v.amplitude ?? 0) * 1.6)))}px`,
-                    }}
-                  />
-                ) : reduce ? (
-                  <span
-                    key={i}
-                    className="w-0.5 rounded-pill bg-text/70"
-                    style={{ height: `${h}px` }}
-                  />
-                ) : (
-                  <motion.span
-                    key={i}
-                    className="w-0.5 rounded-pill bg-text/70"
-                    animate={{ height: [h, Math.min(h + 8, 24), Math.max(h - 4, 4), h] }}
-                    transition={{
-                      duration: 0.9 + (i % 4) * 0.15,
-                      repeat: Infinity,
-                      ease: 'easeInOut',
-                      delay: i * 0.06,
-                    }}
-                    style={{ height: `${h}px` }}
-                  />
-                ),
+    // Two divs on purpose: the outer one carries pb-safe-b so the composer clears
+    // the iOS home indicator (the page paints under it via viewport-fit=cover),
+    // while the inner one keeps the visual padding. Both on one element would be
+    // two competing padding-bottom utilities.
+    <div className="shrink-0 border-t border-border bg-surface-raised pb-safe-b">
+      <div className="px-4 pb-3 pt-3">
+        <div className="flex items-center gap-3">
+          {/* Distinct circular mic button. NOTE: in voice-loop mode this is NOT gated
+              on `disabled` — the agent-chat page passes disabled={sending}, and during
+              the ~1s analyze window barge-in and mute are exactly when the mic controls
+              must stay live. The Web Speech path keeps the original disabled behavior. */}
+          {supported && (
+            <button
+              type="button"
+              aria-label={listening ? 'Stop listening' : 'Start voice input'}
+              disabled={voiceLoop ? false : disabled}
+              onClick={toggleMic}
+              className={cn(
+                'relative flex h-11 w-11 shrink-0 items-center justify-center rounded-pill shadow-sm transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+                'disabled:cursor-not-allowed disabled:opacity-50',
+                listening
+                  ? 'bg-primary text-on-primary'
+                  : 'bg-surface-inverse text-white hover:opacity-90',
               )}
+            >
+              {/* Radiating ring while listening — feels active without the whole
+                  button pulsing. Reduced-motion users get the solid fill only. */}
+              {listening && !reduce && (
+                <span className="pointer-events-none absolute inset-0 animate-wave rounded-pill bg-primary" />
+              )}
+              {/* In the hands-free voice loop, tapping the orange button STOPS the
+                  recording — so it shows a filled stop square, not a mic. Elsewhere
+                  (Web Speech dictation) the mic glyph still reads as "on". */}
+              {voiceLoop && listening ? (
+                <Icon name="square" size={24} filled className="relative" />
+              ) : (
+                <Icon name="mic" size={18} filled={listening} className="relative" />
+              )}
+            </button>
+          )}
+
+          {/* Mute button — voice-loop only, and only while the mic is live. Muting
+              keeps the loop running (the client streams silence upstream so Flux's
+              ~60s idle cap never fires); it just stops sending real mic bytes. */}
+          {voiceLoop && listening && v.toggleMute && (
+            <button
+              type="button"
+              aria-label={v.muted ? 'Unmute microphone' : 'Mute microphone'}
+              onClick={v.toggleMute}
+              className={cn(
+                'flex h-9 w-9 shrink-0 items-center justify-center rounded-pill transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+                v.muted
+                  ? 'bg-primary/15 text-primary'
+                  : 'bg-surface-sunken text-text-muted hover:bg-surface-inverse hover:text-white',
+              )}
+            >
+              {/* Action-semantics like the stop button: the glyph shows what a tap
+                  DOES. Live → slashed mic ("tap to mute"); muted → plain mic ("tap to
+                  unmute"). Current state is conveyed by the button's color (orange
+                  tint when muted). No `filled` — mic-off is open strokes with no solid
+                  variant, so filling it would self-intersect into artifacts. */}
+              <Icon name={v.muted ? 'mic' : 'mic-off'} size={15} />
+            </button>
+          )}
+
+          {/* Rounded pill input (or waveform while listening) */}
+          {listening ? (
+            <div className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-pill bg-surface-sunken px-5">
+              {/* min-w-0 + overflow-hidden: 14 bars plus the caption overflow a
+                  390px row once the mic and send buttons take their share. */}
+              <div className="flex items-center gap-0.5 overflow-hidden" aria-hidden="true">
+                {WAVE_BARS.map((h, i) =>
+                  // In voice-loop mode drive the bars off the REAL input level
+                  // (controller.amplitude) so the waveform reflects the actual mic,
+                  // not a canned animation. Muted → flat. Web Speech path keeps the
+                  // original oscillation (it has no amplitude signal).
+                  voiceLoop ? (
+                    <span
+                      key={i}
+                      className="w-0.5 shrink-0 rounded-pill bg-text/70 transition-[height] duration-100"
+                      style={{
+                        height: v.muted
+                          ? '3px'
+                          : `${Math.max(3, Math.min(24, h * (0.35 + (v.amplitude ?? 0) * 1.6)))}px`,
+                      }}
+                    />
+                  ) : reduce ? (
+                    <span
+                      key={i}
+                      className="w-0.5 shrink-0 rounded-pill bg-text/70"
+                      style={{ height: `${h}px` }}
+                    />
+                  ) : (
+                    <motion.span
+                      key={i}
+                      className="w-0.5 shrink-0 rounded-pill bg-text/70"
+                      animate={{ height: [h, Math.min(h + 8, 24), Math.max(h - 4, 4), h] }}
+                      transition={{
+                        duration: 0.9 + (i % 4) * 0.15,
+                        repeat: Infinity,
+                        ease: 'easeInOut',
+                        delay: i * 0.06,
+                      }}
+                      style={{ height: `${h}px` }}
+                    />
+                  ),
+                )}
+              </div>
+              {/* Show the live transcript as the user speaks — in BOTH modes. Group
+                  chat (Web Speech) previously fell through to a static 'Listening…',
+                  so dictated words never appeared and the mic read as doing nothing.
+                  min-w-0 + truncate so a long dictation never blows out the row (the
+                  full text lands in the editable input once the mic stops). */}
+              <span
+                className={cn(
+                  'min-w-0 flex-1 truncate text-body',
+                  transcript ? 'text-text' : 'text-text-muted',
+                )}
+              >
+                {voiceLoop
+                  ? v.muted
+                    ? 'Muted'
+                    : v.speaking
+                      ? 'Agent speaking…'
+                      : transcript || 'Listening…'
+                  : transcript || 'Listening…'}
+              </span>
             </div>
-            {/* Show the live transcript as the user speaks — in BOTH modes. Group
-                chat (Web Speech) previously fell through to a static 'Listening…',
-                so dictated words never appeared and the mic read as doing nothing. */}
-            <span className={cn('text-sm', transcript ? 'text-text' : 'text-text-muted')}>
-              {voiceLoop
-                ? v.muted
-                  ? 'Muted'
-                  : v.speaking
-                    ? 'Agent speaking…'
-                    : transcript || 'Listening…'
-                : transcript || 'Listening…'}
-            </span>
-          </div>
-        ) : (
-          <input
-            value={displayValue}
-            disabled={disabled}
-            placeholder={placeholder}
-            onChange={(e) => {
-              setText(e.target.value)
-              if (e.target.value) bumpTyping()
-              else stopTyping()
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSend()
-            }}
+          ) : (
+            <input
+              value={displayValue}
+              disabled={disabled}
+              placeholder={placeholder}
+              onChange={(e) => {
+                setText(e.target.value)
+                if (e.target.value) bumpTyping()
+                else stopTyping()
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSend()
+              }}
+              className={cn(
+                'h-11 min-w-0 flex-1 rounded-pill bg-surface-sunken px-5 text-body text-text',
+                'placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-focus-ring',
+              )}
+            />
+          )}
+
+          {/* Circular send button */}
+          <button
+            type="button"
+            aria-label="Send message"
+            disabled={disabled || !displayValue.trim()}
+            onClick={handleSend}
             className={cn(
-              'h-11 flex-1 rounded-pill bg-surface-sunken px-5 text-sm text-text',
-              'placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-focus-ring',
+              // tap-target: the pill stays 36px (design system) while the hit area
+              // grows to 44px — the annotation is explicit about not resizing it.
+              'tap-target flex h-9 w-9 shrink-0 items-center justify-center rounded-pill bg-surface-sunken text-text-muted transition-colors',
+              'hover:bg-surface-inverse hover:text-white',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+              'disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-surface-sunken disabled:hover:text-text-muted',
             )}
-          />
+          >
+            <Icon name="send" size={15} />
+          </button>
+        </div>
+
+        {/* Transient voice-loop status/error (e.g. "voice busy — showing text only",
+            mic-permission denied). Only in controller mode; group chat has no such
+            field. Non-blocking — the text composer stays usable underneath. */}
+        {voiceLoop && v.error && (
+          <p className="mt-2 text-center text-caption text-error">{v.error}</p>
         )}
 
-        {/* Circular send button */}
-        <button
-          type="button"
-          aria-label="Send message"
-          disabled={disabled || !displayValue.trim()}
-          onClick={handleSend}
-          className={cn(
-            'flex h-9 w-9 shrink-0 items-center justify-center rounded-pill bg-surface-sunken text-text-muted transition-colors',
-            'hover:bg-surface-inverse hover:text-white',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
-            'disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-surface-sunken disabled:hover:text-text-muted',
-          )}
-        >
-          <Icon name="send" size={15} />
-        </button>
+        {/* Web Speech path: the browser silently disables recognition if the user
+            denies the mic prompt, leaving a live-looking button that does nothing.
+            Surface it so they know to re-enable mic access. `micAvailable` starts
+            true and only flips false after a denial. */}
+        {!voiceLoop && supported && v.micAvailable === false && (
+          <p className="mt-2 text-center text-caption text-error">
+            Microphone access is blocked — enable it in your browser to use voice input.
+          </p>
+        )}
+
+        {privacyNote && (
+          <p className="mt-2 text-center text-caption text-text-subtle">
+            Only you can see this · your privacy is protected
+          </p>
+        )}
       </div>
-
-      {/* Transient voice-loop status/error (e.g. "voice busy — showing text only",
-          mic-permission denied). Only in controller mode; group chat has no such
-          field. Non-blocking — the text composer stays usable underneath. */}
-      {voiceLoop && v.error && (
-        <p className="mt-2 text-center text-caption text-error">{v.error}</p>
-      )}
-
-      {/* Web Speech path: the browser silently disables recognition if the user
-          denies the mic prompt, leaving a live-looking button that does nothing.
-          Surface it so they know to re-enable mic access. `micAvailable` starts
-          true and only flips false after a denial. */}
-      {!voiceLoop && supported && v.micAvailable === false && (
-        <p className="mt-2 text-center text-caption text-error">
-          Microphone access is blocked — enable it in your browser to use voice input.
-        </p>
-      )}
-
-      {privacyNote && (
-        <p className="mt-2 text-center text-caption text-text-subtle">
-          Only you can see this · your privacy is protected
-        </p>
-      )}
     </div>
   )
 }

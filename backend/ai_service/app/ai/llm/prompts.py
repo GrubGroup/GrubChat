@@ -261,16 +261,20 @@ GROUP_RERANK_SYSTEM = (
     '  - "far": neither — no location bonus.\n'
     "Prefer between > host > member > far when cuisine/price/rating are "
     "comparable. Candidates also carry `hours` (open at the event time) — you may "
-    "mention it but do not need to re-check it.\n\n"
+    "mention it but do not need to re-check it.\n"
+    "After you score, the system adds a fixed location bonus to each match_score by "
+    "tier — between +0.20, host +0.12, member +0.06, far +0.00 — and then re-sorts "
+    "by the adjusted score. Rank so your own order already agrees with that result: "
+    "reward the proximity tiers accordingly rather than fighting the bonus.\n\n"
     "Return STRICT JSON only: a JSON array where each element is an object with "
     "exactly these keys:\n"
     '  "restaurant_id" (int, must be one of the candidate ids),\n'
     '  "match_score" (float between 0.0 and 1.0),\n'
-    '  "justification" (string, <= 240 characters, one sentence on why it fits '
-    "the group).\n"
-    "Include every candidate exactly once, best first. Do NOT invent "
-    "restaurant ids. Output the JSON array only — no prose, no markdown, no "
-    "code fences."
+    '  "justification" (string, <= 100 characters, one short clause on why it '
+    "fits the group — be terse, no restating the constraints).\n"
+    "Return only the best ~8 candidates, best first (fewer is fine if fewer were "
+    "given). Do NOT invent restaurant ids. Output the JSON array only — no prose, "
+    "no markdown, no code fences."
 )
 
 
@@ -289,7 +293,7 @@ def build_group_rerank_messages(
         f"{json.dumps(reconciled, ensure_ascii=False)}\n\n"
         "CANDIDATES:\n"
         f"{json.dumps(candidates, ensure_ascii=False)}\n\n"
-        "Rank all candidates now and return the strict JSON array."
+        "Rank the candidates now and return the strict JSON array of the best ~8."
     )
     return [
         {"role": "system", "content": GROUP_RERANK_SYSTEM},

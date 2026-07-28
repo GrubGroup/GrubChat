@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from app.ai.geo import TIER_BONUS, proximity_tier
 from app.ai.graph.state import (
@@ -24,6 +26,15 @@ from app.ai.rag.retriever import similarity_search
 # well-located pick must survive the cut on cosine similarity alone.
 _CANDIDATE_LIMIT = 40
 
+# How many of those candidates (top-N by cosine similarity, after the hours hard
+# filter) are actually sent to the LLM re-rank. Kept well below _CANDIDATE_LIMIT
+# because the re-rank's wall-clock is dominated by how much the model READS (the
+# serialized candidate payload) and WRITES (the ranked JSON). The retriever still
+# pulls the full _CANDIDATE_LIMIT so proximity/hours filtering has room; only the
+# strongest survivors reach the model, which cuts "view results" latency without
+# hurting quality (the frontend only shows the top 5).
+_RERANK_LIMIT = 20
+
 # Default search radius (miles) applied when the host set a location but no
 # explicit radius (the common case — the analyze prompt doesn't ask for one, so
 # Qa.radius_miles is usually null). Without this the retriever's bounding box is
@@ -32,6 +43,27 @@ _CANDIDATE_LIMIT = 40
 # anywhere. A generous city-scale default keeps retrieval geographically anchored
 # without excluding a member's cross-town preferred spot.
 _DEFAULT_RADIUS_MILES = 15.0
+
+
+# Venue-local timezone for the open/closed check. Session.scheduled_for is stored
+# as a UTC instant (the frontend sends dt.toISOString()), but restaurant `hours`
+# strings are LOCAL wall-clock ("Mon-Sun 11:00-22:00"). Comparing a naive UTC
+# datetime against local hours shifts a 7 PM PT pick to 02:00 the next day, which
+# reads as closed for every venue and empties the candidate list. The catalog is
+# all SF-area, so we hardcode Pacific for now; make this per-restaurant later.
+_VENUE_TZ = ZoneInfo("America/Los_Angeles")
+
+
+def _to_venue_localtime(when: datetime) -> datetime:
+    """Convert a stored event time to naive venue-local wall-clock for is_open_at.
+
+    scheduled_for is persisted as a UTC instant. A naive value is assumed UTC
+    (that's how it was stored); an aware value is converted from its own zone.
+    Returns a naive datetime in venue-local time so it lines up with the local
+    `hours` strings.
+    """
+    aware = when.replace(tzinfo=timezone.utc) if when.tzinfo is None else when
+    return aware.astimezone(_VENUE_TZ).replace(tzinfo=None)
 
 
 # How much a session-scoped Qa cuisine outweighs a durable Profile cuisine. A
@@ -223,6 +255,14 @@ def _build_candidates(
     unknown/unparseable/null hours parse as open, so only confidently-closed
     venues are dropped. With no event time set, hours are not filtered at all.
     """
+    # Convert the stored UTC event time to venue-local wall-clock ONCE, so the
+    # per-restaurant open/closed check compares like-for-like against local hours.
+    local_when = (
+        _to_venue_localtime(state.scheduled_for)
+        if state.scheduled_for is not None
+        else None
+    )
+
     candidates: list[CandidateRestaurant] = []
     for restaurant, distance in hits:
         if restaurant.id is None:
@@ -239,10 +279,11 @@ def _build_candidates(
             members=reconciled.member_locations,
         )
 
-        # Open/closed at the chosen event time. None time -> is_open None (unknown,
-        # not filtered); known time -> True/False, and a definite False is dropped.
-        if state.scheduled_for is not None:
-            is_open = is_open_at(restaurant.hours, state.scheduled_for)
+        # Open/closed at the chosen event time (in venue-local wall-clock). None
+        # time -> is_open None (unknown, not filtered); known time -> True/False,
+        # and a definite False is dropped.
+        if local_when is not None:
+            is_open = is_open_at(restaurant.hours, local_when)
             if not is_open:
                 continue  # hard-filter confidently-closed venues out of the top picks
         else:
@@ -304,23 +345,33 @@ async def orchestrate(state: PipelineState) -> PipelineState:
         state.ranked = []
         return state
 
+    # Only the strongest-by-similarity survivors go to the LLM. Candidates keep the
+    # retriever's cosine order (best first), so this is the top-_RERANK_LIMIT slice.
+    # Shrinking the payload the model reads and the array it must write back is the
+    # main "view results" latency win — the frontend only shows the top 5 anyway.
+    rerank_candidates = candidates[:_RERANK_LIMIT]
+
     messages = build_group_rerank_messages(
         reconciled=reconciled.model_dump(),
-        candidates=[c.model_dump() for c in candidates],
+        candidates=[c.model_dump() for c in rerank_candidates],
     )
     # NOTE: do NOT pass response_format={"type": "json_object"} here. The active
     # Salesforce/Claude gateway does not honor OpenAI JSON mode and returns an
     # empty "{}" when it's set. The prompt already demands strict JSON and
     # `_parse_ranked` strips code fences, so plain completion is the robust path.
-    raw = await chat_completion(messages, temperature=0.2)
+    # max_tokens caps the ranked JSON array (~8 short items) so a chatty model
+    # can't stall the pipeline with a long completion.
+    raw = await chat_completion(messages, temperature=0.2, max_tokens=900)
 
-    valid_ids = {c.id for c in candidates}
+    # valid_ids / tier_by_id come from the SAME sliced list the model saw, so an id
+    # it couldn't have been given is rejected and every returned id has a tier.
+    valid_ids = {c.id for c in rerank_candidates}
     ranked = _parse_ranked(raw or "", valid_ids)
 
     # Blend the proximity bonus into the LLM's scores and RE-SORT, so the
     # between-host-and-member geometry the prompt was told about is also enforced
     # deterministically (the LLM sees the tiers but we don't rely on it alone).
-    tier_by_id = {c.id: c.proximity_tier for c in candidates}
+    tier_by_id = {c.id: c.proximity_tier for c in rerank_candidates}
     if ranked:
         for item in ranked:
             item.match_score = _blend_proximity(

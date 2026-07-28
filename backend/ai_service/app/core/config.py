@@ -17,11 +17,18 @@ class Settings(BaseSettings):
     # set LLM_PROVIDER=salesforce locally, leave unset (or =openrouter) on deploy.
     llm_provider: str = "openrouter"  # env LLM_PROVIDER
 
-    # Embeddings (active): OpenRouter / Qwen, 1024-dim. OpenRouter also serves chat
-    # when llm_provider == "openrouter".
+    # Embeddings (active): served via OpenRouter's /embeddings API, 1024-dim.
+    # OpenRouter also serves chat when llm_provider == "openrouter".
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    embedding_model: str = "qwen/qwen3-embedding-8b"
+    # LATENCY FIX (2026-07-27): was "qwen/qwen3-embedding-8b" (measured 24-60s per
+    # call — no dedicated OpenRouter provider, so each request cold-started a
+    # serverless GPU; this was ~90% of "view results" latency). Switched to
+    # text-embedding-3-small (0.42s), then (2026-07-28) to pplx-embed-v1-0.6b,
+    # which returns 1024 dims natively (vector(1024) unchanged) at lower cost and
+    # ~0.2s. TO REVERT: restore the desired model here AND in .env, then re-embed
+    # all Restaurant rows (cross-model vectors are not comparable).
+    embedding_model: str = "perplexity/pplx-embed-v1-0.6b"
     # OpenRouter chat model (env LLM_MODEL). Used when llm_provider == "openrouter".
     openrouter_llm_model: str = Field(
         default="deepseek/deepseek-chat",

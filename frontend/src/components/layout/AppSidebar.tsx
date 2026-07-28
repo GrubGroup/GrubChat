@@ -1,22 +1,18 @@
 import type { ReactNode } from 'react'
 import { useState } from 'react'
+import { NavLink, useNavigate } from 'react-router'
 import { Avatar, Icon, Wordmark, type IconName } from '@/components/ui'
 import { AccountMenu } from './AccountMenu'
 import { useAuthStore } from '@/stores/authStore'
-import { useNavStore } from '@/stores/navStore'
-import { useGroupsStore } from '@/stores/groupsStore'
-import { signOut } from '@/lib/authClient'
+import { useSignOut } from '@/hooks/useSignOut'
+import { memberColor } from '@/constants/memberColors'
 import { cn } from '@/utils/cn'
 
 // Shared height for the top row of EVERY column (sidebar panel header, chat
 // header, right panel header) so their bottom borders line up seamlessly.
 export const COLUMN_HEADER_H = 'h-[61px]'
 
-type SidebarTab = 'groups' | 'events'
-
 export interface AppSidebarProps {
-  /** Which rail tab is active; omit to render the rail with no active tab. */
-  activeTab?: SidebarTab
   /** Small uppercase eyebrow under the constant "GrubGroup" wordmark (e.g. "Groups", "Events"). */
   eyebrow?: string
   /** Optional action rendered on the right of the panel header (e.g. add button). */
@@ -25,7 +21,9 @@ export interface AppSidebarProps {
   children: ReactNode
   /** Show the current-user avatar + account menu on the rail. */
   showFooter?: boolean
-  /** Hide the whole column on small screens (used by the marketing empty state). */
+  /** Hide the whole column below `md`, where the mobile chrome (BottomTabBar /
+   * MobileDrawer / MobileHeader) navigates instead. On by default — pass `false`
+   * only if a screen genuinely needs the rail at phone width. */
   responsive?: boolean
   /** Panel width utility (default 'w-56'). The group-chat list passes a wider
    * value so its chats have more breathing room. */
@@ -37,34 +35,25 @@ export interface AppSidebarProps {
 // panel with a body slot. Rail tabs switch between the groups and events
 // contexts; behavior mirrors the previous tab bar.
 export function AppSidebar({
-  activeTab,
   eyebrow,
   headerAction,
   children,
   showFooter = true,
-  responsive = false,
+  responsive = true,
   panelWidth = 'w-56',
 }: AppSidebarProps) {
   const user = useAuthStore((s) => s.user)
-  const logout = useAuthStore((s) => s.logout)
-  const resetGroups = useGroupsStore((s) => s.reset)
-  const go = useNavStore((s) => s.go)
-  const setGroup = useNavStore((s) => s.setGroup)
-  const openProfile = useNavStore((s) => s.openProfile)
+  const navigate = useNavigate()
+  // Shared with ProfilePage's mobile sign-out (resets the group + event lists),
+  // so the two can't drift.
+  const handleSignOut = useSignOut()
   const [menuOpen, setMenuOpen] = useState(false)
 
-  // Clear the Better Auth session (cookie) + local state, then return to sign-in.
-  // Reset the selected group to the sentinel so the next account never targets
-  // the previous one's room before its own load() runs.
-  const handleSignOut = async () => {
-    await signOut()
-    logout()
-    resetGroups()
-    setGroup(0)
-    go('sign-in')
-  }
-
   const displayName = user?.display_name ?? user?.username ?? 'You'
+  // Deterministic initials color from the user id — the SAME source chat/session
+  // avatars use — so a photoless user's color matches everywhere (was hardcoded
+  // member-purple, which didn't match their chat color).
+  const avatarColor = memberColor(user?.id ?? -1)
 
   return (
     <aside
@@ -81,18 +70,8 @@ export function AppSidebar({
         </span>
 
         <div className="mt-2 flex flex-col items-center gap-1.5">
-          <RailButton
-            icon="users"
-            label="Groups"
-            active={activeTab === 'groups'}
-            onClick={() => go('group-chat')}
-          />
-          <RailButton
-            icon="calendar"
-            label="Events"
-            active={activeTab === 'events'}
-            onClick={() => go('events')}
-          />
+          <RailTab icon="users" label="Groups" to="/groups" />
+          <RailTab icon="calendar" label="Events" to="/events" />
         </div>
 
         {/* Spacer pushes the user avatar to the bottom */}
@@ -106,7 +85,8 @@ export function AppSidebar({
               displayName={displayName}
               username={user?.username ?? 'you'}
               avatarUrl={user?.avatar_url}
-              onViewProfile={() => openProfile()}
+              colorClass={avatarColor}
+              onViewProfile={() => navigate('/profile')}
               onSignOut={handleSignOut}
               // Opens beside the rail avatar (bottom-aligned to the right).
               positionClass="bottom-0 left-full ml-2 w-56"
@@ -118,7 +98,7 @@ export function AppSidebar({
               aria-label="Account menu"
               className="rounded-pill focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >
-              <Avatar name={displayName} src={user?.avatar_url} size="md" colorClass="member-purple" />
+              <Avatar name={displayName} src={user?.avatar_url} size="md" colorClass={avatarColor} />
             </button>
           </div>
         )}
@@ -151,52 +131,51 @@ export function AppSidebar({
   )
 }
 
-function RailButton({
-  icon,
-  label,
-  active,
-  onClick,
-}: {
-  icon: IconName
-  label: string
-  active: boolean
-  onClick: () => void
-}) {
+// A rail tab is a NavLink, so "active" comes from the URL rather than a prop each
+// page has to remember to pass. Non-`end` matching means the Groups tab stays lit
+// across every /groups/* sub-route — a group chat, a session, the picks screen —
+// which the old hardcoded activeTab could not express.
+function RailTab({ icon, label, to }: { icon: IconName; label: string; to: string }) {
   return (
-    <button
-      onClick={onClick}
+    <NavLink
+      to={to}
       title={label}
       aria-label={label}
-      aria-current={active ? 'page' : undefined}
-      className={cn(
-        'group relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
-        active
-          ? 'bg-surface-inverse text-white'
-          : 'text-text-muted hover:bg-surface-raised/70 hover:text-text',
-      )}
+      className={({ isActive }) =>
+        cn(
+          // tap-target: the tile stays 40px; only the hit area reaches 44px, which
+          // matters on touch tablets at ≥md where this rail is still shown.
+          'group tap-target relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
+          isActive
+            ? 'bg-surface-inverse text-white'
+            : 'text-text-muted hover:bg-surface-raised/70 hover:text-text',
+        )
+      }
     >
-      {/* Outline (default) + filled (active or hovered) crossfaded via opacity —
-          pure CSS group-hover, no re-render. Under reduced motion the CSS
-          backstop zeroes the fade so it swaps instantly. */}
-      <span className="relative inline-flex h-[18px] w-[18px]">
-        <Icon
-          name={icon}
-          size={18}
-          className={cn(
-            'absolute inset-0 transition-opacity duration-150 ease-out',
-            active ? 'opacity-0' : 'opacity-100 group-hover:opacity-0',
-          )}
-        />
-        <Icon
-          name={icon}
-          size={18}
-          filled
-          className={cn(
-            'absolute inset-0 transition-opacity duration-150 ease-out',
-            active ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
-          )}
-        />
-      </span>
-    </button>
+      {({ isActive }) => (
+        // Outline (default) + filled (active or hovered) crossfaded via opacity —
+        // pure CSS group-hover, no re-render. Under reduced motion the CSS
+        // backstop zeroes the fade so it swaps instantly.
+        <span className="relative inline-flex h-[18px] w-[18px]">
+          <Icon
+            name={icon}
+            size={18}
+            className={cn(
+              'absolute inset-0 transition-opacity duration-150 ease-out',
+              isActive ? 'opacity-0' : 'opacity-100 group-hover:opacity-0',
+            )}
+          />
+          <Icon
+            name={icon}
+            size={18}
+            filled
+            className={cn(
+              'absolute inset-0 transition-opacity duration-150 ease-out',
+              isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+            )}
+          />
+        </span>
+      )}
+    </NavLink>
   )
 }
