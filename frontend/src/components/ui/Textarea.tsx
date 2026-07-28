@@ -15,7 +15,7 @@ export function Textarea({ label, error, hint, className, id, rows = 3, ...props
   return (
     <div className="flex w-full flex-col gap-1.5">
       {label && (
-        <label htmlFor={textareaId} className="text-sm font-medium text-text">
+        <label htmlFor={textareaId} className="text-body font-medium text-text">
           {label}
         </label>
       )}
@@ -34,9 +34,9 @@ export function Textarea({ label, error, hint, className, id, rows = 3, ...props
         {...props}
       />
       {error ? (
-        <p className="text-sm text-error">{error}</p>
+        <p className="text-body text-error">{error}</p>
       ) : hint ? (
-        <p className="text-sm text-text-muted">{hint}</p>
+        <p className="text-body text-text-muted">{hint}</p>
       ) : null}
     </div>
   )

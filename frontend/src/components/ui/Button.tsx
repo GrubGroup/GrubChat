@@ -24,10 +24,13 @@ const variantClasses: Record<ButtonVariant, string> = {
   danger: 'bg-error text-on-primary hover:opacity-90',
 }
 
+// Heights stay bespoke (touch targets); the LABEL sizes come off the type scale so
+// a button's text matches the copy around it. md was `text-base` (16px) — the one
+// off-scale size in the app, which read a step larger than every adjacent label.
 const sizeClasses: Record<ButtonSize, string> = {
-  sm: 'h-9 px-3 text-sm gap-1.5',
-  md: 'h-11 px-4 text-base gap-2',
-  lg: 'h-13 px-6 text-lg gap-2.5',
+  sm: 'h-9 px-3 text-caption gap-1.5',
+  md: 'h-11 px-4 text-body gap-2',
+  lg: 'h-13 px-6 text-item-title gap-2.5',
 }
 
 export function Button({
