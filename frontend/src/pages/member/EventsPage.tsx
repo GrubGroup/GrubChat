@@ -8,6 +8,13 @@ import { useEventListStore } from '@/stores/eventListStore'
 // A cuisine/dietary emoji is not on the API row, so pick a stable default.
 const EVENT_EMOJI = '🍽️'
 
+// Sidebar subtitle: the event date, e.g. "Mon, Jul 28". Invalid dates render "".
+function formatEventDate(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
 function EventRow({
   e,
   active,
@@ -30,14 +37,10 @@ function EventRow({
         {EVENT_EMOJI}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-item-title font-semibold text-text">{e.restaurant_name}</span>
-          <span className="shrink-0 text-caption text-text-muted">{e.time_slot ?? ''}</span>
-        </div>
-        <p className="truncate text-caption text-text-muted">
-          {e.occasion ? `${e.occasion} · ` : ''}
-          {e.group_name ?? 'Group'}
-        </p>
+        <span className="block truncate text-item-title font-semibold text-text">
+          {e.restaurant_name}
+        </span>
+        <p className="truncate text-caption text-text-muted">{formatEventDate(e.date)}</p>
       </div>
     </button>
   )

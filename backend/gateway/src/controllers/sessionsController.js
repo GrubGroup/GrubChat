@@ -749,24 +749,24 @@ const closeSession = async (req, res, next) => {
 
     const restaurant = await prisma.restaurant.findUnique({
       where: { id: restaurant_id },
-      select: { name: true },
+      // The Event location is the CHOSEN RESTAURANT's address/coords (where the
+      // group actually meets to eat) — not the host's search location. Note the
+      // Restaurant column is `long`; the Event column is `lon`.
+      select: { name: true, address: true, lat: true, long: true },
     });
     if (!restaurant) {
       return res.status(400).json({ error: 'restaurant_id does not exist.' });
     }
 
-    // occasion + the geocoded primary location live on the HOST's Qa row (set in
-    // the pre-session modal). Snapshot them onto the durable Event before the Qa
-    // rows are deleted below. The event TIME comes from Session.scheduled_for.
+    // occasion lives on the HOST's Qa row (set in the pre-session modal). Snapshot
+    // it onto the durable Event before the Qa rows are deleted below. The event
+    // TIME comes from Session.scheduled_for; the LOCATION comes from the restaurant.
     const hostQa = await prisma.qa.findUnique({
       where: {
         session_id_user_id: { session_id: sessionId, user_id: session.host_user_id },
       },
       select: {
         occasion: true,
-        location_address: true,
-        location_lat: true,
-        location_lon: true,
       },
     });
 
@@ -775,10 +775,12 @@ const closeSession = async (req, res, next) => {
     const eventDate = date
       ? new Date(date)
       : (session.scheduled_for ?? new Date());
+    // Event location = the chosen restaurant's address/coords. An explicit
+    // `address` in the request still overrides (kept for backward compatibility).
     const eventAddress =
       (typeof address === 'string' && address.trim())
         ? address
-        : (hostQa?.location_address ?? 'TBD');
+        : (restaurant.address ?? 'TBD');
 
     // Close the session, create the Event, and clear the session's Qa rows
     // atomically. Qa holds each member's TEMPORARY, session-scoped overrides;
@@ -794,8 +796,8 @@ const closeSession = async (req, res, next) => {
         data: {
           date: eventDate,
           address: eventAddress,
-          lat: hostQa?.location_lat ?? null,
-          lon: hostQa?.location_lon ?? null,
+          lat: restaurant.lat ?? null,
+          lon: restaurant.long ?? null,
           restaurant_id,
           restaurant_name: restaurant.name,
           occasion: hostQa?.occasion ?? null,
