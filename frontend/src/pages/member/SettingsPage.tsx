@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Button, Icon, Input, Modal } from '@/components/ui'
 import { EASE } from '@/lib/motion'
-import { changeEmail, changePassword } from '@/lib/authClient'
+import { changeEmail, changePassword, linkSocial } from '@/lib/authClient'
 import { fetchAuthMethods, type AuthMethods } from '@/api/authApi'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/utils/cn'
@@ -13,8 +13,10 @@ import { cn } from '@/utils/cn'
 // Connected accounts / Danger zone) and reuses the full-page shell from
 // ProfilePage. Edit email and change password are wired to Better Auth (via the
 // gateway's /api/auth/* endpoints). Google-only accounts have no password
-// credential, so those two controls are greyed out for them. Disconnect and
-// Delete remain visual stubs (out of scope for now).
+// credential, so those two controls are greyed out for them. The Connected
+// accounts row is state-driven: it shows Google as connected only when actually
+// linked, otherwise offers a working "Link Google account" OAuth flow. Disconnect
+// and Delete remain visual stubs (out of scope for now).
 export function SettingsPage() {
   const reduce = useReducedMotion()
   const navigate = useNavigate()
@@ -28,6 +30,8 @@ export function SettingsPage() {
   // error) so a Google user never briefly sees editable controls.
   const [authMethods, setAuthMethods] = useState<AuthMethods | null>(null)
   const canEditCredentials = authMethods?.password === true
+  const authMethodsLoaded = authMethods !== null
+  const googleConnected = authMethods?.google === true
 
   useEffect(() => {
     const email = user?.email
@@ -63,8 +67,27 @@ export function SettingsPage() {
 
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
 
-  // Illustrative connected-account address: the frontend has no connected-account
-  // data, so we surface the signed-in email to match the wireframe's linked state.
+  // Google account linking. linkSocial redirects the browser to Google's consent
+  // screen (like signIn.social), returning to /settings — so on success the page
+  // navigates away and only errors surface here.
+  const [linking, setLinking] = useState(false)
+  const [linkError, setLinkError] = useState<string | null>(null)
+
+  const linkGoogle = async () => {
+    setLinkError(null)
+    setLinking(true)
+    const { error } = await linkSocial({
+      provider: 'google',
+      callbackURL: `${window.location.origin}/settings`,
+    })
+    if (error) {
+      setLinking(false)
+      setLinkError('Could not start Google linking. Please try again.')
+    }
+  }
+
+  // Better Auth's listAccounts doesn't return the provider email; linking is by
+  // same-email here, so the account email is the connected Google address.
   const connectedEmail = user?.email ?? 'you@example.com'
 
   // Back returns wherever the user came from. A 'default' location key means this
@@ -287,15 +310,33 @@ export function SettingsPage() {
                   <GoogleGlyph />
                   <div className="flex flex-col gap-0.5">
                     <span className="text-sm font-semibold text-text">Google</span>
-                    <span className="text-xs text-success">Connected · {connectedEmail}</span>
+                    {!authMethodsLoaded ? (
+                      <span className="text-xs text-text-muted">Checking…</span>
+                    ) : googleConnected ? (
+                      <span className="text-xs text-success">Connected · {connectedEmail}</span>
+                    ) : (
+                      <span className="text-xs text-text-muted">Not connected</span>
+                    )}
+                    {linkError && <span className="text-xs text-error">{linkError}</span>}
                   </div>
                 </div>
-                <button
-                  onClick={() => setConfirmingDisconnect(true)}
-                  className="text-sm font-medium text-text-muted hover:text-text"
-                >
-                  Disconnect
-                </button>
+                {authMethodsLoaded &&
+                  (googleConnected ? (
+                    <button
+                      onClick={() => setConfirmingDisconnect(true)}
+                      className="text-sm font-medium text-text-muted hover:text-text"
+                    >
+                      Disconnect
+                    </button>
+                  ) : (
+                    <button
+                      onClick={linkGoogle}
+                      disabled={linking}
+                      className="shrink-0 text-sm font-semibold text-primary hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Link Google account
+                    </button>
+                  ))}
               </div>
             </div>
           </Section>
