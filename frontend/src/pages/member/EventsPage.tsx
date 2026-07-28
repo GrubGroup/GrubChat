@@ -8,11 +8,14 @@ import { useEventListStore } from '@/stores/eventListStore'
 // A cuisine/dietary emoji is not on the API row, so pick a stable default.
 const EVENT_EMOJI = '🍽️'
 
-// Sidebar subtitle: the event date, e.g. "Mon, Jul 28". Invalid dates render "".
+// Sidebar subtitle: the event date + time, e.g. "Mon, Jul 28 · 7:00 PM".
+// Invalid dates render "".
 function formatEventDate(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
+  const date = d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  return `${date} · ${time}`
 }
 
 function EventRow({
