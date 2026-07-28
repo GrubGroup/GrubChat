@@ -5,6 +5,7 @@ import { Avatar, Icon, Wordmark, type IconName } from '@/components/ui'
 import { AccountMenu } from './AccountMenu'
 import { useAuthStore } from '@/stores/authStore'
 import { useGroupsStore } from '@/stores/groupsStore'
+import { useEventListStore } from '@/stores/eventListStore'
 import { signOut } from '@/lib/authClient'
 import { cn } from '@/utils/cn'
 
@@ -43,6 +44,7 @@ export function AppSidebar({
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
   const resetGroups = useGroupsStore((s) => s.reset)
+  const resetEvents = useEventListStore((s) => s.reset)
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -54,6 +56,7 @@ export function AppSidebar({
     await signOut()
     logout()
     resetGroups()
+    resetEvents()
     navigate('/login')
   }
 
