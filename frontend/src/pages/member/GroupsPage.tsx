@@ -110,12 +110,7 @@ export function GroupsPage() {
           hasGroups ? 'flex' : 'hidden',
         )}
       >
-        <MobileHeader
-          brand
-          title="Groups"
-          subtitle={`${groups.length} group${groups.length === 1 ? '' : 's'}`}
-          actions={newGroupButton}
-        />
+        <MobileHeader brand title="Groups" actions={newGroupButton} />
         <GroupList />
         <TabBarSpacer />
       </div>
