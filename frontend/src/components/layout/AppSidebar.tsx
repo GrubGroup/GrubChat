@@ -4,8 +4,7 @@ import { Avatar, Icon, Wordmark, type IconName } from '@/components/ui'
 import { AccountMenu } from './AccountMenu'
 import { useAuthStore } from '@/stores/authStore'
 import { useNavStore } from '@/stores/navStore'
-import { useGroupsStore } from '@/stores/groupsStore'
-import { signOut } from '@/lib/authClient'
+import { useSignOut } from '@/hooks/useSignOut'
 import { cn } from '@/utils/cn'
 
 // Shared height for the top row of EVERY column (sidebar panel header, chat
@@ -25,7 +24,9 @@ export interface AppSidebarProps {
   children: ReactNode
   /** Show the current-user avatar + account menu on the rail. */
   showFooter?: boolean
-  /** Hide the whole column on small screens (used by the marketing empty state). */
+  /** Hide the whole column below `md`, where the mobile chrome (BottomTabBar /
+   * MobileDrawer / MobileHeader) navigates instead. On by default — pass `false`
+   * only if a screen genuinely needs the rail at phone width. */
   responsive?: boolean
   /** Panel width utility (default 'w-56'). The group-chat list passes a wider
    * value so its chats have more breathing room. */
@@ -42,27 +43,15 @@ export function AppSidebar({
   headerAction,
   children,
   showFooter = true,
-  responsive = false,
+  responsive = true,
   panelWidth = 'w-56',
 }: AppSidebarProps) {
   const user = useAuthStore((s) => s.user)
-  const logout = useAuthStore((s) => s.logout)
-  const resetGroups = useGroupsStore((s) => s.reset)
   const go = useNavStore((s) => s.go)
-  const setGroup = useNavStore((s) => s.setGroup)
   const openProfile = useNavStore((s) => s.openProfile)
+  // Shared with ProfilePage's mobile sign-out, so the two can't drift.
+  const handleSignOut = useSignOut()
   const [menuOpen, setMenuOpen] = useState(false)
-
-  // Clear the Better Auth session (cookie) + local state, then return to sign-in.
-  // Reset the selected group to the sentinel so the next account never targets
-  // the previous one's room before its own load() runs.
-  const handleSignOut = async () => {
-    await signOut()
-    logout()
-    resetGroups()
-    setGroup(0)
-    go('sign-in')
-  }
 
   const displayName = user?.display_name ?? user?.username ?? 'You'
 
@@ -169,7 +158,9 @@ function RailButton({
       aria-label={label}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'group relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
+        // tap-target: the tile stays 40px; only the hit area reaches 44px, which
+        // matters on touch tablets at ≥md where this rail is still shown.
+        'group tap-target relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
         active
           ? 'bg-surface-inverse text-white'
           : 'text-text-muted hover:bg-surface-raised/70 hover:text-text',

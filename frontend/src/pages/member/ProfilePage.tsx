@@ -1,9 +1,12 @@
 import { useEffect } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Avatar, Badge, Button, Icon } from '@/components/ui'
+import { BottomTabBar, TabBarSpacer } from '@/components/layout/BottomTabBar'
 import { EASE } from '@/lib/motion'
 import { PreferenceTag } from '@/components/profile/PreferenceTag'
 import { CUISINES, DIETARY_RESTRICTIONS, isAllergen, labelFor } from '@/constants/dietary'
+import { useIsMobile } from '@/hooks/useIsMobile'
+import { useSignOut } from '@/hooks/useSignOut'
 import { useAuthStore } from '@/stores/authStore'
 import { useProfileStore } from '@/stores/profileStore'
 import { useNavStore } from '@/stores/navStore'
@@ -13,6 +16,12 @@ import { useRestaurantStore } from '@/stores/restaurantStore'
 // Profile (dining preferences). Mirrors the "[Orange] Profile" wireframe.
 export function ProfilePage() {
   const reduce = useReducedMotion()
+  // Below `md` the profile is a bottom-tab ROOT, and the other two roots (Groups,
+  // Events) paint instantly — an entrance fade/rise only here makes tapping the
+  // Profile tab feel slower than its neighbours. Keep it at ≥md, where the page is
+  // PUSHED from the rail's account menu and the motion reads as the push.
+  const isMobile = useIsMobile()
+  const animate = !isMobile && !reduce
   const go = useNavStore((s) => s.go)
   const returnTo = useNavStore((s) => s.returnTo)
   const user = useAuthStore((s) => s.user)
@@ -21,6 +30,8 @@ export function ProfilePage() {
   const restaurantsById = useRestaurantStore((s) => s.byId)
   const restaurantsLoaded = useRestaurantStore((s) => s.loaded)
   const loadRestaurants = useRestaurantStore((s) => s.load)
+  // Same flow the sidebar rail's AccountMenu uses, so the two can't drift.
+  const handleSignOut = useSignOut()
 
   useEffect(() => {
     if (!profile) void load()
@@ -40,52 +51,71 @@ export function ProfilePage() {
 
   return (
     <motion.div
-      className="h-screen overflow-y-auto bg-surface-raised"
-      initial={{ opacity: 0, y: reduce ? 0 : 8 }}
+      className="h-dvh overflow-y-auto bg-surface-raised"
+      initial={animate ? { opacity: 0, y: 8 } : false}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: reduce ? 0.15 : 0.3, ease: EASE }}
+      transition={animate ? { duration: 0.3, ease: EASE } : { duration: 0 }}
     >
       <div className="mx-auto max-w-3xl">
         {/* Header bar */}
-        <div className="flex items-start justify-between gap-4 border-b border-border px-8 py-6">
-          <div>
+        <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-6 sm:px-8">
+          <div className="min-w-0">
+            {/* Back — DESKTOP ONLY. At ≥md the profile is pushed from the rail's
+                account menu, so it has an origin to return to (returnTo). Below
+                `md` it's a tab ROOT reached from the bottom bar: there is nothing
+                to go back to, and the chevron would strand the user on whichever
+                screen returnTo happened to be stamped with. */}
             <button
               onClick={() => go(returnTo)}
-              className="mb-2 flex items-center gap-1 text-sm text-text-muted hover:text-text"
+              className="tap-target mb-2 hidden items-center gap-1 text-body text-text-muted hover:text-text md:flex"
             >
               <Icon name="chevron-left" size={14} /> Back
             </button>
-            <h1 className="font-display text-2xl font-bold text-text">Your profile</h1>
-            <p className="text-sm text-text-muted">
+            <h1 className="font-display text-display font-bold text-text">Your profile</h1>
+            <p className="text-body text-text-muted">
               Set once — your agent remembers this for every session
             </p>
           </div>
           <Button
             variant="primary"
+            className="shrink-0"
             leftIcon={<Icon name="pencil" size={14} />}
             onClick={() => go('profile-edit')}
           >
-            Edit profile
+            {/* "Edit profile" is too wide to sit beside the title at 390px; the
+                pencil already carries the meaning, so drop the noun below `sm`
+                rather than stacking the button under a wrapped subtitle. */}
+            <span className="sm:hidden">Edit</span>
+            <span className="hidden sm:inline">Edit profile</span>
           </Button>
         </div>
 
-        <div className="flex flex-col gap-8 px-8 py-6">
-          {/* Identity row */}
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-8 px-4 py-6 sm:px-8">
+          {/* Identity row — stacks below `sm`: the avatar + name + email and the
+              "Preferences saved" confirmation can't share one 390px row. */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div className="flex min-w-0 items-center gap-4">
               <Avatar name={displayName} src={user?.avatar_url} size="lg" colorClass="member-purple" />
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="font-display text-xl font-bold text-text">{displayName}</h2>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-display text-panel-title font-bold text-text">{displayName}</h2>
                   <Badge tone="neutral">Member</Badge>
                 </div>
-                <p className="text-sm text-text-muted">
+                {/* Handle and email are separate lines, not "@you · a@b.com" on
+                    one truncated row: at 390px the avatar + gap leave ~250px, so
+                    a real address was always clipped mid-domain (or cut entirely
+                    when the handle was long). The email wraps on `break-words`
+                    instead of truncating — an address you can't read in full is
+                    useless here, and it's the field users check. */}
+                <p className="truncate text-body text-text-muted">
                   @{user?.username ?? 'you'}
-                  {user?.email ? ` · ${user.email}` : ''}
                 </p>
+                {user?.email && (
+                  <p className="break-words text-body text-text-muted">{user.email}</p>
+                )}
               </div>
             </div>
-            <span className="flex items-center gap-1.5 text-sm font-medium text-text-muted">
+            <span className="flex shrink-0 items-center gap-1.5 text-body font-medium text-text-muted">
               <Icon name="check" size={14} /> Preferences saved
             </span>
           </div>
@@ -175,8 +205,8 @@ export function ProfilePage() {
                         {r.cuisine_tags?.[0] ? '🍽️' : '🍽️'}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-text">{r.name}</p>
-                        <p className="truncate text-xs text-text-muted">
+                        <p className="truncate text-body font-semibold text-text">{r.name}</p>
+                        <p className="truncate text-caption text-text-muted">
                           {r.cuisine_tags?.[0] ?? 'Restaurant'}
                           {r.price_avg != null ? ` · ~$${r.price_avg}` : ''}
                         </p>
@@ -188,8 +218,22 @@ export function ProfilePage() {
               </div>
             )}
           </Section>
+
+          {/* Sign out — MOBILE ONLY. At ≥md this lives in the sidebar rail's
+              AccountMenu, but that rail is hidden below `md`, so this is the only
+              way out of the app at phone width. */}
+          <div className="border-t border-border pt-5 md:hidden">
+            <Button variant="ghost" fullWidth className="text-error" onClick={() => void handleSignOut()}>
+              Sign out
+            </Button>
+          </div>
         </div>
+
+        {/* Clears the fixed tab bar so the last row isn't trapped under it. */}
+        <TabBarSpacer />
       </div>
+
+      <BottomTabBar />
     </motion.div>
   )
 }
@@ -197,7 +241,7 @@ export function ProfilePage() {
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-text-subtle">
+      <h3 className="text-overline font-semibold uppercase tracking-wide text-text-subtle">
         {label}
       </h3>
       {children}
@@ -220,8 +264,8 @@ function InfoRow({
         <Icon name={icon} size={16} />
       </span>
       <div>
-        <p className="text-sm font-semibold text-text">{title}</p>
-        <p className="text-sm text-text-muted">{value}</p>
+        <p className="text-body font-semibold text-text">{title}</p>
+        <p className="text-body text-text-muted">{value}</p>
       </div>
     </div>
   )
@@ -229,7 +273,7 @@ function InfoRow({
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-input border border-dashed border-border bg-surface-sunken px-4 py-3 text-sm text-text-muted">
+    <p className="rounded-input border border-dashed border-border bg-surface-sunken px-4 py-3 text-body text-text-muted">
       {children}
     </p>
   )

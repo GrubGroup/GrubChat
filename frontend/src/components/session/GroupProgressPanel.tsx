@@ -35,8 +35,8 @@ export function GroupProgressPanel({ groupId, headerOnly, rosterOnly }: GroupPro
   const header = (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-text">Group progress</span>
-        <span className="text-xs font-semibold text-text-muted">
+        <span className="text-caption font-semibold text-text">Group progress</span>
+        <span className="text-caption font-semibold text-text-muted">
           {doneCount}/{total}
         </span>
       </div>

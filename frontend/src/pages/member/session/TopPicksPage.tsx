@@ -4,7 +4,11 @@ import { GroupsSidebar } from '@/components/session/GroupsSidebar'
 import { RankedRestaurantCard } from '@/components/restaurant/RankedRestaurantCard'
 import { RestaurantHeader } from '@/components/restaurant/RestaurantHeader'
 import { MenuList } from '@/components/restaurant/MenuList'
+import { MobileHeader } from '@/components/layout/MobileHeader'
 import { Button, Icon, Spinner } from '@/components/ui'
+import { useDismissOnBack } from '@/hooks/useDismissOnBack'
+import { useIsMobile } from '@/hooks/useIsMobile'
+import { cn } from '@/utils/cn'
 import {
   useSessionStore,
   selectSession,
@@ -44,6 +48,9 @@ export function TopPicksPage() {
 
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [confirming, setConfirming] = useState(false)
+  // Below `md` the 420px list + detail split becomes a drill-down: the list is the
+  // screen, and tapping a card pushes the detail over it.
+  const isMobile = useIsMobile()
 
   // Subscribe to the live socket while the results screen is up, so a session:picks
   // broadcast renders picks IMMEDIATELY instead of waiting for the next poll tick.
@@ -80,6 +87,13 @@ export function TopPicksPage() {
   // Default the detail panel to the top pick.
   const activeId = selectedId ?? picks[0]?.restaurant_id ?? null
   const active = picks.find((p) => p.restaurant_id === activeId)
+  const activeRank = active ? picks.findIndex((p) => p.restaurant_id === active.restaurant_id) + 1 : 0
+
+  // Mobile drill-down: keyed off `selectedId` specifically, NOT `activeId` — the
+  // latter auto-selects the top pick, which would open the detail immediately and
+  // hide the list the user is meant to land on. Back returns to the list.
+  const mobileDetailOpen = isMobile && selectedId != null && active != null
+  useDismissOnBack(mobileDetailOpen, () => setSelectedId(null))
 
   // Distinct results states (replacing a single permanent "Loading picks…"):
   //   loading → nothing renderable YET (no picks resolved against the catalog)
@@ -121,13 +135,13 @@ export function TopPicksPage() {
   // panel spinner. The sidebar stays put so the app frame never flickers.
   if (isLoading) {
     return (
-      <div className="flex h-screen overflow-hidden bg-surface">
+      <div className="flex h-dvh overflow-hidden bg-surface">
         <GroupsSidebar />
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 text-text-muted">
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-text-muted">
           <Spinner size="lg" className="text-primary" />
           <div className="flex flex-col items-center gap-1 text-center">
-            <p className="text-sm font-medium text-text">Finding the group's picks…</p>
-            <p className="max-w-xs text-xs text-text-muted">
+            <p className="text-body font-medium text-text">Finding the group's picks…</p>
+            <p className="max-w-xs text-caption text-text-muted">
               Matching everyone's preferences, budget, and location. This can take a moment.
             </p>
           </div>
@@ -136,22 +150,63 @@ export function TopPicksPage() {
     )
   }
 
+  // Nothing renderable and nothing still coming — so this is either the read-back
+  // error or a recommendation with no group-wide match. Both used to live INSIDE
+  // the detail pane, which is hidden at phone width; taking over the whole results
+  // area instead makes them reachable everywhere (and the list is empty regardless).
+  if (picks.length === 0) {
+    return (
+      <div className="flex h-dvh overflow-hidden bg-surface">
+        <GroupsSidebar />
+        <div className="flex flex-1 flex-col overflow-y-auto">
+          <MobileHeader className="md:hidden" onBack={() => go('group-chat')} title="Top picks" />
+          {isError ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+              <p className="text-body font-medium text-text">Couldn't load results</p>
+              <p className="max-w-xs text-caption text-text-muted">
+                Something went wrong fetching the group's picks. Give it another try.
+              </p>
+              <Button variant="primary" size="sm" onClick={() => void loadRecommendation(groupId)}>
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+              <p className="text-body font-medium text-text">No matching spots found</p>
+              <p className="max-w-xs text-caption text-text-muted">
+                We couldn't find restaurants that fit everyone's budget and location. Try a
+                wider budget or a more central meeting spot next time.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex h-screen overflow-hidden bg-surface">
+    <div className="flex h-dvh overflow-hidden bg-surface">
       <GroupsSidebar />
 
-      {/* Center: ranked list */}
-      <div className="flex w-[420px] shrink-0 flex-col overflow-y-auto border-r border-border bg-surface">
+      {/* Center: ranked list. Full width below `md` — it IS the screen there — and
+          the fixed 420px column at ≥md. Hidden while the mobile detail is pushed
+          over it; at ≥md both columns always show. */}
+      <div
+        className={cn(
+          'w-full shrink-0 flex-col overflow-y-auto border-r border-border bg-surface pb-safe-b md:w-[420px] md:pb-0',
+          mobileDetailOpen ? 'hidden md:flex' : 'flex',
+        )}
+      >
         <div className="px-4 pb-2 pt-4">
           {/* Back to the group chat — same muted chevron style as Profile/Edit. */}
           <button
             onClick={() => go('group-chat')}
-            className="mb-2 flex items-center gap-1 text-sm text-text-muted hover:text-text"
+            className="tap-target mb-2 flex items-center gap-1 text-body text-text-muted hover:text-text"
           >
             <Icon name="chevron-left" size={14} /> Back
           </button>
-          <h1 className="font-display text-lg font-bold text-text">Top picks for your group</h1>
-          <p className="text-xs text-text-muted">
+          <h1 className="font-display text-panel-title font-bold text-text">Top picks for your group</h1>
+          <p className="text-caption text-text-muted">
             Matched to everyone's preferences · vote for your favorite
           </p>
         </div>
@@ -175,11 +230,27 @@ export function TopPicksPage() {
         ))}
       </div>
 
-      {/* Right: live detail of the selected pick */}
-      <div className="flex flex-1 flex-col overflow-y-auto">
+      {/* Right: live detail of the selected pick. At ≥md it's always the second
+          column beside the list. Below `md` it's a PUSHED SCREEN — shown only once
+          a card has been tapped, with its own back header instead of a chevron
+          floating over the content. */}
+      <div
+        className={cn(
+          'flex-1 flex-col overflow-y-auto',
+          mobileDetailOpen ? 'flex' : 'hidden md:flex',
+        )}
+      >
         {active ? (
           <>
-            <div className="flex flex-col gap-5 p-6">
+            <MobileHeader
+              className="md:hidden"
+              onBack={() => setSelectedId(null)}
+              title={active.restaurant.name}
+              // "#2 of 5" — the rank is on the list card, so carry it across the
+              // push so the pushed screen still says where you are in the ranking.
+              subtitle={`#${activeRank} of ${picks.length}`}
+            />
+            <div className="flex flex-col gap-5 p-4 md:p-6">
               <RestaurantHeader
                 restaurant={active.restaurant}
                 matchScorePct={active.match_score != null ? Math.round(active.match_score * 100) : undefined}
@@ -187,52 +258,47 @@ export function TopPicksPage() {
               <MenuList restaurantId={active.restaurant_id} />
               {active.justification && (
                 <div className="rounded-card bg-surface-sunken p-4">
-                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                  <p className="mb-1 text-overline font-semibold uppercase tracking-wide text-text-muted">
                     Why it matched
                   </p>
-                  <p className="text-sm text-text-muted">{active.justification}</p>
+                  <p className="text-body text-text-muted">{active.justification}</p>
                 </div>
               )}
             </div>
-            <div className="mt-auto border-t border-border bg-surface-raised p-4">
-              {isHost ? (
-                <>
-                  <Button
-                    fullWidth
-                    variant="primary"
-                    isLoading={confirming}
-                    onClick={() => void handleConfirm()}
-                  >
-                    Confirm this restaurant
-                  </Button>
-                  <p className="mt-2 text-center text-xs text-text-muted">
-                    This creates the event and notifies your whole group
+            {/* Outer div carries pb-safe-b so the confirm CTA clears the iOS home
+                indicator; the inner one keeps the constant 1rem padding. */}
+            <div className="mt-auto shrink-0 border-t border-border bg-surface-raised pb-safe-b">
+              <div className="p-4">
+                {isHost ? (
+                  <>
+                    <Button
+                      fullWidth
+                      variant="primary"
+                      isLoading={confirming}
+                      onClick={() => void handleConfirm()}
+                    >
+                      Confirm this restaurant
+                    </Button>
+                    <p className="mt-2 text-center text-caption text-text-muted">
+                      This creates the event and notifies your whole group
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-center text-caption text-text-muted">
+                    Vote for your favorite — the host confirms the final pick.
                   </p>
-                </>
-              ) : (
-                <p className="text-center text-xs text-text-muted">
-                  Vote for your favorite — the host confirms the final pick.
-                </p>
-              )}
+                )}
+              </div>
             </div>
           </>
-        ) : isError ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-            <p className="text-sm font-medium text-text">Couldn't load results</p>
-            <p className="max-w-xs text-xs text-text-muted">
-              Something went wrong fetching the group's picks. Give it another try.
-            </p>
-            <Button variant="primary" size="sm" onClick={() => void loadRecommendation(groupId)}>
-              Retry
-            </Button>
-          </div>
         ) : (
-          // Empty: a recommendation came back with nothing that matches the group.
+          // Only reachable if `selectedId` went stale against a re-ranked list —
+          // picks are non-empty by here (the error/empty states return above).
           <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
-            <p className="text-sm font-medium text-text">No matching spots found</p>
-            <p className="max-w-xs text-xs text-text-muted">
-              We couldn't find restaurants that fit everyone's budget and location. Try a
-              wider budget or a more central meeting spot next time.
+            <p className="text-body font-medium text-text">Pick updated</p>
+            <p className="max-w-xs text-caption text-text-muted">
+              That spot is no longer in the group's top picks — choose another from the
+              list.
             </p>
           </div>
         )}

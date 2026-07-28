@@ -82,18 +82,18 @@ export function RankedRestaurantCard({
       )}
     >
       <div className="flex items-start gap-3">
-        <span className="pt-0.5 text-sm font-semibold text-text-muted">{rank}</span>
+        <span className="pt-0.5 text-body font-semibold text-text-muted">{rank}</span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <span className="font-display text-[15px] font-semibold text-text">{restaurant.name}</span>
             {pct != null && (
-              <span className="font-display text-lg font-bold text-primary">
+              <span className="font-display text-section-title font-bold text-primary">
                 <AnimatedPct value={pct} />
-                <span className="text-xs">%</span>
+                <span className="text-caption">%</span>
               </span>
             )}
           </div>
-          <div className="mt-0.5 flex items-center gap-2 text-xs text-text-muted">
+          <div className="mt-0.5 flex items-center gap-2 text-caption text-text-muted">
             <span className="flex items-center gap-1">
               <Icon name="map-pin" size={11} />
               {restaurant.address?.split(',')[0]?.slice(0, 14) ?? 'nearby'}
@@ -128,16 +128,18 @@ export function RankedRestaurantCard({
       </div>
 
       {pick.justification && (
-        <p className="ml-6 line-clamp-2 text-xs text-text-muted">{pick.justification}</p>
+        <p className="ml-6 line-clamp-2 text-caption text-text-muted">{pick.justification}</p>
       )}
 
       <div className="ml-6 flex items-center justify-between">
-        <span className="text-xs text-text-muted">
+        <span className="text-caption text-text-muted">
           {pick.voteCount} {pick.voteCount === 1 ? 'vote' : 'votes'}
         </span>
         <Button
           variant={hasVoted ? 'primary' : 'ghost'}
           size="sm"
+          // tap-target: the 36px pill is unchanged; only the hit area reaches 44px.
+          className="tap-target"
           leftIcon={hasVoted ? <Icon name="check" size={13} /> : undefined}
           onClick={(e) => {
             e.stopPropagation()

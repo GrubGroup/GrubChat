@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Session } from "@/types";
 import { Button, Chip, Icon, Input, Modal } from "@/components/ui";
 import { usePlacesInput } from "@/hooks/usePlacesInput";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import { cn } from "@/utils/cn";
 import { createSession, geocodeAddress } from "@/api/sessionApi";
 
@@ -53,6 +54,9 @@ export function HostSessionModal({
   groupId,
   onCreated,
 }: HostSessionModalProps) {
+  // A full-height sheet on a phone, the centered dialog on desktop. This form is
+  // the app's tallest — as a centered dialog at 844px it would run off screen.
+  const isMobile = useIsMobile();
   const [occasion, setOccasion] = useState("");
   const location = usePlacesInput("");
   const [geoStatus, setGeoStatus] = useState<GeoStatus>("idle");
@@ -153,11 +157,38 @@ export function HostSessionModal({
       onClose={onClose}
       title="Start a group session"
       size="md"
+      variant={isMobile ? "sheet" : "center"}
+      // Sticky footer so "Start session" stays reachable while the form scrolls.
+      footer={
+        <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <Button
+            variant="accent"
+            fullWidth={isMobile}
+            leftIcon={<Icon name="sparkles" size={14} />}
+            disabled={!canSubmit}
+            isLoading={submitting}
+            onClick={() => void handleSubmit()}
+          >
+            Start session
+          </Button>
+          <Button
+            variant="ghost"
+            fullWidth={isMobile}
+            onClick={onClose}
+            disabled={submitting}
+            // Cancel reads first on desktop, but on a phone the primary action
+            // belongs at the thumb — so reverse the order, not the markup.
+            className="sm:order-first"
+          >
+            Cancel
+          </Button>
+        </div>
+      }
     >
       <div className="flex flex-col gap-5">
         {/* Occasion */}
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-text">
+          <label className="text-body font-medium text-text">
             What's the occasion?
           </label>
           <div className="flex flex-wrap gap-2">
@@ -179,7 +210,7 @@ export function HostSessionModal({
 
         {/* Location — geocode-validated */}
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-text">
+          <label className="text-body font-medium text-text">
             Where should we meet?
           </label>
           <div className="flex items-start gap-2">
@@ -221,7 +252,7 @@ export function HostSessionModal({
                           e.preventDefault();
                           handleSelectSuggestion(s.placeId);
                         }}
-                        className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm text-text hover:bg-surface-sunken"
+                        className="flex w-full items-start gap-2 px-3 py-2 text-left text-body text-text hover:bg-surface-sunken"
                       >
                         <Icon
                           name="map-pin"
@@ -249,7 +280,7 @@ export function HostSessionModal({
 
         {/* Date & time — Now / Schedule */}
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-text">When?</label>
+          <label className="text-body font-medium text-text">When?</label>
           <div className="flex gap-2">
             {(["now", "schedule"] as const).map((mode) => (
               <button
@@ -257,7 +288,7 @@ export function HostSessionModal({
                 type="button"
                 onClick={() => setTimeMode(mode)}
                 className={cn(
-                  "flex-1 rounded-input border px-3 py-2 text-sm font-medium transition-colors",
+                  "flex-1 rounded-input border px-3 py-2 text-body font-medium transition-colors",
                   timeMode === mode
                     ? "border-surface-inverse bg-surface-inverse text-white"
                     : "border-border bg-surface-sunken text-text-muted hover:border-border-strong",
@@ -268,18 +299,22 @@ export function HostSessionModal({
             ))}
           </div>
           {timeMode === "schedule" && (
-            <div className="flex gap-2">
+            // Stacked on a phone: two flex-1 siblings collide at 390px because
+            // iOS renders the native date control at a fixed intrinsic width.
+            <div className="flex flex-col gap-2 sm:flex-row">
               <input
                 type="date"
+                aria-label="Date"
                 value={date}
                 min={todayIso()}
                 onChange={(e) => setDate(e.target.value)}
-                className="h-11 flex-1 rounded-input border border-border bg-surface-sunken px-3 text-text focus:outline-none focus:ring-2 focus:ring-focus-ring"
+                className="h-11 w-full min-w-0 rounded-input border border-border bg-surface-sunken px-3 text-text focus:outline-none focus:ring-2 focus:ring-focus-ring sm:flex-1"
               />
               <select
+                aria-label="Time"
                 value={hour}
                 onChange={(e) => setHour(Number(e.target.value))}
-                className="h-11 flex-1 rounded-input border border-border bg-surface-sunken px-3 text-text focus:outline-none focus:ring-2 focus:ring-focus-ring"
+                className="h-11 w-full min-w-0 rounded-input border border-border bg-surface-sunken px-3 text-text focus:outline-none focus:ring-2 focus:ring-focus-ring sm:flex-1"
               >
                 {HOUR_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
@@ -293,39 +328,24 @@ export function HostSessionModal({
 
         {/* Answer window */}
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-text">
+          <label className="text-body font-medium text-text">
             Members answer within
           </label>
-          <select
-            value={timeLimit}
-            onChange={(e) => setTimeLimit(Number(e.target.value))}
-            className="h-11 rounded-input border border-border bg-surface-sunken px-3 text-text focus:outline-none focus:ring-2 focus:ring-focus-ring"
-          >
+          {/* Chips, not a <select>: with only 6 fixed options every choice is
+              visible and one tap away, instead of a picker wheel. */}
+          <div className="flex flex-wrap gap-2">
             {TIME_LIMIT_OPTIONS.map((m) => (
-              <option key={m} value={m}>
-                {m} minutes
-              </option>
+              <Chip
+                key={m}
+                label={`${m} min`}
+                selected={timeLimit === m}
+                onToggle={() => setTimeLimit(m)}
+              />
             ))}
-          </select>
+          </div>
         </div>
 
-        {error && <p className="text-sm text-error">{error}</p>}
-
-        {/* Footer */}
-        <div className="flex justify-end gap-2 pt-1">
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button
-            variant="accent"
-            leftIcon={<Icon name="sparkles" size={14} />}
-            disabled={!canSubmit}
-            isLoading={submitting}
-            onClick={() => void handleSubmit()}
-          >
-            Start session
-          </Button>
-        </div>
+        {error && <p className="text-body text-error">{error}</p>}
       </div>
     </Modal>
   );

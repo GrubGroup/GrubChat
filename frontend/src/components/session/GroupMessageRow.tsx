@@ -36,7 +36,7 @@ export function GroupMessageRow({ message, currentUserId, isNew = false, members
   // matching the "… started a session" style.
   if (message.type === 'system') {
     return (
-      <div className={cn('flex items-center gap-3 py-1 text-caption text-text-muted', pop)}>
+      <div className={cn('flex items-center gap-3 py-1 text-caption-touch text-text-muted md:text-caption', pop)}>
         <span className="h-px flex-1 bg-border" />
         {message.text}
         <span className="h-px flex-1 bg-border" />
@@ -51,8 +51,10 @@ export function GroupMessageRow({ message, currentUserId, isNew = false, members
   if (isOwn) {
     return (
       <div className={cn('flex items-end justify-end gap-2', pop)}>
-        <span className="text-caption text-text-muted">{time}</span>
-        <div className="max-w-[70%] rounded-2xl rounded-tr-md bg-surface-inverse px-3.5 py-2 text-body text-white">
+        <span className="shrink-0 text-caption-touch text-text-muted md:text-caption">{time}</span>
+        {/* break-words: an unbroken run (a pasted URL) would otherwise blow past
+            the bubble and give the whole page horizontal scroll at 390px. */}
+        <div className="max-w-[70%] break-words rounded-2xl rounded-tr-md bg-surface-inverse px-4 py-2.5 text-body-touch text-white md:px-3.5 md:py-2 md:text-body">
           {message.text}
         </div>
       </div>
@@ -60,15 +62,17 @@ export function GroupMessageRow({ message, currentUserId, isNew = false, members
   }
 
   return (
-    <div className={cn('flex items-start gap-2.5', pop)}>
+    <div className={cn('flex min-w-0 items-start gap-2.5', pop)}>
       <Avatar name={name} size="sm" colorClass={memberColor(message.userId ?? -1)} />
-      <div className="flex flex-col gap-0.5">
-        <span className="text-caption text-text-muted">{name}</span>
-        <div className="flex items-end gap-2">
-          <div className="max-w-md rounded-2xl rounded-tl-md bg-surface-sunken px-3.5 py-2 text-body text-text">
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-caption-touch text-text-muted md:text-caption">{name}</span>
+        <div className="flex min-w-0 items-end gap-2">
+          {/* max-w-md (448px) is a no-op at 390px, so bubbles ran edge-to-edge
+              with no room for the timestamp — cap by percentage on mobile. */}
+          <div className="max-w-[85%] break-words rounded-2xl rounded-tl-md bg-surface-sunken px-4 py-2.5 text-body-touch text-text md:max-w-md md:px-3.5 md:py-2 md:text-body">
             {message.text}
           </div>
-          <span className="text-caption text-text-muted">{time}</span>
+          <span className="shrink-0 text-caption-touch text-text-muted md:text-caption">{time}</span>
         </div>
       </div>
     </div>

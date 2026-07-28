@@ -52,7 +52,8 @@ function TagPills({ tags }: { tags: string[] }) {
       {overflow > 0 && (
         <button
           onClick={() => setExpanded((v) => !v)}
-          className="rounded-pill px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-surface-sunken"
+          // tap-target: the pill stays its small size, the hit area reaches 44px.
+          className="tap-target rounded-pill px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-surface-sunken"
         >
           {expanded ? 'show less' : `+${overflow} more`}
         </button>
@@ -167,8 +168,8 @@ export function NotedSoFarPanel({ groupId }: NotedSoFarPanelProps) {
               key={row.key}
               className={
                 hasContent
-                  ? 'flex flex-col gap-1 rounded-input bg-surface-raised px-2.5 py-2 text-xs text-text'
-                  : 'flex items-center gap-2 rounded-input px-2.5 py-2 text-xs text-text-subtle'
+                  ? 'flex flex-col gap-1 rounded-input bg-surface-raised px-2.5 py-2 text-caption text-text'
+                  : 'flex items-center gap-2 rounded-input px-2.5 py-2 text-caption text-text-subtle'
               }
             >
               <span className="flex items-center gap-2">

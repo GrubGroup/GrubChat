@@ -55,9 +55,13 @@ export function SessionCard({
   const canForceFinish = isHost && !complete && onForceFinish != null
   return (
     <div className="rounded-card border border-primary/40 bg-surface-raised p-4 shadow-sm">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-pill bg-primary" />
+      {/* Below `md` the CTA drops to its own FULL-WIDTH row under the status line —
+          the wireframe's one intentional deviation from desktop on this frame.
+          "Review your answers" alone is wider than what's left of 390px beside
+          the label + countdown, so inline is not an option there. */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="h-2 w-2 shrink-0 rounded-pill bg-primary" />
           <span className="font-semibold text-text">
             {state === 'waiting'
               ? 'Waiting for others'
@@ -71,24 +75,24 @@ export function SessionCard({
           )}
         </div>
         {state === 'not-joined' && (
-          <Button size="sm" variant="primary" onClick={onJoin}>
+          <Button size="sm" fullWidth className="md:w-auto" variant="primary" onClick={onJoin}>
             Join
           </Button>
         )}
         {state === 'continue' && (
-          <Button size="sm" variant="accent" onClick={onContinue}>
+          <Button size="sm" fullWidth className="md:w-auto" variant="accent" onClick={onContinue}>
             Continue
           </Button>
         )}
         {state === 'waiting' && (
-          <Button size="sm" variant="secondary" onClick={onReview}>
+          <Button size="sm" fullWidth className="md:w-auto" variant="secondary" onClick={onReview}>
             Review your answers
           </Button>
         )}
         {complete && (
           <button
             onClick={onViewResults}
-            className="flex items-center gap-1.5 rounded-input bg-success px-3 py-1.5 text-xs font-medium text-white"
+            className="flex h-9 w-full items-center justify-center gap-1.5 rounded-input bg-success px-3 text-caption font-medium text-white md:h-auto md:w-auto md:py-1.5"
           >
             <Icon name="utensils" size={12} /> Results
           </button>
@@ -107,7 +111,7 @@ export function SessionCard({
             />
           ))}
         </div>
-        <span className="text-xs text-text-muted">
+        <span className="text-caption text-text-muted">
           {readyCount} of {total} ready
         </span>
       </div>
@@ -121,7 +125,7 @@ export function SessionCard({
         <button
           onClick={onForceFinish}
           disabled={forcing}
-          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-input border border-border px-3 py-1.5 text-xs font-medium text-text-muted hover:bg-surface-sunken hover:text-text disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-input border border-border px-3 py-1.5 text-caption font-medium text-text-muted hover:bg-surface-sunken hover:text-text disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Icon name="sparkles" size={12} />
           {forcing ? 'Finishing…' : 'Force finish & see results'}
