@@ -25,6 +25,9 @@ export interface SessionMember {
   user_id: number
   display_name?: string | null
   username?: string | null
+  // OAuth profile photo (Better Auth image); null for email/password users,
+  // where session avatars fall back to colored initials.
+  avatar_url?: string | null
   status: boolean // true = done sharing preferences
   joined_at: string
 }

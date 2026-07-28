@@ -20,7 +20,7 @@ export function MemberRoster({ members, currentUserId }: MemberRosterProps) {
         const isYou = m.user_id === currentUserId
         return (
           <li key={m.user_id} className="flex items-center gap-2">
-            <Avatar name={name} size="sm" colorClass={memberColor(m.user_id)} />
+            <Avatar name={name} src={m.avatar_url} size="sm" colorClass={memberColor(m.user_id)} />
             <span className="flex-1 text-sm text-text">{isYou ? name : name}</span>
             {/* Crossfade the "marked ready" moment instead of hard-swapping. */}
             <AnimatePresence mode="wait" initial={false}>

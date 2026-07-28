@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useGroupsStore } from '@/stores/groupsStore'
 import { useEventListStore } from '@/stores/eventListStore'
 import { signOut } from '@/lib/authClient'
+import { memberColor } from '@/constants/memberColors'
 import { cn } from '@/utils/cn'
 
 // Shared height for the top row of EVERY column (sidebar panel header, chat
@@ -61,6 +62,10 @@ export function AppSidebar({
   }
 
   const displayName = user?.display_name ?? user?.username ?? 'You'
+  // Deterministic initials color from the user id — the SAME source chat/session
+  // avatars use — so a photoless user's color matches everywhere (was hardcoded
+  // member-purple, which didn't match their chat color).
+  const avatarColor = memberColor(user?.id ?? -1)
 
   return (
     <aside
@@ -92,6 +97,7 @@ export function AppSidebar({
               displayName={displayName}
               username={user?.username ?? 'you'}
               avatarUrl={user?.avatar_url}
+              colorClass={avatarColor}
               onViewProfile={() => navigate('/profile')}
               onSignOut={handleSignOut}
               // Opens beside the rail avatar (bottom-aligned to the right).
@@ -104,7 +110,7 @@ export function AppSidebar({
               aria-label="Account menu"
               className="rounded-pill focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >
-              <Avatar name={displayName} src={user?.avatar_url} size="md" colorClass="member-purple" />
+              <Avatar name={displayName} src={user?.avatar_url} size="md" colorClass={avatarColor} />
             </button>
           </div>
         )}

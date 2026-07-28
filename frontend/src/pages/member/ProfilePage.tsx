@@ -6,6 +6,7 @@ import { EASE } from '@/lib/motion'
 import { PreferenceTag } from '@/components/profile/PreferenceTag'
 import { CUISINES, DIETARY_RESTRICTIONS, isAllergen, labelFor } from '@/constants/dietary'
 import { useAuthStore } from '@/stores/authStore'
+import { memberColor } from '@/constants/memberColors'
 import { useProfileStore } from '@/stores/profileStore'
 import { useRestaurantStore } from '@/stores/restaurantStore'
 
@@ -80,7 +81,12 @@ export function ProfilePage() {
           {/* Identity row */}
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <Avatar name={displayName} src={user?.avatar_url} size="lg" colorClass="member-purple" />
+              <Avatar
+                name={displayName}
+                src={user?.avatar_url}
+                size="lg"
+                colorClass={memberColor(user?.id ?? -1)}
+              />
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="font-display text-xl font-bold text-text">{displayName}</h2>
