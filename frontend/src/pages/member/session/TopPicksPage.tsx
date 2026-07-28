@@ -134,13 +134,25 @@ export function TopPicksPage() {
     return (
       <div className="flex h-screen overflow-hidden bg-surface">
         <GroupsSidebar />
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 text-text-muted">
-          <Spinner size="lg" className="text-primary" />
-          <div className="flex flex-col items-center gap-1 text-center">
-            <p className="text-sm font-medium text-text">Finding the group's picks…</p>
-            <p className="max-w-xs text-xs text-text-muted">
-              Matching everyone's preferences, budget, and location. This can take a moment.
-            </p>
+        <div className="flex flex-1 flex-col">
+          {/* Back to the group chat while picks generate — same style as the
+              loaded view's Back button, so the member isn't stuck on the spinner. */}
+          <div className="px-4 pt-4">
+            <button
+              onClick={() => navigate(`/groups/${groupSlug}`)}
+              className="flex items-center gap-1 text-sm text-text-muted hover:text-text"
+            >
+              <Icon name="chevron-left" size={14} /> Back
+            </button>
+          </div>
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-text-muted">
+            <Spinner size="lg" className="text-primary" />
+            <div className="flex flex-col items-center gap-1 text-center">
+              <p className="text-sm font-medium text-text">Finding the group's picks…</p>
+              <p className="max-w-xs text-xs text-text-muted">
+                Matching everyone's preferences, budget, and location. This can take a moment.
+              </p>
+            </div>
           </div>
         </div>
       </div>
