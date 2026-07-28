@@ -5,6 +5,7 @@ import { AccountMenu } from './AccountMenu'
 import { useAuthStore } from '@/stores/authStore'
 import { useNavStore } from '@/stores/navStore'
 import { useGroupsStore } from '@/stores/groupsStore'
+import { useEventListStore } from '@/stores/eventListStore'
 import { signOut } from '@/lib/authClient'
 import { cn } from '@/utils/cn'
 
@@ -48,6 +49,7 @@ export function AppSidebar({
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
   const resetGroups = useGroupsStore((s) => s.reset)
+  const resetEvents = useEventListStore((s) => s.reset)
   const go = useNavStore((s) => s.go)
   const setGroup = useNavStore((s) => s.setGroup)
   const openProfile = useNavStore((s) => s.openProfile)
@@ -60,6 +62,7 @@ export function AppSidebar({
     await signOut()
     logout()
     resetGroups()
+    resetEvents()
     setGroup(0)
     go('sign-in')
   }

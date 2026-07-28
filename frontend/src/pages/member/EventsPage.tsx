@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { EventRecord } from '@/types'
-import { Avatar, Badge, Icon } from '@/components/ui'
+import { Avatar, Badge, Button, Icon } from '@/components/ui'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { memberColor } from '@/constants/memberColors'
 import { useEventListStore } from '@/stores/eventListStore'
@@ -72,6 +72,7 @@ function EventSection({
 export function EventsPage() {
   const events = useEventListStore((s) => s.events)
   const loaded = useEventListStore((s) => s.loaded)
+  const error = useEventListStore((s) => s.error)
   const load = useEventListStore((s) => s.load)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   // Snapshot "now" once at mount (lazy initializer keeps render pure) — it's the
@@ -102,9 +103,14 @@ export function EventsPage() {
   return (
     <div className="flex h-screen overflow-hidden bg-surface-raised">
       <AppSidebar activeTab="events" eyebrow="Events">
-        {loaded && events.length === 0 && (
+        {loaded && !error && events.length === 0 && (
           <p className="px-4 py-6 text-body text-text-muted">
             No events yet. Start a session and confirm a pick to book one.
+          </p>
+        )}
+        {error && events.length === 0 && (
+          <p className="px-4 py-6 text-body text-text-muted">
+            Couldn't load your events.
           </p>
         )}
         <EventSection
@@ -190,10 +196,28 @@ export function EventsPage() {
               )}
             </div>
           </>
+        ) : error ? (
+          <EventsErrorState onRetry={() => void load()} />
         ) : (
           <EventsEmptyState />
         )}
       </div>
+    </div>
+  )
+}
+
+// Shown when GET /api/events failed — an honest error with a retry, so a read
+// failure surfaces instead of rendering a silent blank page.
+function EventsErrorState({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+      <p className="text-sm font-medium text-text">Couldn't load your events</p>
+      <p className="max-w-xs text-xs text-text-muted">
+        Something went wrong fetching your outings. Give it another try.
+      </p>
+      <Button variant="primary" size="sm" onClick={onRetry}>
+        Retry
+      </Button>
     </div>
   )
 }
