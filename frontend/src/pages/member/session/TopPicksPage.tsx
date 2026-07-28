@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Navigate, useNavigate } from 'react-router'
 import { motion, useReducedMotion } from 'framer-motion'
 import { GroupsSidebar } from '@/components/session/GroupsSidebar'
 import { RankedRestaurantCard } from '@/components/restaurant/RankedRestaurantCard'
@@ -17,14 +18,26 @@ import {
 } from '@/stores/sessionStore'
 import { useRestaurantStore } from '@/stores/restaurantStore'
 import { useAuthStore } from '@/stores/authStore'
-import { useNavStore } from '@/stores/navStore'
+import { useGroupsStore } from '@/stores/groupsStore'
+import { toSlugId } from '@/utils/slug'
+import { useGroupId } from '@/hooks/useGroupId'
+import { useSessionId } from '@/hooks/useSessionId'
+import { useBindSession } from '@/hooks/useBindSession'
 import { EASE } from '@/lib/motion'
 import { closeSession } from '@/api/sessionApi'
 
 export function TopPicksPage() {
   const reduce = useReducedMotion()
-  const go = useNavStore((s) => s.go)
-  const groupId = useNavStore((s) => s.groupId)
+  const navigate = useNavigate()
+  const groupId = useGroupId()
+  const urlSessionId = useSessionId()
+  // Readable slug for this group's URLs (`foodie-friends-42`). Falls back to the
+  // bare id when the group list hasn't landed — still a valid, resolvable path.
+  const groupName = useGroupsStore((s) => s.groups.find((g) => g.id === groupId)?.name)
+  const groupSlug = toSlugId(groupName, groupId)
+  // Cold entry (refresh or a pasted link) reaches these results without having gone
+  // through the group chat, so bind the group's session from the gateway first.
+  const binding = useBindSession(groupId)
   // Session state is keyed by group — read THIS group's slice via selectors.
   const session = useSessionStore(selectSession(groupId))
   const activeSessionId = useSessionStore(selectActiveSessionId(groupId))
@@ -74,10 +87,14 @@ export function TopPicksPage() {
   const active = picks.find((p) => p.restaurant_id === activeId)
 
   // Distinct results states (replacing a single permanent "Loading picks…"):
-  //   loading → a fetch (or restaurant catalog load) is in flight
+  //   loading → the session binding, a fetch, or the restaurant catalog is in flight
   //   error   → the read-back failed; offer a retry
   //   else    → a recommendation exists but nothing renders (no match / not loaded)
-  const isLoading = recommendationLoading || !restaurantsLoaded || (!recommendation && !recommendationError)
+  const isLoading =
+    binding === 'resolving' ||
+    recommendationLoading ||
+    !restaurantsLoaded ||
+    (!recommendation && !recommendationError)
   const isError = recommendationError && picks.length === 0
 
   const handleConfirm = async () => {
@@ -97,8 +114,16 @@ export function TopPicksPage() {
     }
     // Return to the group chat — where the confirmation SYSTEM message and the closed
     // session card appear. Every other member is pulled here too via session:confirmed
-    // (useSessionSync), so the whole group lands in the same place.
-    go('group-chat')
+    // (useSessionSync), so the whole group lands in the same place. That state is
+    // derived from the recommendation/roster, so it needs no dedicated URL.
+    navigate(`/groups/${groupSlug}`)
+  }
+
+  // Guards (after every hook): a stale URL — the group has no open session, or this
+  // one names a different session than the live one — goes back to the group chat.
+  // activeSessionId is the source of truth; the param is only validated against it.
+  if (binding === 'none' || (binding === 'bound' && activeSessionId !== urlSessionId)) {
+    return <Navigate to={`/groups/${groupSlug}`} replace />
   }
 
   // While the group's picks are still being fetched/generated, take over the whole
@@ -131,7 +156,7 @@ export function TopPicksPage() {
         <div className="px-4 pb-2 pt-4">
           {/* Back to the group chat — same muted chevron style as Profile/Edit. */}
           <button
-            onClick={() => go('group-chat')}
+            onClick={() => navigate(`/groups/${groupSlug}`)}
             className="mb-2 flex items-center gap-1 text-sm text-text-muted hover:text-text"
           >
             <Icon name="chevron-left" size={14} /> Back

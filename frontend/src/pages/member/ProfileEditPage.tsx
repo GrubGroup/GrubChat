@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { Avatar, Button, Chip, Icon, Input } from '@/components/ui'
 import { CuisineTriStatePicker } from '@/components/profile/CuisineTriStatePicker'
 import { DIETARY_RESTRICTIONS, isAllergen } from '@/constants/dietary'
 import { updateMe, UserUpdateError } from '@/api/userApi'
 import { useAuthStore } from '@/stores/authStore'
 import { useProfileStore } from '@/stores/profileStore'
-import { useNavStore } from '@/stores/navStore'
 
 const DIET_OPTIONS = DIETARY_RESTRICTIONS.filter((o) => !isAllergen(o.value))
 const ALLERGEN_OPTIONS = DIETARY_RESTRICTIONS.filter((o) => isAllergen(o.value))
@@ -24,7 +24,7 @@ const RADIUS_OPTIONS = [0.5, 1, 2, 5]
 // Mirrors the "[Orange] Edit Profile" wireframe. Saves User via PATCH /user
 // (with username-uniqueness error surfacing) and Profile via the profile store.
 export function ProfileEditPage() {
-  const go = useNavStore((s) => s.go)
+  const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
   const patchUser = useAuthStore((s) => s.patchUser)
 
@@ -98,7 +98,7 @@ export function ProfileEditPage() {
       setFormError('Could not save your preferences. Please try again.')
       return
     }
-    go('profile')
+    navigate('/profile')
   }
 
   const displayNameLabel = displayName || user?.username || 'You'
@@ -110,7 +110,7 @@ export function ProfileEditPage() {
         <div className="flex items-start justify-between gap-4 border-b border-border px-8 py-6">
           <div>
             <button
-              onClick={() => go('profile')}
+              onClick={() => navigate('/profile')}
               className="mb-2 flex items-center gap-1 text-sm text-text-muted hover:text-text"
             >
               <Icon name="chevron-left" size={14} /> Back
@@ -120,7 +120,7 @@ export function ProfileEditPage() {
               Update your details — your agent uses these across every session
             </p>
           </div>
-          <Button variant="ghost" onClick={() => go('profile')}>
+          <Button variant="ghost" onClick={() => navigate('/profile')}>
             Cancel
           </Button>
         </div>
@@ -237,7 +237,7 @@ export function ProfileEditPage() {
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-3 border-t border-border pt-5">
-            <Button variant="ghost" onClick={() => go('profile')}>
+            <Button variant="ghost" onClick={() => navigate('/profile')}>
               Cancel
             </Button>
             <Button variant="primary" onClick={handleSave} isLoading={saving || savingUser}>

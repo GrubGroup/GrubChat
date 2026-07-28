@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link, useParams } from 'react-router'
 import type { EventRecord } from '@/types'
 import { Avatar, Badge, Button, Icon } from '@/components/ui'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { memberColor } from '@/constants/memberColors'
 import { useEventListStore } from '@/stores/eventListStore'
+import { idFromSlug, toSlugId } from '@/utils/slug'
 
 // A cuisine/dietary emoji is not on the API row, so pick a stable default.
 const EVENT_EMOJI = '🍽️'
@@ -18,18 +20,10 @@ function formatEventDate(iso: string): string {
   return `${date} · ${time}`
 }
 
-function EventRow({
-  e,
-  active,
-  onSelect,
-}: {
-  e: EventRecord
-  active: boolean
-  onSelect: () => void
-}) {
+function EventRow({ e, active }: { e: EventRecord; active: boolean }) {
   return (
-    <button
-      onClick={onSelect}
+    <Link
+      to={`/events/${toSlugId(`${e.group_name ?? ''} ${e.restaurant_name}`, e.id)}`}
       className={
         active
           ? 'flex w-full items-center gap-3 border-b border-border bg-surface-sunken px-4 py-3 text-left transition-colors duration-150 ease-out'
@@ -45,7 +39,7 @@ function EventRow({
         </span>
         <p className="truncate text-caption text-text-muted">{formatEventDate(e.date)}</p>
       </div>
-    </button>
+    </Link>
   )
 }
 
@@ -55,12 +49,10 @@ function EventSection({
   label,
   list,
   activeId,
-  onSelect,
 }: {
   label: string
   list: EventRecord[]
   activeId: number | null
-  onSelect: (id: number) => void
 }) {
   if (list.length === 0) return null
   return (
@@ -69,7 +61,7 @@ function EventSection({
         {label}
       </p>
       {list.map((e) => (
-        <EventRow key={e.id} e={e} active={activeId === e.id} onSelect={() => onSelect(e.id)} />
+        <EventRow key={e.id} e={e} active={activeId === e.id} />
       ))}
     </>
   )
@@ -80,7 +72,11 @@ export function EventsPage() {
   const loaded = useEventListStore((s) => s.loaded)
   const error = useEventListStore((s) => s.error)
   const load = useEventListStore((s) => s.load)
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  // Which event the detail pane shows comes from the URL — `/events/:eventId` — so a
+  // booked outing is linkable and survives a refresh. The list read (GET /api/events)
+  // is the only source; there's no fetch-by-id endpoint, so an unknown id simply
+  // falls back to the newest event rather than 404ing.
+  const { eventId } = useParams()
   // Snapshot "now" once at mount (lazy initializer keeps render pure) — it's the
   // upcoming/previous cutoff. A mid-session tick past an event's time isn't worth
   // a re-render; the split refreshes on next mount / navigation.
@@ -90,7 +86,7 @@ export function EventsPage() {
     void load()
   }, [load])
 
-  const active = events.find((e) => e.id === selectedId) ?? events[0] ?? null
+  const active = events.find((e) => e.id === idFromSlug(eventId)) ?? events[0] ?? null
 
   // Split the flat list into outings still ahead (upcoming) vs. past (previous).
   // Cutoff is the exact current time, so an outing earlier today reads as previous.
@@ -108,7 +104,7 @@ export function EventsPage() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-raised">
-      <AppSidebar activeTab="events" eyebrow="Events">
+      <AppSidebar eyebrow="Events">
         {loaded && !error && events.length === 0 && (
           <p className="px-4 py-6 text-body text-text-muted">
             No events yet. Start a session and confirm a pick to book one.
@@ -119,18 +115,8 @@ export function EventsPage() {
             Couldn't load your events.
           </p>
         )}
-        <EventSection
-          label="Upcoming"
-          list={upcoming}
-          activeId={active?.id ?? null}
-          onSelect={setSelectedId}
-        />
-        <EventSection
-          label="Previous"
-          list={previous}
-          activeId={active?.id ?? null}
-          onSelect={setSelectedId}
-        />
+        <EventSection label="Upcoming" list={upcoming} activeId={active?.id ?? null} />
+        <EventSection label="Previous" list={previous} activeId={active?.id ?? null} />
       </AppSidebar>
 
       {/* Detail */}

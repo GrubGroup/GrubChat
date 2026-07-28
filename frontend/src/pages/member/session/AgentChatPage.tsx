@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Navigate, useNavigate } from 'react-router'
 import { GroupsSidebar } from '@/components/session/GroupsSidebar'
 import { ChatStream } from '@/components/session/ChatStream'
 import { GroupProgressPanel } from '@/components/session/GroupProgressPanel'
@@ -26,15 +27,33 @@ import {
   selectIsHost,
 } from '@/stores/sessionStore'
 import { useAuthStore } from '@/stores/authStore'
-import { useNavStore } from '@/stores/navStore'
+import { useGroupsStore } from '@/stores/groupsStore'
+import { toSlugId } from '@/utils/slug'
+import { useGroupId } from '@/hooks/useGroupId'
+import { useSessionId } from '@/hooks/useSessionId'
+import { useBindSession } from '@/hooks/useBindSession'
 import { useSocket } from '@/hooks/useSocket'
 import { setReady } from '@/api/sessionApi'
 import { chipsForMissing } from '@/constants/agentChat'
 
-export function AgentChatPage() {
-  const screen = useNavStore((s) => s.screen)
-  const groupId = useNavStore((s) => s.groupId)
-  const go = useNavStore((s) => s.go)
+export interface AgentChatPageProps {
+  /** Route-supplied: `…/sessions/:sessionId/done` renders the finished state, where
+   * the transcript stays visible for review and the composer becomes a waiting
+   * footer. */
+  done?: boolean
+}
+
+export function AgentChatPage({ done = false }: AgentChatPageProps) {
+  const navigate = useNavigate()
+  const groupId = useGroupId()
+  const urlSessionId = useSessionId()
+  // Readable slug for this group's URLs (`foodie-friends-42`). Falls back to the
+  // bare id when the group list hasn't landed — still a valid, resolvable path.
+  const groupName = useGroupsStore((s) => s.groups.find((g) => g.id === groupId)?.name)
+  const groupSlug = toSlugId(groupName, groupId)
+  // Cold entry (refresh or a pasted link) has no session in the store yet — the
+  // socket's session:start fired before this page existed. Bind it from the gateway.
+  const binding = useBindSession(groupId)
 
   // Agent-chat transcript + session state are both keyed by group.
   const messages = useChatStore(selectChatMessages(groupId))
@@ -108,10 +127,14 @@ export function AgentChatPage() {
   ])
 
   // The conversation ALWAYS stays visible (matches wireframe). Only the bottom
-  // bar changes: composer → done pill. 'agent-chat-done' shows the pill.
-  const isDone = screen === 'agent-chat-done'
+  // bar changes: composer → done pill, driven by the `/done` child route.
+  const isDone = done
   const [marking, setMarking] = useState(false)
   const [forcing, setForcing] = useState(false)
+
+  // Base path for this session, so the sub-screens can be reached from here.
+  const sessionPath =
+    activeSessionId != null ? `/groups/${groupSlug}/sessions/${activeSessionId}` : null
 
   const handleSend = (text: string) => void sendUserMessage(groupId, text, activeSessionId)
 
@@ -123,7 +146,7 @@ export function AgentChatPage() {
     setForcing(true)
     try {
       await forceFinish(groupId)
-      go('top-picks')
+      if (sessionPath) navigate(`${sessionPath}/picks`)
     } catch {
       // Generation failed to start — stay put so the host can retry / the timer
       // can fall back; the button re-enables below.
@@ -152,8 +175,27 @@ export function AgentChatPage() {
     // Auto-return to the group messenger instead of stranding the user in the private
     // agent chat's "waiting" state. The group-chat session card derives its own
     // waiting → complete/Results state from session state (iAmDone / isComplete) and
-    // updates live over the socket, so no manual back-navigation is needed.
-    go('group-chat')
+    // updates live over the socket, so no manual back-navigation is needed. The
+    // `/done` route stays addressable — the card's "Review" button links to it — it
+    // just isn't where finishing dumps you.
+    navigate(`/groups/${groupSlug}`)
+  }
+
+  // Guards (after every hook, so the hook order never changes):
+  //   none     → the group has no open session, so this URL is stale. Back to the chat.
+  //   mismatch → the URL names a DIFFERENT session than the live one (an old link).
+  //              activeSessionId is the source of truth; the param is only validated.
+  // `replace` keeps the dead URL out of the history stack.
+  if (binding === 'none' || (binding === 'bound' && activeSessionId !== urlSessionId)) {
+    return <Navigate to={`/groups/${groupSlug}`} replace />
+  }
+  // Still asking the gateway — hold the frame rather than flashing an empty chat.
+  if (binding !== 'bound') {
+    return (
+      <div className="flex h-screen items-center justify-center bg-surface">
+        <Spinner size="lg" className="text-primary" />
+      </div>
+    )
   }
 
   return (
@@ -169,7 +211,7 @@ export function AgentChatPage() {
           {/* Dark chat header — matches column header height */}
           <div className={cn('flex items-center gap-3 bg-surface-inverse px-4', COLUMN_HEADER_H)}>
             <button
-              onClick={() => go('group-chat')}
+              onClick={() => navigate(`/groups/${groupSlug}`)}
               className="flex h-8 w-8 items-center justify-center rounded-pill text-white/80 hover:bg-white/10"
             >
               <Icon name="chevron-left" size={18} />
@@ -242,7 +284,7 @@ export function AgentChatPage() {
                   size="lg"
                   variant="accent"
                   rightIcon={<Icon name="arrow-right" size={16} />}
-                  onClick={() => go('top-picks')}
+                  onClick={() => sessionPath && navigate(`${sessionPath}/picks`)}
                 >
                   See the group's results
                 </Button>

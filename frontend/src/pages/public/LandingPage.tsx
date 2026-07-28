@@ -3,7 +3,7 @@ import { motion, useReducedMotion, useScroll, useTransform, type MotionValue } f
 import { Button, Icon, MicPop, Wordmark, type IconName } from '@/components/ui'
 import { EASE, viewport, useFadeUp, makeFloat } from '@/lib/motion'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
-import { useNavStore } from '@/stores/navStore'
+import { useNavigate } from 'react-router'
 import { cn } from '@/utils/cn'
 
 // Public marketing landing page — the logged-out entry. Follows the "Warm
@@ -58,12 +58,12 @@ function MemberDot({
 
 // ---------------------------------------------------------------------------
 export function LandingPage() {
-  const go = useNavStore((s) => s.go)
+  const navigate = useNavigate()
   const reduce = useReducedMotion()
 
   // Sign in → existing sign-in page. Start a session → existing sign-up page.
-  const toSignIn = () => go('sign-in')
-  const toSignUp = () => go('sign-up')
+  const toSignIn = () => navigate('/login')
+  const toSignUp = () => navigate('/signup')
 
   // Gentle infinite float for the hero's layered panels (disabled if reduced).
   const float = makeFloat(!!reduce)
