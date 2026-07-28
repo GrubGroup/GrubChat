@@ -69,7 +69,10 @@ export function VoiceComposer({
 
   // While the mic is on we show the caption in the pill's waveform strip, never in
   // the text input's value — in voice-loop mode the transcript is NOT a draft to
-  // send, so it must not populate `displayValue` (which the send button reads).
+  // send, so it must not populate `displayValue` (which the send button reads). In
+  // the Web Speech path the transcript is the live draft while listening; once the
+  // mic stops it's committed into `text` (see toggleMic) so it stays editable and
+  // isn't lost, so reading `text` here after stop is correct.
   const displayValue = voiceLoop ? text : listening ? transcript : text
 
   // Typing-presence debounce: fire onTyping(true) on the first keystroke of a
@@ -118,8 +121,18 @@ export function VoiceComposer({
   }
 
   const toggleMic = () => {
-    if (listening) stop()
-    else {
+    if (listening) {
+      stop()
+      // Web Speech: commit whatever was dictated into the editable draft so stopping
+      // the mic (rather than pressing Send) doesn't throw the words away. stop() leaves
+      // `transcript` intact; fold it into `text` and clear it so there's one source of
+      // truth for the now-visible input. Voice-loop mode has no such draft (the WS loop
+      // submits server-side), so it's untouched.
+      if (!voiceLoop && transcript.trim()) {
+        setText((t) => (t ? `${t} ${transcript}`.trim() : transcript))
+        resetTranscript()
+      }
+    } else {
       resetTranscript()
       start()
     }
@@ -229,16 +242,17 @@ export function VoiceComposer({
                 ),
               )}
             </div>
-            <span className="text-sm text-text-muted">
+            {/* Show the live transcript as the user speaks — in BOTH modes. Group
+                chat (Web Speech) previously fell through to a static 'Listening…',
+                so dictated words never appeared and the mic read as doing nothing. */}
+            <span className={cn('text-sm', transcript ? 'text-text' : 'text-text-muted')}>
               {voiceLoop
                 ? v.muted
                   ? 'Muted'
                   : v.speaking
                     ? 'Agent speaking…'
-                    : transcript
-                      ? transcript
-                      : 'Listening…'
-                : 'Listening…'}
+                    : transcript || 'Listening…'
+                : transcript || 'Listening…'}
             </span>
           </div>
         ) : (
@@ -283,6 +297,16 @@ export function VoiceComposer({
           field. Non-blocking — the text composer stays usable underneath. */}
       {voiceLoop && v.error && (
         <p className="mt-2 text-center text-caption text-error">{v.error}</p>
+      )}
+
+      {/* Web Speech path: the browser silently disables recognition if the user
+          denies the mic prompt, leaving a live-looking button that does nothing.
+          Surface it so they know to re-enable mic access. `micAvailable` starts
+          true and only flips false after a denial. */}
+      {!voiceLoop && supported && v.micAvailable === false && (
+        <p className="mt-2 text-center text-caption text-error">
+          Microphone access is blocked — enable it in your browser to use voice input.
+        </p>
       )}
 
       {privacyNote && (

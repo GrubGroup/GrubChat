@@ -94,6 +94,14 @@ export interface VoiceController {
   /** Clear the current transcript (used between turns). */
   resetTranscript: () => void
 
+  // --- Web Speech extra (useVoiceInput only) ---
+  /**
+   * Whether the browser mic permission is granted. `true` until the user denies
+   * the prompt, then `false`. Lets the composer show a "mic blocked" hint instead
+   * of a dead button. Undefined for the server loop (it surfaces `error` instead).
+   */
+  micAvailable?: boolean
+
   // --- hands-free-loop extras (useVoiceSession only) ---
   /** The agent is currently speaking (TTS playing) — lets the UI show a state. */
   speaking?: boolean
