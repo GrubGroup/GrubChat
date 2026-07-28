@@ -405,9 +405,17 @@ export const useSessionStore = create<SessionState>((set, get) => {
       if (sl.activeSessionId == null || sl.recommendation != null || !isHost) return
       if (expiryGenerating.has(groupId)) return
       expiryGenerating.add(groupId)
-      // Mark this group's results as loading so the caller (and the picks screen)
-      // shows the loading circle until generation returns — not an empty list.
-      patch(groupId, { recommendationLoading: true, recommendationError: false })
+      // Mark this group's results as loading AND the session as finalizing right away.
+      // sessionFinalizing flips the group-chat card to "complete" (Results) for the
+      // host IMMEDIATELY — so force-finish is a one-time action: if the host backs out
+      // of the loading screen, the card shows the results state, not another
+      // "Force finish" button. It doesn't depend on the session:member_done broadcast
+      // (which the host may miss after leaving the group room to view picks).
+      patch(groupId, {
+        recommendationLoading: true,
+        recommendationError: false,
+        sessionFinalizing: true,
+      })
       try {
         // force_partial: the gateway marks any un-finished members done, generates
         // over whatever answers exist, and broadcasts session:picks. We ALSO adopt
@@ -422,10 +430,11 @@ export const useSessionStore = create<SessionState>((set, get) => {
           recommendationError: false,
         })
       } catch {
-        // Release the guard on failure so the host can retry (or the timer can),
-        // and clear the loading flag so the caller can react.
+        // Release the guard on failure so the host can retry (or the timer can), clear
+        // the loading flag, and revert the finalizing flag so the card returns to its
+        // in-progress state and the host can force-finish again.
         expiryGenerating.delete(groupId)
-        patch(groupId, { recommendationLoading: false })
+        patch(groupId, { recommendationLoading: false, sessionFinalizing: false })
         throw new Error('force-finish failed')
       }
     },
