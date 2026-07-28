@@ -15,7 +15,7 @@ primary_region = 'sjc'
   # the model used to embed Restaurant rows, cosine ranking silently returns garbage
   # (no error). Changing it requires re-embedding every row:
   #   uv run python -m scripts.backfill_embeddings --all
-  EMBEDDING_MODEL = 'openai/text-embedding-3-small'
+  EMBEDDING_MODEL = 'perplexity/pplx-embed-v1-0.6b'
   ENV = 'production'
   JWT_ALGORITHM = 'HS256'
   LLM_MODEL = 'deepseek/deepseek-v4-flash'

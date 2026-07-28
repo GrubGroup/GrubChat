@@ -23,11 +23,12 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     # LATENCY FIX (2026-07-27): was "qwen/qwen3-embedding-8b" (measured 24-60s per
     # call — no dedicated OpenRouter provider, so each request cold-started a
-    # serverless GPU; this was ~90% of "view results" latency). text-embedding-3-small
-    # measured 0.42s and also supports dimensions=1024, so vector(1024) is unchanged.
-    # TO REVERT: restore the Qwen model here AND in .env, then re-embed all
-    # Restaurant rows (cross-model vectors are not comparable).
-    embedding_model: str = "openai/text-embedding-3-small"
+    # serverless GPU; this was ~90% of "view results" latency). Switched to
+    # text-embedding-3-small (0.42s), then (2026-07-28) to pplx-embed-v1-0.6b,
+    # which returns 1024 dims natively (vector(1024) unchanged) at lower cost and
+    # ~0.2s. TO REVERT: restore the desired model here AND in .env, then re-embed
+    # all Restaurant rows (cross-model vectors are not comparable).
+    embedding_model: str = "perplexity/pplx-embed-v1-0.6b"
     # OpenRouter chat model (env LLM_MODEL). Used when llm_provider == "openrouter".
     openrouter_llm_model: str = Field(
         default="deepseek/deepseek-chat",
