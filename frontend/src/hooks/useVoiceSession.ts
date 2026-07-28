@@ -67,6 +67,11 @@ export function useVoiceSession(groupId: number, sessionId: number | null): Voic
   const lastAmpAtRef = useRef(0)
   // Track live-ness for async callbacks that outlive a stop().
   const activeRef = useRef(false)
+  // "Finishing" — the member answered everything (complete) and we're letting the
+  // closing TTS line drain before teardown. While set, the mic is already off and
+  // an incoming voice:closed must NOT hard-cut the still-scheduled playback.
+  const finishingRef = useRef(false)
+  const drainTimerRef = useRef<number | null>(null)
   // Live mute state for the worklet onmessage closure (which captures its value at
   // start()-time); updated in the toggleMute/stop event handlers, never in render.
   const mutedRef = useRef(false)
@@ -86,16 +91,12 @@ export function useVoiceSession(groupId: number, sessionId: number | null): Voic
     setSpeaking(false)
   }, [])
 
-  // Tear the whole loop down: stop capture + playback, tell the server to close the
-  // upstream Flux/TTS legs. Safe to call repeatedly. Socket LISTENERS are owned by
-  // the effect below (attached for the hook's lifetime), not detached here.
-  const stop = useCallback(() => {
-    if (!activeRef.current) return
-    activeRef.current = false
+  // Stop mic capture and tell the server to end the upstream Flux/TTS legs, WITHOUT
+  // touching playback — so a buffered closing line can still drain (see finishDrain).
+  const stopCapture = useCallback(() => {
     const socket = getSocket()
     socket?.emit('voice:control', { type: 'stop' })
     socket?.emit('voice:stop')
-
     workletRef.current?.port.close()
     workletRef.current?.disconnect()
     workletRef.current = null
@@ -103,17 +104,61 @@ export function useVoiceSession(groupId: number, sessionId: number | null): Voic
     streamRef.current = null
     void captureCtxRef.current?.close()
     captureCtxRef.current = null
+    mutedRef.current = false
+    setListening(false)
+    setMuted(false)
+    setAmplitude(0)
+  }, [])
+
+  // Tear the whole loop down NOW: stop capture AND cut playback, close both
+  // contexts. The hard path — barge-in-free stop, error, unmount. Safe to call
+  // repeatedly. Also runs during a drain (finishingRef) so unmount/explicit-stop
+  // cancels the drain timer instead of leaking it. Socket LISTENERS are owned by
+  // the effect below, not detached here.
+  const stop = useCallback(() => {
+    if (!activeRef.current && !finishingRef.current) return
+    activeRef.current = false
+    finishingRef.current = false
+    if (drainTimerRef.current != null) {
+      clearTimeout(drainTimerRef.current)
+      drainTimerRef.current = null
+    }
+    stopCapture()
     stopPlayback()
     void playbackCtxRef.current?.close()
     playbackCtxRef.current = null
-
-    mutedRef.current = false
     setListening(false)
     setSpeaking(false)
     setMuted(false)
     setAmplitude(0)
     setTranscript('')
-  }, [stopPlayback])
+  }, [stopCapture, stopPlayback])
+
+  // The member answered everything (`complete`): stop the mic immediately but let
+  // the closing TTS line finish. PCM arrives faster than real time and is scheduled
+  // ~seconds into the future on nextStartRef, so a hard stop() here would src.stop()
+  // the still-queued tail and cut the agent off mid-word (the "Great —" cutoff). By
+  // `complete` the server has already sent ALL of this turn's PCM (it awaits the full
+  // TTS stream before emitting complete), so nextStartRef reflects the whole tail:
+  // wait out the remaining buffered duration, then tear down. The subsequent
+  // voice:closed is expected and must NOT hard-cut (guarded by finishingRef).
+  const finishDrain = useCallback(() => {
+    if (!activeRef.current) return
+    activeRef.current = false
+    finishingRef.current = true
+    stopCapture()
+    const ctx = playbackCtxRef.current
+    const remainingMs = ctx ? Math.max(0, (nextStartRef.current - ctx.currentTime) * 1000) : 0
+    drainTimerRef.current = window.setTimeout(() => {
+      drainTimerRef.current = null
+      finishingRef.current = false
+      stopPlayback()
+      void playbackCtxRef.current?.close()
+      playbackCtxRef.current = null
+      setSpeaking(false)
+      setTranscript('')
+    }, remainingMs + 400) // small pad past the last sample
+  }, [stopCapture, stopPlayback])
 
   // Schedule one downstream PCM chunk on the running cursor.
   const enqueuePcm = useCallback((buf: ArrayBuffer) => {
@@ -205,9 +250,9 @@ export function useVoiceSession(groupId: number, sessionId: number | null): Voic
           // All PCM for this utterance sent; sources drain on their own onended.
           break
         case 'complete':
-          // The member answered everything — stop capturing but leave playback to
-          // finish the closing line.
-          stop()
+          // The member answered everything — stop capturing but let the buffered
+          // closing line finish (see finishDrain; a hard stop() cut it off mid-word).
+          finishDrain()
           break
         case 'error': {
           // If a turn was in flight (no turn_result yet), this is an analyze failure
@@ -220,7 +265,7 @@ export function useVoiceSession(groupId: number, sessionId: number | null): Voic
         }
       }
     },
-    [groupId, stopPlayback, stop],
+    [groupId, stopPlayback, finishDrain],
   )
 
   // Attach the voice:* listeners for the hook's lifetime. Attaching in an effect
@@ -235,7 +280,13 @@ export function useVoiceSession(groupId: number, sessionId: number | null): Voic
     const onReady = () => setError(null)
     const onFrame = (f: VoiceFrame) => handleFrame(f)
     const onAudio = (b: ArrayBuffer) => enqueuePcm(b)
-    const onClosed = () => stop()
+    // After `complete` the server closes the socket — that voice:closed is EXPECTED
+    // and must not hard-cut the still-draining closing line. finishDrain owns the
+    // teardown in that case; only hard-stop on an UNEXPECTED close (mid-session drop).
+    const onClosed = () => {
+      if (finishingRef.current) return
+      stop()
+    }
     const onError = (e: { message?: string }) => {
       setError(e?.message ?? 'voice service unavailable')
       stop()
@@ -253,9 +304,14 @@ export function useVoiceSession(groupId: number, sessionId: number | null): Voic
       socket.off('voice:error', onError)
     }
   }, [handleFrame, enqueuePcm, stop])
+  // (finishingRef is a ref, so it needs no dep — the closure reads its live value.)
 
   const start = useCallback(async () => {
     if (activeRef.current) return
+    // If a previous turn's closing line is still draining, hard-tear it down first
+    // so start() builds a clean graph (else the pending drain timer would close the
+    // freshly-created playback context out from under the new session).
+    if (finishingRef.current) stop()
     if (sessionId == null) {
       setError('No active session')
       return
