@@ -253,18 +253,24 @@ export function GroupChatPage() {
       <div className="flex flex-1 flex-col">
         {/* Header — same height as sidebar/right-panel headers for seamless borders */}
         <div className={cn('flex items-center justify-between border-b border-border px-5', COLUMN_HEADER_H)}>
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {/* Same rounded emoji badge as the group's sidebar row, so the header
+                matches the chat's list image — larger here, with the name + member
+                count stacked beside it. */}
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[13px] border border-border bg-surface-raised text-xl">
+              {group?.emoji}
+            </span>
+            <div className="flex flex-col">
               <span className="font-display text-item-title font-bold text-text">{groupName}</span>
+              <p className="text-caption text-text-muted">
+                {memberCount} members
+                {/* "Session active" only while a live session is in progress — not
+                    before one starts, and not once it's complete. */}
+                {sessionStartIndex !== null && !isComplete && sessionObj?.closed_at == null && (
+                  <> · <span className="text-primary">session active</span></>
+                )}
+              </p>
             </div>
-            <p className="text-caption text-text-muted">
-              {memberCount} members
-              {/* "Session active" only while a live session is in progress — not
-                  before one starts, and not once it's complete. */}
-              {sessionStartIndex !== null && !isComplete && sessionObj?.closed_at == null && (
-                <> · <span className="text-primary">session active</span></>
-              )}
-            </p>
           </div>
           <div className="flex items-center gap-2">
             {/* Start session stays PRESENT the whole time — it's only DISABLED
