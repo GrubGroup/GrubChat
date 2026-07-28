@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { motion, useReducedMotion } from 'framer-motion'
-import { Button, Icon, Input, Modal } from '@/components/ui'
+import { Button, Icon, Input } from '@/components/ui'
 import { EASE } from '@/lib/motion'
 import { changeEmail, changePassword, linkSocial } from '@/lib/authClient'
 import { fetchAuthMethods, type AuthMethods } from '@/api/authApi'
@@ -15,8 +15,9 @@ import { cn } from '@/utils/cn'
 // gateway's /api/auth/* endpoints). Google-only accounts have no password
 // credential, so those two controls are greyed out for them. The Connected
 // accounts row is state-driven: it shows Google as connected only when actually
-// linked, otherwise offers a working "Link Google account" OAuth flow. Disconnect
-// and Delete remain visual stubs (out of scope for now).
+// linked, otherwise offers a working "Link Google account" OAuth flow (there is
+// no disconnect — unlinking would risk locking a Google-only account out). Delete
+// remains a visual stub (out of scope for now).
 export function SettingsPage() {
   const reduce = useReducedMotion()
   const navigate = useNavigate()
@@ -64,8 +65,6 @@ export function SettingsPage() {
   const [pwSaving, setPwSaving] = useState(false)
   const [pwError, setPwError] = useState<string | null>(null)
   const [pwSaved, setPwSaved] = useState(false)
-
-  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false)
 
   // Google account linking. linkSocial redirects the browser to Google's consent
   // screen (like signIn.social), returning to /settings — so on success the page
@@ -320,23 +319,15 @@ export function SettingsPage() {
                     {linkError && <span className="text-xs text-error">{linkError}</span>}
                   </div>
                 </div>
-                {authMethodsLoaded &&
-                  (googleConnected ? (
-                    <button
-                      onClick={() => setConfirmingDisconnect(true)}
-                      className="text-sm font-medium text-text-muted hover:text-text"
-                    >
-                      Disconnect
-                    </button>
-                  ) : (
-                    <button
-                      onClick={linkGoogle}
-                      disabled={linking}
-                      className="shrink-0 text-sm font-semibold text-primary hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Link Google account
-                    </button>
-                  ))}
+                {authMethodsLoaded && !googleConnected && (
+                  <button
+                    onClick={linkGoogle}
+                    disabled={linking}
+                    className="shrink-0 text-sm font-semibold text-primary hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Link Google account
+                  </button>
+                )}
               </div>
             </div>
           </Section>
@@ -362,30 +353,6 @@ export function SettingsPage() {
           </Section>
         </div>
       </div>
-
-      {/* Disconnect confirmation — the flow is present but the confirm is a no-op
-          (no API call), matching the visual-stub scope. */}
-      <Modal
-        open={confirmingDisconnect}
-        onClose={() => setConfirmingDisconnect(false)}
-        title="Disconnect Google?"
-        size="sm"
-      >
-        <div className="flex flex-col gap-5">
-          <p className="text-body text-text-muted">
-            You'll need to sign in with your email and password next time. This won't delete your
-            account.
-          </p>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setConfirmingDisconnect(false)}>
-              Cancel
-            </Button>
-            <Button variant="danger" onClick={() => setConfirmingDisconnect(false)}>
-              Disconnect
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </motion.div>
   )
 }
