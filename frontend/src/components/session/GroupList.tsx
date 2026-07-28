@@ -53,8 +53,13 @@ function GroupRow({ group }: { group: Group }) {
       className={cn(
         // min-h-14 keeps the row a comfortable touch target on a phone without
         // changing its desktop look (content already renders ~50px tall).
-        'flex min-h-16 w-full items-center gap-3 rounded-[10px] p-2.5 text-left md:min-h-14 md:gap-2.5 md:p-2',
+        'relative flex min-h-16 w-full items-center gap-3 rounded-[10px] p-2.5 text-left md:min-h-14 md:gap-2.5 md:p-2',
         'transition-colors duration-150 ease-out',
+        // Inset hairline pinned to the row's bottom edge — the same edge the hover
+        // highlight ends on — so the line sits exactly under the hover box. It
+        // starts after the emoji tile (left-14 / md:left-13) rather than spanning
+        // the full width, to differentiate the otherwise-floating rows.
+        'after:pointer-events-none after:absolute after:bottom-0 after:left-14 after:right-2.5 after:h-px after:bg-border after:content-[""] md:after:left-13 md:after:right-2',
         selected
           ? 'border border-border bg-surface-raised'
           : 'border border-transparent hover:bg-surface-raised/60',
