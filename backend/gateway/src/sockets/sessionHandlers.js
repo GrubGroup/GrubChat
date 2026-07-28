@@ -57,6 +57,9 @@ const toWireMessage = (row, fallbackName = null) => {
     groupId: row.group_id,
     userId: row.user_id,
     name: row.user?.display_name ?? row.user?.username ?? fallbackName,
+    // OAuth profile photo (Better Auth image → avatar_url); null for
+    // email/password users, where the client falls back to colored initials.
+    avatarUrl: row.user?.avatar_url ?? null,
     // SESSION_BLOCK carries its data in `block`; `text` is left empty for it so
     // the client never renders the raw JSON. Other types use `content` as text.
     text: type === 'session_block' ? '' : row.content,
@@ -118,7 +121,7 @@ const registerSessionHandlers = (io, socket) => {
         where: { group_id: groupId },
         orderBy: { id: 'desc' },
         take: HISTORY_LIMIT,
-        include: { user: { select: { display_name: true, username: true } } },
+        include: { user: { select: { display_name: true, username: true, avatar_url: true } } },
       });
       // Query is newest-first for the LIMIT; send oldest-first for rendering.
       const messages = rows.reverse().map((row) => toWireMessage(row));
@@ -147,7 +150,7 @@ const registerSessionHandlers = (io, socket) => {
       if (!(await isGroupMember(groupId, userId))) return;
       const row = await prisma.groupMessage.create({
         data: { group_id: groupId, user_id: userId, content: trimmed },
-        include: { user: { select: { display_name: true, username: true } } },
+        include: { user: { select: { display_name: true, username: true, avatar_url: true } } },
       });
       const wire = toWireMessage(row, socket.data.name);
       io.to(room(groupId)).emit('chat:message', wire);
@@ -209,6 +212,7 @@ const registerSessionHandlers = (io, socket) => {
       groupId,
       userId: socket.data.userId ?? null,
       name: socket.data.name ?? null,
+      avatarUrl: socket.data.avatarUrl ?? null,
       isTyping,
     });
   };

@@ -5,6 +5,7 @@ import { CuisineTriStatePicker } from '@/components/profile/CuisineTriStatePicke
 import { DIETARY_RESTRICTIONS, isAllergen } from '@/constants/dietary'
 import { updateMe, UserUpdateError } from '@/api/userApi'
 import { useAuthStore } from '@/stores/authStore'
+import { memberColor } from '@/constants/memberColors'
 import { useProfileStore } from '@/stores/profileStore'
 
 const DIET_OPTIONS = DIETARY_RESTRICTIONS.filter((o) => !isAllergen(o.value))
@@ -129,7 +130,12 @@ export function ProfileEditPage() {
           {/* Profile photo */}
           <Field label="Profile photo">
             <div className="flex items-center gap-4 rounded-card border border-border p-4">
-              <Avatar name={displayNameLabel} src={user?.avatar_url} size="lg" colorClass="member-purple" />
+              <Avatar
+                name={displayNameLabel}
+                src={user?.avatar_url}
+                size="lg"
+                colorClass={memberColor(user?.id ?? -1)}
+              />
               <div className="flex-1">
                 <p className="text-sm font-semibold text-text">{displayNameLabel}</p>
                 <p className="text-xs text-text-muted">PNG or JPG, up to 5MB</p>

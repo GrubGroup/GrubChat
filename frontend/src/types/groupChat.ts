@@ -7,6 +7,9 @@ export interface GroupMessage {
   groupId: number
   userId: number | null // DEV: unverified handshake identity for now
   name?: string | null
+  // Sender's OAuth profile photo (Better Auth image); null for email/password
+  // users, where the chat avatar falls back to colored initials.
+  avatarUrl?: string | null
   text: string
   at: string // ISO timestamp
   // 'system' renders as a centered divider (e.g. "Sophie has left the group").

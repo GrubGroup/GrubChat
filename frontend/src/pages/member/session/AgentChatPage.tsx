@@ -25,6 +25,8 @@ import {
   selectRecommendation,
   selectActiveSessionId,
   selectIsHost,
+  selectSession,
+  selectStartedAt,
 } from '@/stores/sessionStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useGroupsStore } from '@/stores/groupsStore'
@@ -33,6 +35,7 @@ import { useGroupId } from '@/hooks/useGroupId'
 import { useSessionId } from '@/hooks/useSessionId'
 import { useBindSession } from '@/hooks/useBindSession'
 import { useSocket } from '@/hooks/useSocket'
+import { useSessionCountdown } from '@/hooks/useSessionCountdown'
 import { setReady } from '@/api/sessionApi'
 import { chipsForMissing } from '@/constants/agentChat'
 
@@ -72,6 +75,8 @@ export function AgentChatPage({ done = false }: AgentChatPageProps) {
   const progressTotal = useSessionStore(selectProgressTotal(groupId))
   const recommendation = useSessionStore(selectRecommendation(groupId))
   const activeSessionId = useSessionStore(selectActiveSessionId(groupId))
+  const session = useSessionStore(selectSession(groupId))
+  const startedAt = useSessionStore(selectStartedAt(groupId))
   const forceFinish = useSessionStore((s) => s.forceFinish)
   const isHost = useSessionStore(selectIsHost(groupId))
   const currentUserId = useAuthStore((s) => s.user?.id ?? 0)
@@ -135,6 +140,21 @@ export function AgentChatPage({ done = false }: AgentChatPageProps) {
   // Base path for this session, so the sub-screens can be reached from here.
   const sessionPath =
     activeSessionId != null ? `/groups/${groupSlug}/sessions/${activeSessionId}` : null
+
+  // When the session timer runs out, auto-close the chat for EVERYONE (host and
+  // non-host) and land on the results page — the "Time's up" banner alone left
+  // members stranded here. This is a LOCAL redirect, independent of the socket:
+  // the host still kicks off generation (SessionTopBar → triggerExpiryGeneration),
+  // but navigation must not depend on a session:picks event arriving. The picks
+  // page tolerates results-not-ready-yet (it polls + shows a Back button), so
+  // navigating early is safe. Composes with useSessionSync's socket redirect —
+  // whichever fires first wins; the other is a no-op once we're on /picks.
+  const { expired } = useSessionCountdown(startedAt, session?.time_limit ?? 0)
+  useEffect(() => {
+    if (expired && sessionPath) {
+      navigate(`${sessionPath}/picks`, { replace: true })
+    }
+  }, [expired, sessionPath, navigate])
 
   const handleSend = (text: string) => void sendUserMessage(groupId, text, activeSessionId)
 

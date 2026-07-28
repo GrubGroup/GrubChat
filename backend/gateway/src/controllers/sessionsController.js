@@ -347,7 +347,7 @@ const getSession = async (req, res, next) => {
             user_id: true,
             status: true,
             joined_at: true,
-            user: { select: { display_name: true, username: true } },
+            user: { select: { display_name: true, username: true, avatar_url: true } },
           },
         },
       },
@@ -363,6 +363,7 @@ const getSession = async (req, res, next) => {
       user_id,
       display_name: user?.display_name ?? null,
       username: user?.username ?? null,
+      avatar_url: user?.avatar_url ?? null,
       status,
       joined_at,
     }));
@@ -424,7 +425,7 @@ const listMembers = async (req, res, next) => {
         user_id: true,
         status: true,
         joined_at: true,
-        user: { select: { display_name: true, username: true } },
+        user: { select: { display_name: true, username: true, avatar_url: true } },
       },
       orderBy: { joined_at: 'asc' },
     });
@@ -436,6 +437,7 @@ const listMembers = async (req, res, next) => {
       user_id,
       display_name: user?.display_name ?? null,
       username: user?.username ?? null,
+      avatar_url: user?.avatar_url ?? null,
       status,
       joined_at,
     }));

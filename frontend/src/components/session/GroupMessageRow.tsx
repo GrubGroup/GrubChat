@@ -87,7 +87,12 @@ export function GroupMessageRow({ message, currentUserId, isNew = false, members
 
   return (
     <div className={cn('flex items-start gap-2.5', pop)}>
-      <Avatar name={name} size="sm" colorClass={memberColor(message.userId ?? -1)} />
+      <Avatar
+        name={name}
+        src={message.avatarUrl}
+        size="sm"
+        colorClass={memberColor(message.userId ?? -1)}
+      />
       <div className="flex flex-col gap-0.5">
         <span className="text-caption text-text-muted">{name}</span>
         <div className="flex items-end gap-2">

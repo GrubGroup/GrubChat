@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router'
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { motion, useReducedMotion } from 'framer-motion'
 import type { Session } from '@/types'
 import { EASE } from '@/lib/motion'
 import { GroupsSidebar } from '@/components/session/GroupsSidebar'
@@ -8,13 +8,12 @@ import { GroupMessageRow } from '@/components/session/GroupMessageRow'
 import { SessionCard } from '@/components/session/SessionCard'
 import { GroupDetailPanel } from '@/components/session/GroupDetailPanel'
 import { HostSessionModal } from '@/components/session/HostSessionModal'
-import { Avatar, Icon, Spinner } from '@/components/ui'
+import { Icon, Spinner } from '@/components/ui'
 import { AppSplash } from '@/components/layout/AppSplash'
 import { COLUMN_HEADER_H } from '@/components/layout/AppSidebar'
 import { VoiceComposer } from '@/components/voice/VoiceComposer'
 import { TypingIndicator } from '@/components/session/TypingIndicator'
 import { cn } from '@/utils/cn'
-import { memberColor } from '@/constants/memberColors'
 import { nameForMember } from '@/utils/memberName'
 import { toSlugId } from '@/utils/slug'
 import {
@@ -42,6 +41,7 @@ import {
 } from '@/stores/groupChatStore'
 import { useBindSession } from '@/hooks/useBindSession'
 import { useSocket } from '@/hooks/useSocket'
+import { useSessionCountdown } from '@/hooks/useSessionCountdown'
 import { useScrollToBottom } from '@/hooks/useScrollToBottom'
 import { useNewItemIds } from '@/hooks/useNewItemIds'
 
@@ -125,7 +125,6 @@ export function GroupChatPage() {
   // loader until it arrives.
   const loadingHistory = isMember && groupId > 0 && !historyLoaded
 
-  const memberIds = members.map((m) => m.user_id)
   const total = progressTotal || members.length || 0
 
   // The card state is derived entirely from SESSION STATE, so it reflects reality
@@ -136,12 +135,23 @@ export function GroupChatPage() {
   //     others" (#6).
   //   else     → nobody's finished yet, so offer Join.
   const allDone = total > 0 && doneCount === total
+  // Local countdown: once a running session's timer hits zero, the session is over
+  // for everyone regardless of any server broadcast. Folding `expired` into
+  // isComplete flips the card to "complete" (Results) immediately on timeout — the
+  // server signals (sessionFinalizing/allDone) only arrive after the host generates,
+  // so without this a plain timeout left the card stuck on "in progress / Join".
+  const { expired } = useSessionCountdown(startedAt, sessionObj?.time_limit ?? 0)
+  const timedOut = sessionStartIndex !== null && expired
   // sessionFinalizing: the host force-finished / the timer expired (session:member_done
   // with allDone). Flips the card to complete for EVERY member the instant it arrives —
   // before the recommendation is generated — so no one is left on a stale "in progress /
   // Join" card. `recommendation != null` is the later "results ready" signal.
   const isComplete =
-    recommendation != null || allDone || sessionFinalizing || sessionObj?.closed_at != null
+    recommendation != null ||
+    allDone ||
+    sessionFinalizing ||
+    timedOut ||
+    sessionObj?.closed_at != null
   const iAmDone =
     phase === 'done' || members.find((m) => m.user_id === currentUserId)?.status === true
   const cardState = isComplete ? 'complete' : iAmDone ? 'waiting' : 'not-joined'
@@ -243,43 +253,24 @@ export function GroupChatPage() {
       <div className="flex flex-1 flex-col">
         {/* Header — same height as sidebar/right-panel headers for seamless borders */}
         <div className={cn('flex items-center justify-between border-b border-border px-5', COLUMN_HEADER_H)}>
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {/* Same rounded emoji badge as the group's sidebar row, so the header
+                matches the chat's list image — larger here, with the name + member
+                count stacked beside it. */}
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[13px] border border-border bg-surface-raised text-xl">
+              {group?.emoji}
+            </span>
+            <div className="flex flex-col">
               <span className="font-display text-item-title font-bold text-text">{groupName}</span>
-              {/* Overlapping member stack — a newly added member pops into the
-                  cluster (spring scale-in) when the roster grows. */}
-              <div className="flex -space-x-1.5">
-                <AnimatePresence initial={false}>
-                  {memberIds.slice(0, 5).map((id) => (
-                    <motion.span
-                      key={id}
-                      layout={!reduce}
-                      initial={{ opacity: 0, scale: reduce ? 1 : 0.4 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: reduce ? 1 : 0.4 }}
-                      transition={
-                        reduce ? { duration: 0.15 } : { type: 'spring', stiffness: 520, damping: 26 }
-                      }
-                    >
-                      <Avatar
-                        name={nameForMember(id, members)}
-                        size="sm"
-                        colorClass={memberColor(id)}
-                        className="h-4 w-4 border border-surface-raised text-[7px]"
-                      />
-                    </motion.span>
-                  ))}
-                </AnimatePresence>
-              </div>
+              <p className="text-caption text-text-muted">
+                {memberCount} members
+                {/* "Session active" only while a live session is in progress — not
+                    before one starts, and not once it's complete. */}
+                {sessionStartIndex !== null && !isComplete && sessionObj?.closed_at == null && (
+                  <> · <span className="text-primary">session active</span></>
+                )}
+              </p>
             </div>
-            <p className="text-caption text-text-muted">
-              {memberCount} members
-              {/* "Session active" only while a live session is in progress — not
-                  before one starts, and not once it's complete. */}
-              {sessionStartIndex !== null && !isComplete && sessionObj?.closed_at == null && (
-                <> · <span className="text-primary">session active</span></>
-              )}
-            </p>
           </div>
           <div className="flex items-center gap-2">
             {/* Start session stays PRESENT the whole time — it's only DISABLED

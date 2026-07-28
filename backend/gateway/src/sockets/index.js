@@ -75,7 +75,15 @@ const createSocketServer = (httpServer) => {
       }
       socket.data.userId = session.user.id;
       socket.data.role = session.user.role;
-      socket.data.name = socket.handshake.auth?.name ?? null;
+      // Prefer the VERIFIED session name (display_name → username) so typing
+      // presence shows the real name/initials instead of a "User N" placeholder;
+      // the client handshake value is only a last-resort fallback.
+      socket.data.name =
+        session.user.name ?? session.user.username ?? socket.handshake.auth?.name ?? null;
+      // Verified OAuth photo (Better Auth image → avatar_url), carried on typing
+      // presence so a typer's avatar matches their chat/session avatar. From the
+      // session, not client-supplied. Null for email/password users.
+      socket.data.avatarUrl = session.user.image ?? null;
       next();
     } catch {
       next(new Error('unauthorized'));
