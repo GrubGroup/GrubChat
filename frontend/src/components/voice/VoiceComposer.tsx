@@ -152,8 +152,14 @@ export function VoiceComposer({
             {listening && !reduce && (
               <span className="pointer-events-none absolute inset-0 animate-wave rounded-pill bg-primary" />
             )}
-            {/* Filled glyph while active so it reads as "on". */}
-            <Icon name="mic" size={18} filled={listening} className="relative" />
+            {/* In the hands-free voice loop, tapping the orange button STOPS the
+                recording — so it shows a filled stop square, not a mic. Elsewhere
+                (Web Speech dictation) the mic glyph still reads as "on". */}
+            {voiceLoop && listening ? (
+              <Icon name="square" size={24} filled className="relative" />
+            ) : (
+              <Icon name="mic" size={18} filled={listening} className="relative" />
+            )}
           </button>
         )}
 
@@ -173,7 +179,12 @@ export function VoiceComposer({
                 : 'bg-surface-sunken text-text-muted hover:bg-surface-inverse hover:text-white',
             )}
           >
-            <Icon name="mic" size={15} filled={!v.muted} />
+            {/* Action-semantics like the stop button: the glyph shows what a tap
+                DOES. Live → slashed mic ("tap to mute"); muted → plain mic ("tap to
+                unmute"). Current state is conveyed by the button's color (orange
+                tint when muted). No `filled` — mic-off is open strokes with no solid
+                variant, so filling it would self-intersect into artifacts. */}
+            <Icon name={v.muted ? 'mic' : 'mic-off'} size={15} />
           </button>
         )}
 
