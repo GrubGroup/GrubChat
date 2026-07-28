@@ -4,6 +4,7 @@ import { Avatar, Button, Icon, IconButton, Input, Modal, SkeletonRow, Spinner } 
 import { COLUMN_HEADER_H } from '@/components/layout/AppSidebar'
 import { fetchGroup, addGroupMember } from '@/api/groupsApi'
 import { searchUsers } from '@/api/usersApi'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { useGroupsStore } from '@/stores/groupsStore'
 import { memberColor } from '@/utils/memberColor'
 import { cn } from '@/utils/cn'
@@ -49,6 +50,8 @@ export function GroupDetailPanel({
 }: GroupDetailPanelProps) {
   const leaveGroup = useGroupsStore((s) => s.leaveGroup)
   const reduce = useReducedMotion()
+  // Below md the width-squeeze column would crush the chat, so render a sheet.
+  const isMobile = useIsMobile()
 
   const [detail, setDetail] = useState<GroupDetail | null>(null)
   const [adding, setAdding] = useState(false)
@@ -166,37 +169,11 @@ export function GroupDetailPanel({
   const members = detail?.members ?? []
   const created = formatCreated(detail?.created_at)
 
-  return (
+  // The scrolling body, hosted two ways: the in-flow desktop column below, or the
+  // mobile sheet. Extracted so both hosts render the SAME markup and state — the
+  // add-people search and member list are never duplicated.
+  const body = (
     <>
-    {/* Non-blocking side panel: an in-flow flex item whose width animates from 0
-        to w-80. The chat area (flex-1) reflows and shrinks in the same frames, so
-        it reads as a responsive layout shift rather than a modal overlay — no
-        backdrop, no page dimming, the rest of the UI stays interactive. Kept
-        mounted (width 0 when closed) so the exit animation plays. */}
-    <div
-      className={cn(
-        'shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out',
-        open ? 'w-80' : 'w-0',
-      )}
-      aria-hidden={!open}
-      inert={!open}
-    >
-      <aside
-        aria-label="Group details"
-        className="flex h-full w-80 flex-col border-l border-border bg-surface-raised"
-      >
-        {/* Header — same height as the chat/sidebar headers so borders line up */}
-        <div
-          className={cn(
-            'flex items-center justify-between border-b border-border px-5',
-            COLUMN_HEADER_H,
-          )}
-        >
-          <h2 className="font-display text-section-title font-semibold text-text">Group details</h2>
-          <IconButton label="Close" size="sm" icon={<Icon name="x" size={14} />} onClick={handleClose} />
-        </div>
-
-        <div className="flex flex-1 flex-col overflow-y-auto">
           {/* Group identity: emoji avatar, name, count + created date */}
           <div className="flex flex-col items-center gap-2.5 border-b border-border bg-surface-panel px-5 py-7 text-center">
             <span className="flex h-20 w-20 items-center justify-center rounded-pill bg-surface-raised text-4xl shadow-sm ring-1 ring-border-strong">
@@ -340,27 +317,83 @@ export function GroupDetailPanel({
               )}
             </div>
           </div>
+    </>
+  )
+
+  const leaveButton = (
+    <button
+      type="button"
+      onClick={() => setConfirmingLeave(true)}
+      className={cn(
+        'flex w-full items-center justify-center gap-2 rounded-input bg-error/10 py-2.5',
+        'text-body font-semibold text-error hover:bg-error/15',
+      )}
+    >
+      <Icon name="logout" size={16} />
+      Leave group
+    </button>
+  )
+
+  return (
+    <>
+    {/* DESKTOP (≥md): non-blocking side panel — an in-flow flex item whose width
+        animates from 0 to w-80. The chat area (flex-1) reflows and shrinks in the
+        same frames, so it reads as a responsive layout shift rather than a modal
+        overlay — no backdrop, no page dimming, the rest of the UI stays
+        interactive. Kept mounted (width 0 when closed) so the exit animation
+        plays. Hidden below md: at 390px that same width squeeze would crush the
+        chat to nothing, so the sheet below takes over. */}
+    <div
+      className={cn(
+        'hidden shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out md:block',
+        open ? 'w-80' : 'w-0',
+      )}
+      aria-hidden={!open}
+      inert={!open}
+    >
+      <aside
+        aria-label="Group details"
+        className="flex h-full w-80 flex-col border-l border-border bg-surface-raised"
+      >
+        {/* Header — same height as the chat/sidebar headers so borders line up */}
+        <div
+          className={cn(
+            'flex items-center justify-between border-b border-border px-5',
+            COLUMN_HEADER_H,
+          )}
+        >
+          <h2 className="font-display text-section-title font-semibold text-text">Group details</h2>
+          <IconButton label="Close" size="sm" icon={<Icon name="x" size={14} />} onClick={handleClose} />
         </div>
 
+        <div className="flex flex-1 flex-col overflow-y-auto">{body}</div>
+
         {/* Leave group */}
-        <div className="border-t border-border p-4">
-          <button
-            type="button"
-            onClick={() => setConfirmingLeave(true)}
-            className={cn(
-              'flex w-full items-center justify-center gap-2 rounded-input bg-error/10 py-2.5',
-              'text-body font-semibold text-error hover:bg-error/15',
-            )}
-          >
-            <Icon name="logout" size={16} />
-            Leave group
-          </button>
-        </div>
+        <div className="border-t border-border p-4">{leaveButton}</div>
       </aside>
     </div>
 
-    {/* Leave confirmation — sibling of the panel backdrop so its clicks don't
-        bubble into handleClose. */}
+    {/* MOBILE (<md): the same content as a bottom sheet. Modal handles the
+        backdrop, Escape, scroll lock and the OS back gesture. Gated in JS rather
+        than with `md:hidden` because those are BEHAVIOURS — a display:none Modal
+        would still lock scroll and park a history entry on desktop. */}
+    {isMobile && (
+      <Modal
+        open={open}
+        onClose={handleClose}
+        title="Group details"
+        variant="sheet"
+        size="md"
+        footer={leaveButton}
+      >
+        {/* -mx-5 -mt-5 cancels Modal's body padding so the identity hero keeps its
+            full-bleed panel background, as it does in the desktop column. */}
+        <div className="-mx-5 -mt-5 flex flex-col">{body}</div>
+      </Modal>
+    )}
+
+    {/* Leave confirmation — a sibling, so its clicks don't bubble into
+        handleClose. */}
     <Modal
       open={confirmingLeave}
       onClose={() => (leaving ? undefined : setConfirmingLeave(false))}

@@ -1,6 +1,6 @@
 import { AuthFlowShell } from '@/components/layout/AuthFlowShell'
 import { LandingPage } from '@/pages/public/LandingPage'
-import { EmptyGroupsPage } from '@/pages/member/EmptyGroupsPage'
+import { GroupsPage } from '@/pages/member/GroupsPage'
 import { GroupChatPage } from '@/pages/member/GroupChatPage'
 import { EventsPage } from '@/pages/member/EventsPage'
 import { AgentChatPage } from '@/pages/member/session/AgentChatPage'
@@ -44,7 +44,7 @@ function App() {
   // authenticated user off the auth screens: to onboarding if they have no
   // profile yet (brand-new — Google never hits AuthForm.onAuthed); otherwise into
   // the app — an existing user with groups lands in their most recent group chat,
-  // one with none sees empty-groups. The ref guards the async fetch from firing
+  // one with none sees the groups list. The ref guards the async fetch from firing
   // more than once.
   const routedRef = useRef(false)
   // `forwarding`: the async forward (profile + groups fetch) is in flight — keep
@@ -76,7 +76,7 @@ function App() {
           setGroup(latest.id)
           go('group-chat')
         } else {
-          go('empty-groups')
+          go('groups')
         }
       } finally {
         setForwarding(false)
@@ -120,8 +120,8 @@ function App() {
     case 'onboarding-3':
     case 'onboarding-4':
       return <AuthFlowShell />
-    case 'empty-groups':
-      return <EmptyGroupsPage />
+    case 'groups':
+      return <GroupsPage />
     // Group-chat context — the session card changes state per screen.
     case 'group-chat':
     case 'session-continue':

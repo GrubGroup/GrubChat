@@ -17,7 +17,7 @@ export type Screen =
   | 'onboarding-3'
   | 'onboarding-4'
   // Group-chat context
-  | 'empty-groups'
+  | 'groups' // the groups home: list of your groups (mobile root) / zero-state
   | 'group-chat' // Group Food Planning App (session card: not joined)
   | 'session-continue' // group-chat card, session in progress (after back)
   | 'session-waiting' // group-chat card, user done, waiting for others
@@ -51,7 +51,7 @@ export const useNavStore = create<NavState>((set, get) => ({
   // Mock mode keeps 7 (the seeded demo "Work Lunch Crew" session/messages). Live
   // mode starts at 0 — a no-group sentinel (real ids are positive) — so a
   // brand-new user is never shown a group they haven't joined; GroupChatPage
-  // redirects to empty-groups until a real group is selected.
+  // redirects to the groups list until a real group is selected.
   groupId: 0,
   returnTo: 'group-chat',
   go: (screen) => set({ screen }),
