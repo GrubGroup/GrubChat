@@ -39,6 +39,7 @@ taxonomy expansion already handles arbitrary wording.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from sqlalchemy import text
@@ -48,10 +49,22 @@ from app.db.session import async_session_factory
 
 logger = logging.getLogger(__name__)
 
-# Deepgram Flux documents "up to 100" keyterms. Cartesia's Ink-2 caps at 100
-# terms AND 1200 characters, so the same list is reusable there.
+# Deepgram Flux documents "up to 100" keyterms; the real cap is 500 TOKENS (not
+# 1200 characters). Harmless at today's 88 terms — nothing is near either bound —
+# but the char budget below is the conservative one, kept so the same list also
+# stays safe for Cartesia's Ink-2 (100 terms / 1200 chars).
 MAX_KEYTERMS = 100
 MAX_KEYTERM_CHARS = 1200
+
+# Memoized single-flight build. The keyterm list is stable for the process
+# lifetime (it changes only when the catalog does), and rebuilding it on every
+# voice connection would re-run the DB frequency query on the hot path. Cache the
+# result and gate the first build behind a lazily-created lock so N concurrent
+# first-callers don't stampede the query. The lock is created INSIDE the coroutine
+# (not at import) so it binds to the running loop — an import-time asyncio.Lock
+# raises "bound to a different event loop" from the standalone asyncio.run probes.
+_keyterms_cache: list[str] | None = None
+_keyterms_lock: asyncio.Lock | None = None
 
 
 def _spoken(tag: str) -> str:
@@ -110,18 +123,28 @@ async def _db_tags_by_frequency() -> list[str]:
             result = await db.execute(sql)
             return [row[0] for row in result.all()]
     except Exception as exc:  # never let a bias lookup break the session
-        logger.warning("keyterm DB lookup failed, continuing unbiased: %s", exc)
+        # Not "unbiased": build_keyterms still falls through to the taxonomy terms,
+        # so the session is biased by taxonomy, just not by catalog frequency.
+        logger.warning(
+            "keyterm DB lookup failed, falling back to taxonomy-only bias: %s", exc
+        )
         return []
 
 
-async def build_keyterms(limit: int = MAX_KEYTERMS) -> list[str]:
+async def build_keyterms(
+    limit: int = MAX_KEYTERMS, *, db_tags: list[str] | None = None
+) -> list[str]:
     """Build the ranked, de-duplicated, cap-respecting keyterm list.
 
     DB-present tags first (by frequency), then taxonomy-only tags as filler. Any
     term dropped by the cap is logged — a silent truncation would read as "we
     biased toward everything" when we did not.
+
+    ``db_tags`` may be pre-supplied (already fetched by frequency) to avoid a
+    second query; when None it is fetched here.
     """
-    db_tags = await _db_tags_by_frequency()
+    if db_tags is None:
+        db_tags = await _db_tags_by_frequency()
 
     ranked: list[str] = []
     seen: set[str] = set()
@@ -163,3 +186,41 @@ async def build_keyterms(limit: int = MAX_KEYTERMS) -> list[str]:
             ranked[len(kept) : len(kept) + 10],
         )
     return kept
+
+
+async def get_keyterms() -> list[str]:
+    """Return the memoized keyterm list, building it once per process.
+
+    The hot-path entry point for the voice WebSocket: rebuilding on every
+    connection would re-run the DB frequency query for a list that only changes
+    when the catalog does. Concurrent first-callers are serialized behind a
+    lazily-created lock so they don't stampede the query.
+
+    A DEGRADED build is deliberately NOT cached: build_keyterms returns the 100
+    taxonomy terms (never []) when the DB is unreachable, and caching that would
+    permanently deny catalog-frequency biasing for the whole process even after the
+    DB recovers. We only memoize once _db_tags_by_frequency succeeded — detected by
+    re-checking the DB tags here (cheap: a warmed cache short-circuits before this).
+    """
+    global _keyterms_cache, _keyterms_lock
+    if _keyterms_cache is not None:
+        return _keyterms_cache
+
+    if _keyterms_lock is None:
+        _keyterms_lock = asyncio.Lock()
+
+    async with _keyterms_lock:
+        # Re-check under the lock: a racing caller may have filled it while we waited.
+        if _keyterms_cache is not None:
+            return _keyterms_cache
+        db_tags = await _db_tags_by_frequency()
+        built = await build_keyterms(db_tags=db_tags)
+        if db_tags:
+            # DB reachable -> this is the real, catalog-ranked list: cache it.
+            _keyterms_cache = built
+        else:
+            logger.warning(
+                "keyterms built without catalog data; not caching so a later "
+                "connection can pick up frequency ranking once the DB recovers"
+            )
+        return built

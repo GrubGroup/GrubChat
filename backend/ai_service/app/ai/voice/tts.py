@@ -35,6 +35,7 @@ DOC-VERIFIED DETAILS
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -51,10 +52,40 @@ CARTESIA_BASE = "https://api.cartesia.ai"
 SSE_URL = f"{CARTESIA_BASE}/tts/sse"
 BYTES_URL = f"{CARTESIA_BASE}/tts/bytes"
 
-DEFAULT_MODEL = "sonic-3.5"
-# A neutral, friendly English voice ("Skylar - Friendly Guide", public). Override
-# per call once the product picks an agent voice.
-DEFAULT_VOICE_ID = "694f9389-aac1-45b6-b726-9d9369183238"
+# Resolved from settings so a deploy can pin a dated snapshot without a code edit.
+# "sonic-3.5" is a FLOATING alias — Cartesia bumps the snapshot with no notice,
+# drifting timbre/TTFB under the measured baseline — so settings.cartesia_model
+# defaults to a dated pin. The voice id default is the scaffold's id, which is NOT
+# the documented Skylar (db6b0ed5-…): verify it before a deploy (a stale id fails
+# mid-turn as voice_not_found, silently). Kept as module constants for callers /
+# probes that read them, but resolved lazily at call time via settings.
+DEFAULT_MODEL = settings.cartesia_model
+DEFAULT_VOICE_ID = settings.cartesia_voice_id
+
+
+class ConcurrencyLimitError(RuntimeError):
+    """Raised when Cartesia rejects a request with 429 concurrency_limited.
+
+    Distinct from a generic HTTP error so the voice handler can degrade a single
+    turn to text-only (speak nothing) instead of failing the whole connection.
+    Cartesia bills TTS by concurrent /tts/sse contexts (2 Free / 3 Pro / 5 Startup
+    / 15 Scale); a whole group finishing together can exceed the cap.
+    """
+
+
+# Process-wide gate on concurrent /tts/sse contexts. Bounded to the account tier's
+# limit (settings.cartesia_max_concurrency) so overflow QUEUES here instead of
+# earning a 429 from Cartesia. Lazily created so it binds to the running loop, not
+# import time (the probe scripts use their own asyncio.run loop).
+_tts_semaphore: asyncio.Semaphore | None = None
+
+
+def _semaphore() -> asyncio.Semaphore:
+    """Return the process-wide TTS concurrency gate, creating it on first use."""
+    global _tts_semaphore
+    if _tts_semaphore is None:
+        _tts_semaphore = asyncio.Semaphore(max(1, settings.cartesia_max_concurrency))
+    return _tts_semaphore
 
 # Cartesia buffers up to `max_buffer_delay_ms` (default 3000 ms) before emitting,
 # trading latency for smoother prosody — which would dominate the voice budget.
@@ -122,12 +153,18 @@ async def _raise_with_body(response: httpx.Response) -> None:
 
     Cartesia explains rejections in the response body ("max buffer delay is only
     supported for websocket requests"); a bare raise_for_status on a STREAMED
-    response discards that and leaves only "400 Bad Request".
+    response discards that and leaves only "400 Bad Request". A 429 is surfaced as
+    ConcurrencyLimitError so the caller can degrade one turn to text-only rather
+    than tearing down the whole voice connection.
     """
     if response.is_error:
         await response.aread()
         detail = response.text[:300]
         logger.error("Cartesia %s: %s", response.status_code, detail)
+        if response.status_code == 429:
+            raise ConcurrencyLimitError(
+                f"Cartesia concurrency limit hit: {detail}"
+            )
         raise httpx.HTTPStatusError(
             f"Cartesia returned {response.status_code}: {detail}",
             request=response.request,
@@ -172,42 +209,77 @@ async def stream_audio(
     voice_id: str = DEFAULT_VOICE_ID,
     output_format: dict | None = None,
     timeout: float = 30.0,
+    max_retries: int = 2,
 ) -> AsyncIterator[bytes]:
     """Stream synthesized audio for `text`, yielding raw PCM chunks as they arrive.
 
     Yields decoded audio bytes (not SSE frames) so a caller can pipe them straight
     to a player or a socket. Cartesia sends base64 chunks in an SSE ``data:``
-    field; the terminal ``[DONE]`` sentinel and any non-audio frame are skipped.
-    A frame that fails to decode is logged and dropped rather than aborting the
-    utterance — losing one chunk degrades audio, but raising would cut the
+    field; NON-audio frames are handled by ``type``:
+
+      * ``chunk`` (or any frame carrying ``data``) — decode and yield.
+      * ``done`` — the REAL terminal sentinel is ``{"type":"done","done":true}``,
+        NOT the ``[DONE]`` the old docstring claimed (that survived only by
+        accident: no ``data`` key → skipped). Break cleanly on it.
+      * ``error`` — a stream-ending error frame; log and stop rather than spin.
+
+    A chunk that fails to base64-decode is logged and dropped rather than aborting
+    the utterance — losing one chunk degrades audio, but raising would cut the
     question off mid-sentence.
+
+    CONCURRENCY: the whole stream is held under a process-wide semaphore bounded to
+    the Cartesia tier's concurrent-context limit, so a group finishing together
+    QUEUES here instead of drawing a 429. If Cartesia still returns 429
+    (another instance, or a misconfigured limit), retry with a short backoff up to
+    ``max_retries``, then raise ``ConcurrencyLimitError`` for the caller to degrade
+    to text-only. Retries are safe only because a 429 arrives BEFORE any audio byte
+    is yielded (it's a connect-time rejection).
     """
+    payload = _payload(
+        text,
+        model=model,
+        voice_id=voice_id,
+        output_format=output_format or RAW_OUTPUT,
+    )
+    async with _semaphore():
+        for attempt in range(max_retries + 1):
+            try:
+                async for chunk in _stream_once(payload, timeout=timeout):
+                    yield chunk
+                return
+            except ConcurrencyLimitError:
+                if attempt >= max_retries:
+                    raise
+                # Short backoff; a context frees the moment another utterance ends.
+                await asyncio.sleep(0.25 * (attempt + 1))
+
+
+async def _stream_once(payload: dict, *, timeout: float) -> AsyncIterator[bytes]:
+    """One /tts/sse attempt: yield decoded PCM until the ``done`` frame or EOF."""
     async with _client().stream(
         "POST",
         SSE_URL,
         headers=_headers(),
-        json=_payload(
-            text,
-            model=model,
-            voice_id=voice_id,
-            output_format=output_format or RAW_OUTPUT,
-        ),
+        json=payload,
         timeout=timeout,
     ) as response:
-        await _raise_with_body(response)
+        await _raise_with_body(response)  # 429 -> ConcurrencyLimitError (pre-yield)
         async for line in response.aiter_lines():
             if not line or not line.startswith("data:"):
                 continue
             raw = line[len("data:") :].strip()
-            if not raw or raw == "[DONE]":
+            if not raw:
                 continue
             try:
                 event = json.loads(raw)
             except (TypeError, ValueError):
                 continue
-            if event.get("type") == "error":
+            etype = event.get("type")
+            if etype == "done":
+                break
+            if etype == "error":
                 logger.error("Cartesia TTS error frame: %s", event)
-                continue
+                break
             chunk = event.get("data")
             if not chunk:
                 continue

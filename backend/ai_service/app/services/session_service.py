@@ -142,4 +142,8 @@ async def analyze_member_turn(
         "qa_updated": qa_updated,
         "agent_reply": result.agent_reply,
         "missing_signals": result.missing_signals,
+        # Surfaced for the voice loop, which must not auto-advance / mark complete
+        # on a degraded (LLM-unusable) turn. Harmless to the HTTP path:
+        # AnalyzeResponse has no such field and pydantic ignores the extra key.
+        "degraded": result.degraded,
     }

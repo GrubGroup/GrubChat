@@ -105,6 +105,37 @@ class Settings(BaseSettings):
     # Older values are still accepted, so it is configurable rather than pinned.
     cartesia_version: str = "2026-03-01"  # env CARTESIA_VERSION
 
+    # PIN the TTS model to a dated snapshot, not the floating "sonic-3.5" alias:
+    # Cartesia rolls the alias to new snapshots with no notice, which drifts timbre
+    # and TTFB out from under the measured Stage 3 baseline. Override per deploy.
+    cartesia_model: str = "sonic-3.5-2026-05-04"  # env CARTESIA_MODEL
+    # The agent voice id. NOTE: this default is the id the scaffold shipped with;
+    # it currently resolves but is NOT the documented "Skylar" id (db6b0ed5-…). A
+    # stale id fails mid-turn as voice_not_found (silent — the agent just can't
+    # speak), so verify with scripts/probe_voice_session.py / GET /voices before a
+    # deploy and override here if it has drifted.
+    cartesia_voice_id: str = "694f9389-aac1-45b6-b726-9d9369183238"  # env CARTESIA_VOICE_ID
+    # Cartesia bills TTS by CONCURRENT contexts, one per /tts/sse POST: 2 Free /
+    # 3 Pro / 5 Startup / 15 Scale. A whole group finishing together can exceed the
+    # cap; this bounds the per-instance in-flight TTS streams so the overflow queues
+    # (and retries a 429) instead of a member hearing silence. Set to the account
+    # tier's real limit. Defaults to the Free-tier floor so a misconfig degrades
+    # safe rather than 429-ing.
+    cartesia_max_concurrency: int = 2  # env CARTESIA_MAX_CONCURRENCY
+
+    # Voice WebSocket session guards (all net-new — an open mic bills Deepgram per
+    # minute, so these are load-bearing, not hygiene):
+    #  * eot_timeout_ms — Flux's turn-finalization patience. Documented rapid-
+    #    response FLOOR is 3000 (not 2000): below it a mid-answer pause
+    #    ("vegetarian… uh… no shellfish") finalizes early and splits one spoken
+    #    answer into two analyze turns.
+    #  * idle timeout — close after this many seconds of no real speech (the mic is
+    #    kept alive with silence frames up to here, then we give up).
+    #  * max session — hard ceiling on a single voice connection's lifetime.
+    voice_eot_timeout_ms: int = 3000  # env VOICE_EOT_TIMEOUT_MS
+    voice_idle_timeout_s: int = 45  # env VOICE_IDLE_TIMEOUT_S
+    voice_max_session_s: int = 900  # env VOICE_MAX_SESSION_S
+
     # Shared internal secret guarding service-to-service endpoints (must match
     # the gateway JWT_SECRET).
     jwt_secret: str = "change-me"
