@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from app.ai.geo import TIER_BONUS, proximity_tier
 from app.ai.graph.state import (
@@ -32,6 +34,27 @@ _CANDIDATE_LIMIT = 40
 # anywhere. A generous city-scale default keeps retrieval geographically anchored
 # without excluding a member's cross-town preferred spot.
 _DEFAULT_RADIUS_MILES = 15.0
+
+
+# Venue-local timezone for the open/closed check. Session.scheduled_for is stored
+# as a UTC instant (the frontend sends dt.toISOString()), but restaurant `hours`
+# strings are LOCAL wall-clock ("Mon-Sun 11:00-22:00"). Comparing a naive UTC
+# datetime against local hours shifts a 7 PM PT pick to 02:00 the next day, which
+# reads as closed for every venue and empties the candidate list. The catalog is
+# all SF-area, so we hardcode Pacific for now; make this per-restaurant later.
+_VENUE_TZ = ZoneInfo("America/Los_Angeles")
+
+
+def _to_venue_localtime(when: datetime) -> datetime:
+    """Convert a stored event time to naive venue-local wall-clock for is_open_at.
+
+    scheduled_for is persisted as a UTC instant. A naive value is assumed UTC
+    (that's how it was stored); an aware value is converted from its own zone.
+    Returns a naive datetime in venue-local time so it lines up with the local
+    `hours` strings.
+    """
+    aware = when.replace(tzinfo=timezone.utc) if when.tzinfo is None else when
+    return aware.astimezone(_VENUE_TZ).replace(tzinfo=None)
 
 
 # How much a session-scoped Qa cuisine outweighs a durable Profile cuisine. A
@@ -223,6 +246,14 @@ def _build_candidates(
     unknown/unparseable/null hours parse as open, so only confidently-closed
     venues are dropped. With no event time set, hours are not filtered at all.
     """
+    # Convert the stored UTC event time to venue-local wall-clock ONCE, so the
+    # per-restaurant open/closed check compares like-for-like against local hours.
+    local_when = (
+        _to_venue_localtime(state.scheduled_for)
+        if state.scheduled_for is not None
+        else None
+    )
+
     candidates: list[CandidateRestaurant] = []
     for restaurant, distance in hits:
         if restaurant.id is None:
@@ -239,10 +270,11 @@ def _build_candidates(
             members=reconciled.member_locations,
         )
 
-        # Open/closed at the chosen event time. None time -> is_open None (unknown,
-        # not filtered); known time -> True/False, and a definite False is dropped.
-        if state.scheduled_for is not None:
-            is_open = is_open_at(restaurant.hours, state.scheduled_for)
+        # Open/closed at the chosen event time (in venue-local wall-clock). None
+        # time -> is_open None (unknown, not filtered); known time -> True/False,
+        # and a definite False is dropped.
+        if local_when is not None:
+            is_open = is_open_at(restaurant.hours, local_when)
             if not is_open:
                 continue  # hard-filter confidently-closed venues out of the top picks
         else:

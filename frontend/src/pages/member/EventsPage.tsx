@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { EventRecord } from '@/types'
 import { Avatar, Badge, Icon } from '@/components/ui'
 import { AppSidebar } from '@/components/layout/AppSidebar'
@@ -43,11 +43,41 @@ function EventRow({
   )
 }
 
+// A labeled group of event rows in the sidebar ("Upcoming" / "Previous").
+// Renders nothing when empty, so a user with only past outings sees just one header.
+function EventSection({
+  label,
+  list,
+  activeId,
+  onSelect,
+}: {
+  label: string
+  list: EventRecord[]
+  activeId: number | null
+  onSelect: (id: number) => void
+}) {
+  if (list.length === 0) return null
+  return (
+    <>
+      <p className="px-4 pt-3 text-overline font-semibold uppercase tracking-wide text-text-muted">
+        {label}
+      </p>
+      {list.map((e) => (
+        <EventRow key={e.id} e={e} active={activeId === e.id} onSelect={() => onSelect(e.id)} />
+      ))}
+    </>
+  )
+}
+
 export function EventsPage() {
   const events = useEventListStore((s) => s.events)
   const loaded = useEventListStore((s) => s.loaded)
   const load = useEventListStore((s) => s.load)
   const [selectedId, setSelectedId] = useState<number | null>(null)
+  // Snapshot "now" once at mount (lazy initializer keeps render pure) — it's the
+  // upcoming/previous cutoff. A mid-session tick past an event's time isn't worth
+  // a re-render; the split refreshes on next mount / navigation.
+  const [now] = useState(() => Date.now())
 
   useEffect(() => {
     void load()
@@ -55,25 +85,40 @@ export function EventsPage() {
 
   const active = events.find((e) => e.id === selectedId) ?? events[0] ?? null
 
+  // Split the flat list into outings still ahead (upcoming) vs. past (previous).
+  // Cutoff is the exact current time, so an outing earlier today reads as previous.
+  // Upcoming is soonest-first; previous is newest-first.
+  const { upcoming, previous } = useMemo(() => {
+    const up: EventRecord[] = []
+    const prev: EventRecord[] = []
+    for (const e of events) {
+      ;(new Date(e.date).getTime() >= now ? up : prev).push(e)
+    }
+    up.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    prev.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    return { upcoming: up, previous: prev }
+  }, [events, now])
+
   return (
     <div className="flex h-screen overflow-hidden bg-surface-raised">
       <AppSidebar activeTab="events" eyebrow="Events">
-        <p className="px-4 pt-3 text-overline font-semibold uppercase tracking-wide text-text-muted">
-          Your events
-        </p>
         {loaded && events.length === 0 && (
           <p className="px-4 py-6 text-body text-text-muted">
             No events yet. Start a session and confirm a pick to book one.
           </p>
         )}
-        {events.map((e) => (
-          <EventRow
-            key={e.id}
-            e={e}
-            active={active?.id === e.id}
-            onSelect={() => setSelectedId(e.id)}
-          />
-        ))}
+        <EventSection
+          label="Upcoming"
+          list={upcoming}
+          activeId={active?.id ?? null}
+          onSelect={setSelectedId}
+        />
+        <EventSection
+          label="Previous"
+          list={previous}
+          activeId={active?.id ?? null}
+          onSelect={setSelectedId}
+        />
       </AppSidebar>
 
       {/* Detail */}
