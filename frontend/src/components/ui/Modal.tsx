@@ -142,7 +142,10 @@ export function Modal({
               // flex column + a height cap so a tall body scrolls INSIDE the
               // dialog instead of overflowing off-screen with no way to reach the
               // submit button (which is what happened at phone height before).
-              'flex w-full flex-col bg-surface-raised shadow-xl focus:outline-none',
+              // overflow-hidden clips the sticky footer to the rounded corners —
+              // without it the footer's square bg paints over the centered
+              // dialog's rounded BOTTOM corners on desktop.
+              'flex w-full flex-col overflow-hidden bg-surface-raised shadow-xl focus:outline-none',
               sizeClasses[size],
               isSheet
                 ? 'max-h-[92dvh] rounded-t-card'
