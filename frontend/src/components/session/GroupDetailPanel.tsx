@@ -6,6 +6,7 @@ import { fetchGroup, addGroupMember } from '@/api/groupsApi'
 import { searchUsers } from '@/api/usersApi'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useGroupsStore } from '@/stores/groupsStore'
+import { useSessionStore, selectIsHost, selectSession } from '@/stores/sessionStore'
 import { memberColor } from '@/utils/memberColor'
 import { cn } from '@/utils/cn'
 import { nameForMember } from '@/utils/memberName'
@@ -57,7 +58,15 @@ export function GroupDetailPanel({
   const [adding, setAdding] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [confirmingLeave, setConfirmingLeave] = useState(false)
+  const [showHostLock, setShowHostLock] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Block the host from leaving while their session is still open. The session
+  // is "ended" only once the restaurant is confirmed (closed_at set, via the
+  // session:confirmed socket → sessionStore.close()), after which this lifts.
+  const isHost = useSessionStore(selectIsHost(groupId))
+  const session = useSessionStore(selectSession(groupId))
+  const hostLocked = isHost && session != null && session.closed_at == null
 
   // Add-people search state (the row expands into these).
   const [searchOpen, setSearchOpen] = useState(false)
@@ -153,6 +162,13 @@ export function GroupDetailPanel({
   }
 
   const handleLeave = async () => {
+    // Never let the host abandon an open session, even if this is reached
+    // outside the button's own guard.
+    if (hostLocked) {
+      setConfirmingLeave(false)
+      setShowHostLock(true)
+      return
+    }
     setLeaving(true)
     setError(null)
     try {
@@ -323,7 +339,7 @@ export function GroupDetailPanel({
   const leaveButton = (
     <button
       type="button"
-      onClick={() => setConfirmingLeave(true)}
+      onClick={() => (hostLocked ? setShowHostLock(true) : setConfirmingLeave(true))}
       className={cn(
         'flex w-full items-center justify-center gap-2 rounded-input bg-error/10 py-2.5',
         'text-body font-semibold text-error hover:bg-error/15',
@@ -411,6 +427,27 @@ export function GroupDetailPanel({
           </Button>
           <Button variant="danger" onClick={handleLeave} isLoading={leaving}>
             Leave group
+          </Button>
+        </div>
+      </div>
+    </Modal>
+
+    {/* Host guard — shown instead of leaving while this user hosts an open
+        session. Dismissing only closes the notice; it never leaves the group. */}
+    <Modal
+      open={showHostLock}
+      onClose={() => setShowHostLock(false)}
+      title="You're hosting this session"
+      size="sm"
+    >
+      <div className="flex flex-col gap-5">
+        <p className="text-body text-text-muted">
+          You're the host of the current session and can't leave this group until you end it.
+          Confirm a restaurant (or force-finish) to close the session, then you can leave.
+        </p>
+        <div className="flex justify-end">
+          <Button variant="primary" onClick={() => setShowHostLock(false)}>
+            Back to session
           </Button>
         </div>
       </div>

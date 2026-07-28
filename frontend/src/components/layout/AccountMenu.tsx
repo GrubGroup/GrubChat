@@ -15,6 +15,9 @@ export interface AccountMenuProps {
   displayName: string
   username: string
   avatarUrl?: string | null
+  /** Initials-fallback color token (memberColor(user.id)), so it matches the
+   * user's chat/session avatar when they have no photo. */
+  colorClass?: string
   onViewProfile: () => void
   onSignOut: () => void
   /** Positioning classes for the popover; defaults to the full-width footer anchor. */
@@ -27,6 +30,7 @@ export function AccountMenu({
   displayName,
   username,
   avatarUrl,
+  colorClass,
   onViewProfile,
   onSignOut,
   positionClass = 'bottom-full left-3 right-3 mb-2',
@@ -64,7 +68,7 @@ export function AccountMenu({
     >
       {/* Header: identity */}
       <div className="flex items-center gap-2.5 px-2.5 py-2">
-        <Avatar name={displayName} src={avatarUrl} size="sm" colorClass="member-purple" />
+        <Avatar name={displayName} src={avatarUrl} size="sm" colorClass={colorClass} />
         <div className="min-w-0">
           <p className="truncate text-body font-semibold text-text">{displayName}</p>
           <p className="truncate text-caption text-text-muted">@{username}</p>

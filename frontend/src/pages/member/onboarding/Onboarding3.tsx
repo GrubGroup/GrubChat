@@ -1,9 +1,9 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router'
 import { Button, Input, Icon } from '@/components/ui'
 import { DIETARY_RESTRICTIONS, labelFor } from '@/constants/dietary'
 import { usePlacesInput } from '@/hooks/usePlacesInput'
 import { useProfileStore } from '@/stores/profileStore'
-import { useNavStore } from '@/stores/navStore'
 import { cn } from '@/utils/cn'
 
 // Radius options in miles; label is derived. 1 mi is the default.
@@ -13,7 +13,7 @@ const DEFAULT_RADIUS = 1
 // Onboarding step 4 of 4 content (default location + radius, profile summary, and
 // the final save). Rendered inside AuthFlowShell.
 export function LocationStep() {
-  const go = useNavStore((s) => s.go)
+  const navigate = useNavigate()
   const profile = useProfileStore((s) => s.profile)
   const save = useProfileStore((s) => s.save)
   const saving = useProfileStore((s) => s.saving)
@@ -39,7 +39,7 @@ export function LocationStep() {
     // instead of silently trapping the user on this step.
     const ok = await save()
     if (ok) {
-      go('groups')
+      navigate('/groups')
     } else {
       setError('Could not save your profile. Please try again.')
     }
@@ -99,7 +99,7 @@ export function LocationStep() {
         <Button
           variant="ghost"
           leftIcon={<Icon name="arrow-left" size={14} />}
-          onClick={() => go('onboarding-3')}
+          onClick={() => navigate('/onboarding/budget')}
           disabled={saving}
         >
           Back

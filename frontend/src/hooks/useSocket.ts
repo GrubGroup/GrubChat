@@ -82,6 +82,10 @@ export function useSocket(groupId: number) {
       total: number
       userId: number
       status: boolean
+      // Set by the gateway on host force-finish / timer expiry: the whole session is
+      // done. Flips every member's card to complete at once (the shared finalizing
+      // state), not just the one user in the payload.
+      allDone?: boolean
     }) => {
       if (payload.groupId !== groupId) return
       const store = useSessionStore.getState()
@@ -92,6 +96,7 @@ export function useSocket(groupId: number) {
         payload.total,
         payload.userId,
         payload.status,
+        payload.allDone ?? false,
       )
     }
     socket.on('session:member_done', handleMemberDone)

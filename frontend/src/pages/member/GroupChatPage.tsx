@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { useState } from 'react'
+import { Navigate, useNavigate } from 'react-router'
+import { motion, useReducedMotion } from 'framer-motion'
 import type { Session } from '@/types'
 import { EASE } from '@/lib/motion'
 import { GroupsSidebar } from '@/components/session/GroupsSidebar'
@@ -7,15 +8,16 @@ import { GroupMessageRow } from '@/components/session/GroupMessageRow'
 import { SessionCard } from '@/components/session/SessionCard'
 import { GroupDetailPanel } from '@/components/session/GroupDetailPanel'
 import { HostSessionModal } from '@/components/session/HostSessionModal'
-import { Avatar, Icon, IconButton, Spinner } from '@/components/ui'
+import { Icon, IconButton, Spinner } from '@/components/ui'
+import { AppSplash } from '@/components/layout/AppSplash'
 import { COLUMN_HEADER_H } from '@/components/layout/AppSidebar'
 import { MobileActionSheet } from '@/components/layout/MobileActionSheet'
 import { MobileHeader } from '@/components/layout/MobileHeader'
 import { VoiceComposer } from '@/components/voice/VoiceComposer'
 import { TypingIndicator } from '@/components/session/TypingIndicator'
 import { cn } from '@/utils/cn'
-import { memberColor } from '@/constants/memberColors'
 import { nameForMember } from '@/utils/memberName'
+import { toSlugId } from '@/utils/slug'
 import {
   useSessionStore,
   selectMembers,
@@ -27,9 +29,10 @@ import {
   selectPhase,
   selectStartedAt,
   selectIsHost,
+  selectSessionFinalizing,
 } from '@/stores/sessionStore'
 import { useAuthStore } from '@/stores/authStore'
-import { useNavStore } from '@/stores/navStore'
+import { useGroupId } from '@/hooks/useGroupId'
 import { useGroupsStore, mostRecentGroup } from '@/stores/groupsStore'
 import {
   useGroupChatStore,
@@ -38,25 +41,16 @@ import {
   selectSessionStartIndex,
   selectTypers,
 } from '@/stores/groupChatStore'
-import { fetchCurrentGroupSession } from '@/api/groupsApi'
+import { useBindSession } from '@/hooks/useBindSession'
 import { useSocket } from '@/hooks/useSocket'
+import { useSessionCountdown } from '@/hooks/useSessionCountdown'
 import { useScrollToBottom } from '@/hooks/useScrollToBottom'
 import { useNewItemIds } from '@/hooks/useNewItemIds'
 
-// Card state derives from which group-chat screen we're on.
-const CARD_STATE: Record<string, 'not-joined' | 'continue' | 'waiting' | 'complete'> = {
-  'group-chat': 'not-joined',
-  'session-continue': 'continue',
-  'session-waiting': 'waiting',
-  'session-complete': 'complete',
-}
-
 export function GroupChatPage() {
   const reduce = useReducedMotion()
-  const screen = useNavStore((s) => s.screen)
-  const go = useNavStore((s) => s.go)
-  const setGroup = useNavStore((s) => s.setGroup)
-  const groupId = useNavStore((s) => s.groupId)
+  const navigate = useNavigate()
+  const groupId = useGroupId()
   // Session state is keyed by group — read THIS group's slice via selectors.
   const members = useSessionStore(selectMembers(groupId))
   const doneCount = useSessionStore(selectDoneCount(groupId))
@@ -66,14 +60,13 @@ export function GroupChatPage() {
   const recommendation = useSessionStore(selectRecommendation(groupId))
   const phase = useSessionStore(selectPhase(groupId))
   const join = useSessionStore((s) => s.join)
-  const loadSession = useSessionStore((s) => s.load)
-  const loadRecommendation = useSessionStore((s) => s.loadRecommendation)
   const setSession = useSessionStore((s) => s.setSession)
   const hydrateMembers = useSessionStore((s) => s.hydrateMembers)
   const startedAt = useSessionStore(selectStartedAt(groupId))
   const triggerExpiryGeneration = useSessionStore((s) => s.triggerExpiryGeneration)
   const forceFinish = useSessionStore((s) => s.forceFinish)
   const isHost = useSessionStore(selectIsHost(groupId))
+  const sessionFinalizing = useSessionStore(selectSessionFinalizing(groupId))
   const currentUserId = useAuthStore((s) => s.user?.id ?? 0)
 
   // Resolve membership BEFORE connecting the socket, so we never join a room the
@@ -95,7 +88,6 @@ export function GroupChatPage() {
   const sendMessage = useGroupChatStore((s) => s.sendMessage)
   const startSession = useGroupChatStore((s) => s.startSession)
   const clearSessionStart = useGroupChatStore((s) => s.clearSessionStart)
-  const receiveSessionStart = useGroupChatStore((s) => s.receiveSessionStart)
   const setTyping = useGroupChatStore((s) => s.setTyping)
   const typers = useGroupChatStore(selectTypers(groupId))
 
@@ -129,76 +121,63 @@ export function GroupChatPage() {
   // buttons don't fit beside the title, so both move behind it.
   const [overflowOpen, setOverflowOpen] = useState(false)
 
-  // Redirect a user who has no valid selected group to the groups screen —
-  // but only once the list has loaded, so an in-flight/empty list doesn't bounce
-  // a valid member off their chat.
-  useEffect(() => {
-    if (groupsLoaded && !isMember) go('groups')
-  }, [groupsLoaded, isMember, go])
-
-  // Reload survival: on a fresh page load the socket `session:start` was already
-  // missed and isn't replayed on join, so an in-progress session would otherwise
-  // vanish. If THIS group's slice has no active session yet, ask the gateway for
-  // the group's current OPEN session and rebind it — reusing the same
-  // load()/loadRecommendation() the socket path uses, plus receiveSessionStart so
-  // the inline card renders. Returns null (→ no-op) when the group has none; keyed
-  // on activeSessionId so once bound it won't re-fetch.
-  useEffect(() => {
-    if (!isMember || activeSessionId != null) return
-    let cancelled = false
-    void (async () => {
-      const session = await fetchCurrentGroupSession(groupId)
-      if (cancelled || session == null) return
-      await loadSession(groupId, session.id, currentUserId)
-      receiveSessionStart(groupId, session.id)
-      void loadRecommendation(groupId)
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [
-    isMember,
-    activeSessionId,
-    groupId,
-    currentUserId,
-    loadSession,
-    loadRecommendation,
-    receiveSessionStart,
-  ])
+  // Reload survival: rebind the group's in-progress session, which the socket's
+  // session:start announced before this page existed. Gated on membership so we
+  // never probe a room the user isn't in.
+  useBindSession(groupId, isMember)
 
   // History loads async over the socket (chat:history) after joining. Show a
   // loader until it arrives.
   const loadingHistory = isMember && groupId > 0 && !historyLoaded
 
-  const memberIds = members.map((m) => m.user_id)
   const total = progressTotal || members.length || 0
 
-  // The card state is derived from SESSION STATE, not just the screen, so it
-  // reflects reality regardless of how the user navigated here:
+  // The card state is derived entirely from SESSION STATE, so it reflects reality
+  // regardless of how the user got here:
   //   complete → results exist / everyone finished / the host already closed the
   //     session. Shows the "Results" button and blocks re-joining (#7, #12).
   //   waiting  → this user finished but the group hasn't. Shows "Waiting for
   //     others" (#6).
-  //   else     → the screen-derived state (continue if mid-session, else Join).
+  //   else     → nobody's finished yet, so offer Join.
   const allDone = total > 0 && doneCount === total
-  const isComplete = recommendation != null || allDone || sessionObj?.closed_at != null
+  // Local countdown: once a running session's timer hits zero, the session is over
+  // for everyone regardless of any server broadcast. Folding `expired` into
+  // isComplete flips the card to "complete" (Results) immediately on timeout — the
+  // server signals (sessionFinalizing/allDone) only arrive after the host generates,
+  // so without this a plain timeout left the card stuck on "in progress / Join".
+  const { expired } = useSessionCountdown(startedAt, sessionObj?.time_limit ?? 0)
+  const timedOut = sessionStartIndex !== null && expired
+  // sessionFinalizing: the host force-finished / the timer expired (session:member_done
+  // with allDone). Flips the card to complete for EVERY member the instant it arrives —
+  // before the recommendation is generated — so no one is left on a stale "in progress /
+  // Join" card. `recommendation != null` is the later "results ready" signal.
+  const isComplete =
+    recommendation != null ||
+    allDone ||
+    sessionFinalizing ||
+    timedOut ||
+    sessionObj?.closed_at != null
   const iAmDone =
     phase === 'done' || members.find((m) => m.user_id === currentUserId)?.status === true
-  const cardState = isComplete
-    ? 'complete'
-    : iAmDone
-      ? 'waiting'
-      : (CARD_STATE[screen] ?? 'not-joined')
+  const cardState = isComplete ? 'complete' : iAmDone ? 'waiting' : 'not-joined'
 
   // A session is "ongoing" once it has started but hasn't completed — the window
   // in which "Start session" is disabled (you can't run two at once). Once
   // complete (or none started), the button is clickable again so the group can
   // kick off another session in the same chat.
-  const sessionOngoing = sessionStartIndex !== null && !isComplete
+  const sessionOngoing = sessionStartIndex !== null && !isComplete && sessionObj?.closed_at == null
 
   // Header "X members" reflects the real group membership from GET /api/groups
   // (member_count); falls back to the session total when absent.
   const memberCount = group?.member_count ?? total
+
+  // Base path for this group's live session. Null until a session is bound, which
+  // is why every session affordance below is guarded — the card can render from a
+  // socket echo a beat before activeSessionId lands.
+  const sessionPath =
+    activeSessionId != null
+      ? `/groups/${toSlugId(group?.name, groupId)}/sessions/${activeSessionId}`
+      : null
 
   // Host finished the pre-session modal: adopt the created session locally, then
   // broadcast session:start WITH its id so every member's client can adopt it and
@@ -222,44 +201,54 @@ export function GroupChatPage() {
   }
 
   const handleJoin = () => {
+    if (!sessionPath) return
     join(groupId)
-    go('agent-chat')
+    navigate(sessionPath)
   }
 
-  // Host ends the session early: generate over the answers gathered so far, then
-  // open the results screen. The gateway broadcasts session:picks so every
-  // member's card flips to complete; loadRecommendation on the picks screen polls
-  // until the generation lands. Guard against a double-click during the request.
-  const handleForceFinish = async () => {
+  // Host ends the session early: kick off generation over the answers gathered so
+  // far and open the results screen IMMEDIATELY — don't block navigation on the
+  // up-to-120s generate POST. forceFinish sets recommendationLoading synchronously,
+  // so TopPicks shows its spinner, then fills from whichever lands first: the HTTP
+  // adopt (this host), the session:picks socket broadcast (every member, via
+  // useSessionSync), or the TopPicks loadRecommendation poll fallback — all
+  // idempotent. This is what makes results appear with no wait and no reload.
+  const handleForceFinish = () => {
     if (forcing) return
     setForcing(true)
-    try {
-      await forceFinish(groupId)
-      go('top-picks')
-    } catch {
-      // Generation failed to kick off — leave the user on the chat so they can
-      // retry (or let the timer fall back); the button re-enables below.
-    } finally {
-      setForcing(false)
-    }
+    void forceFinish(groupId)
+      .catch(() => {
+        // Generation failed to kick off — the socket broadcast / poll fallback on
+        // the results screen still recover it; nothing to do here.
+      })
+      .finally(() => setForcing(false))
+    // Navigate without awaiting. sessionPath is non-null whenever the card's
+    // force-finish button is reachable (it renders from a bound session), but guard
+    // anyway — a missing path leaves the host on the chat rather than routing to
+    // `/undefined/picks`.
+    if (sessionPath) navigate(`${sessionPath}/picks`)
   }
 
   // After leaving, the group is gone from the (refreshed) list. Jump to the next
-  // most-recent group, or the groups screen when none remain.
+  // most-recent group, or /groups when none remain.
   const handleLeft = () => {
     setEditing(false)
     const next = mostRecentGroup(useGroupsStore.getState().groups)
-    if (next) {
-      setGroup(next.id)
-      go('group-chat')
-    } else {
-      go('groups')
-    }
+    navigate(next ? `/groups/${toSlugId(next.name, next.id)}` : '/groups')
   }
 
-  // Paint guard (after all hooks): don't render group 7 / a foreign room for the
-  // frame before the redirect effect fires.
-  if (!isMember) return null
+  // Bounce a user who isn't a member of the group the URL names — but only once
+  // the list has loaded, so an in-flight/empty list doesn't throw a valid member
+  // off their own chat. `replace` keeps the bad URL out of the history stack.
+  if (groupsLoaded && !isMember) return <Navigate to="/groups" replace />
+
+  // Membership is still unresolved: the list hasn't arrived (a cold URL entry —
+  // RequireAuth owns that fetch). Hold the frame with the same branded loader the
+  // session check uses, so the two run together seamlessly. This must not render
+  // nothing: doing so is what made a reload look like a permanently broken app.
+  // "Still loading" and "not your group" are different states, and only the second
+  // one above redirects.
+  if (!isMember) return <AppSplash />
 
   return (
     <div className="flex h-dvh overflow-hidden bg-surface-raised">
@@ -275,7 +264,7 @@ export function GroupChatPage() {
             the member count in the subtitle carries the same information. */}
         <MobileHeader
           className="md:hidden"
-          onBack={() => go('groups')}
+          onBack={() => navigate('/groups')}
           title={groupName}
           subtitle={
             <>
@@ -295,46 +284,27 @@ export function GroupChatPage() {
           }
         />
 
-        {/* DESKTOP header (≥md) — unchanged; same height as the sidebar/right-panel
-            headers for seamless borders */}
+        {/* DESKTOP header (≥md) — hidden below md, where the MobileHeader takes over;
+            same height as the sidebar/right-panel headers for seamless borders. */}
         <div className={cn('hidden items-center justify-between border-b border-border px-5 md:flex', COLUMN_HEADER_H)}>
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {/* Same rounded emoji badge as the group's sidebar row, so the header
+                matches the chat's list image — larger here, with the name + member
+                count stacked beside it. */}
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[13px] border border-border bg-surface-raised text-xl">
+              {group?.emoji}
+            </span>
+            <div className="flex flex-col">
               <span className="font-display text-item-title font-bold text-text">{groupName}</span>
-              {/* Overlapping member stack — a newly added member pops into the
-                  cluster (spring scale-in) when the roster grows. */}
-              <div className="flex -space-x-1.5">
-                <AnimatePresence initial={false}>
-                  {memberIds.slice(0, 5).map((id) => (
-                    <motion.span
-                      key={id}
-                      layout={!reduce}
-                      initial={{ opacity: 0, scale: reduce ? 1 : 0.4 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: reduce ? 1 : 0.4 }}
-                      transition={
-                        reduce ? { duration: 0.15 } : { type: 'spring', stiffness: 520, damping: 26 }
-                      }
-                    >
-                      <Avatar
-                        name={nameForMember(id, members)}
-                        size="sm"
-                        colorClass={memberColor(id)}
-                        className="h-4 w-4 border border-surface-raised text-[7px]"
-                      />
-                    </motion.span>
-                  ))}
-                </AnimatePresence>
-              </div>
+              <p className="text-caption text-text-muted">
+                {memberCount} members
+                {/* "Session active" only while a live session is in progress — not
+                    before one starts, and not once it's complete. */}
+                {sessionStartIndex !== null && !isComplete && sessionObj?.closed_at == null && (
+                  <> · <span className="text-primary">session active</span></>
+                )}
+              </p>
             </div>
-            <p className="text-caption text-text-muted">
-              {memberCount} members
-              {/* "Session active" only while a live session is in progress — not
-                  before one starts, and not once it's complete. */}
-              {sessionStartIndex !== null && !isComplete && (
-                <> · <span className="text-primary">session active</span></>
-              )}
-            </p>
           </div>
           <div className="flex items-center gap-2">
             {/* Start session stays PRESENT the whole time — it's only DISABLED
@@ -379,8 +349,11 @@ export function GroupChatPage() {
             />
           ))}
 
-          {/* Session-started divider + card — inline at the point the user started it */}
-          {sessionStartIndex !== null && (
+          {/* Session-started divider + card — inline at the point the user started it.
+              Hidden once the session is CLOSED (host confirmed a restaurant): closed_at
+              is server truth, so the card + Results access vanish for every member
+              regardless of the ephemeral sessionStartIndex marker's state. */}
+          {sessionStartIndex !== null && sessionObj?.closed_at == null && (
             <>
               {/* The session announcement rises into the transcript like a message. */}
               <motion.div
@@ -402,12 +375,12 @@ export function GroupChatPage() {
                   startedAt={startedAt}
                   minutes={sessionObj?.time_limit}
                   onJoin={handleJoin}
-                  onContinue={() => go('agent-chat')}
-                  onViewResults={() => go('top-picks')}
+                  onContinue={() => sessionPath && navigate(sessionPath)}
+                  onViewResults={() => sessionPath && navigate(`${sessionPath}/picks`)}
                   onExpire={() => void triggerExpiryGeneration(groupId)}
-                  onReview={() => go('agent-chat-done')}
+                  onReview={() => sessionPath && navigate(`${sessionPath}/done`)}
                   isHost={isHost}
-                  onForceFinish={() => void handleForceFinish()}
+                  onForceFinish={handleForceFinish}
                   forcing={forcing}
                 />
               </motion.div>

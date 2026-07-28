@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Icon } from '@/components/ui'
 import { EASE } from '@/lib/motion'
-import { useNavStore } from '@/stores/navStore'
+import { useGroupId } from '@/hooks/useGroupId'
 import { useGroupsStore } from '@/stores/groupsStore'
 import { useGroupChatStore } from '@/stores/groupChatStore'
 import { timeAgo } from '@/utils/timeAgo'
+import { toSlugId } from '@/utils/slug'
 import { cn } from '@/utils/cn'
 import type { Group } from '@/types'
 
@@ -41,18 +43,13 @@ function lastActivity(
 
 // One list row. Split out so usePreview can subscribe per-group to live chat.
 function GroupRow({ group }: { group: Group }) {
-  const go = useNavStore((s) => s.go)
-  const groupId = useNavStore((s) => s.groupId)
-  const setGroup = useNavStore((s) => s.setGroup)
+  const groupId = useGroupId()
   const { preview, time } = usePreview(group)
   const selected = group.id === groupId
 
   return (
-    <button
-      onClick={() => {
-        setGroup(group.id)
-        go('group-chat')
-      }}
+    <Link
+      to={`/groups/${toSlugId(group.name, group.id)}`}
       className={cn(
         // min-h-14 keeps the row a comfortable touch target on a phone without
         // changing its desktop look (content already renders ~50px tall).
@@ -75,7 +72,7 @@ function GroupRow({ group }: { group: Group }) {
         </div>
         <p className="truncate text-caption-touch font-medium text-text-muted md:text-caption">{preview}</p>
       </div>
-    </button>
+    </Link>
   )
 }
 

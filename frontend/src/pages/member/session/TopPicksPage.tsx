@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Navigate, useNavigate } from 'react-router'
 import { motion, useReducedMotion } from 'framer-motion'
 import { GroupsSidebar } from '@/components/session/GroupsSidebar'
 import { RankedRestaurantCard } from '@/components/restaurant/RankedRestaurantCard'
@@ -21,15 +22,27 @@ import {
 } from '@/stores/sessionStore'
 import { useRestaurantStore } from '@/stores/restaurantStore'
 import { useAuthStore } from '@/stores/authStore'
-import { useNavStore } from '@/stores/navStore'
+import { useGroupsStore } from '@/stores/groupsStore'
+import { toSlugId } from '@/utils/slug'
+import { useGroupId } from '@/hooks/useGroupId'
+import { useSessionId } from '@/hooks/useSessionId'
+import { useBindSession } from '@/hooks/useBindSession'
 import { useSocket } from '@/hooks/useSocket'
 import { EASE } from '@/lib/motion'
 import { closeSession } from '@/api/sessionApi'
 
 export function TopPicksPage() {
   const reduce = useReducedMotion()
-  const go = useNavStore((s) => s.go)
-  const groupId = useNavStore((s) => s.groupId)
+  const navigate = useNavigate()
+  const groupId = useGroupId()
+  const urlSessionId = useSessionId()
+  // Readable slug for this group's URLs (`foodie-friends-42`). Falls back to the
+  // bare id when the group list hasn't landed — still a valid, resolvable path.
+  const groupName = useGroupsStore((s) => s.groups.find((g) => g.id === groupId)?.name)
+  const groupSlug = toSlugId(groupName, groupId)
+  // Cold entry (refresh or a pasted link) reaches these results without having gone
+  // through the group chat, so bind the group's session from the gateway first.
+  const binding = useBindSession(groupId)
   // Session state is keyed by group — read THIS group's slice via selectors.
   const session = useSessionStore(selectSession(groupId))
   const activeSessionId = useSessionStore(selectActiveSessionId(groupId))
@@ -96,19 +109,22 @@ export function TopPicksPage() {
   useDismissOnBack(mobileDetailOpen, () => setSelectedId(null))
 
   // Distinct results states (replacing a single permanent "Loading picks…"):
-  //   loading → nothing renderable YET (no picks resolved against the catalog)
+  //   loading → the session binding is in flight, OR nothing renderable YET
   //   error   → the read-back failed; offer a retry
   //   else    → a recommendation exists but nothing renders (no match / not loaded)
   //
-  // Spin ONLY while there is nothing to show AND something is still coming. The
-  // moment any pick resolves against the restaurant catalog, render it — gating on
-  // `recommendationLoading || !restaurantsLoaded` instead would hold the spinner up
-  // with renderable picks in hand (e.g. a socket delivery landing while the catalog
-  // fetch is still in flight, or a stale loading flag). The in-flight clause keeps a
-  // recommendation whose restaurants never resolve from spinning forever — it falls
-  // through to the empty state as before.
+  // While the group's session is still being bound from the gateway (cold entry),
+  // always spin — a stale recommendation from a prior session must not flash. Once
+  // bound, spin ONLY while there is nothing to show AND something is still coming:
+  // the moment any pick resolves against the restaurant catalog, render it — gating
+  // on `recommendationLoading || !restaurantsLoaded` instead would hold the spinner
+  // up with renderable picks in hand (e.g. a socket delivery landing while the
+  // catalog fetch is still in flight, or a stale loading flag). The in-flight clause
+  // keeps a recommendation whose restaurants never resolve from spinning forever —
+  // it falls through to the empty state as before.
   const picksStillComing = recommendationLoading || !restaurantsLoaded || !recommendation
-  const isLoading = picks.length === 0 && !recommendationError && picksStillComing
+  const isLoading =
+    binding === 'resolving' || (picks.length === 0 && !recommendationError && picksStillComing)
   const isError = recommendationError && picks.length === 0
 
   const handleConfirm = async () => {
@@ -126,7 +142,18 @@ export function TopPicksPage() {
         setConfirming(false)
       }
     }
-    go('session-complete')
+    // Return to the group chat — where the confirmation SYSTEM message and the closed
+    // session card appear. Every other member is pulled here too via session:confirmed
+    // (useSessionSync), so the whole group lands in the same place. That state is
+    // derived from the recommendation/roster, so it needs no dedicated URL.
+    navigate(`/groups/${groupSlug}`)
+  }
+
+  // Guards (after every hook): a stale URL — the group has no open session, or this
+  // one names a different session than the live one — goes back to the group chat.
+  // activeSessionId is the source of truth; the param is only validated against it.
+  if (binding === 'none' || (binding === 'bound' && activeSessionId !== urlSessionId)) {
+    return <Navigate to={`/groups/${groupSlug}`} replace />
   }
 
   // While the group's picks are still being fetched/generated, take over the whole
@@ -137,13 +164,25 @@ export function TopPicksPage() {
     return (
       <div className="flex h-dvh overflow-hidden bg-surface">
         <GroupsSidebar />
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-text-muted">
-          <Spinner size="lg" className="text-primary" />
-          <div className="flex flex-col items-center gap-1 text-center">
-            <p className="text-body font-medium text-text">Finding the group's picks…</p>
-            <p className="max-w-xs text-caption text-text-muted">
-              Matching everyone's preferences, budget, and location. This can take a moment.
-            </p>
+        <div className="flex flex-1 flex-col">
+          {/* Back to the group chat while picks generate — same style as the
+              loaded view's Back button, so the member isn't stuck on the spinner. */}
+          <div className="px-4 pt-4">
+            <button
+              onClick={() => navigate(`/groups/${groupSlug}`)}
+              className="tap-target flex items-center gap-1 text-body text-text-muted hover:text-text"
+            >
+              <Icon name="chevron-left" size={14} /> Back
+            </button>
+          </div>
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-text-muted">
+            <Spinner size="lg" className="text-primary" />
+            <div className="flex flex-col items-center gap-1 text-center">
+              <p className="text-body font-medium text-text">Finding the group's picks…</p>
+              <p className="max-w-xs text-caption text-text-muted">
+                Matching everyone's preferences, budget, and location. This can take a moment.
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -159,7 +198,7 @@ export function TopPicksPage() {
       <div className="flex h-dvh overflow-hidden bg-surface">
         <GroupsSidebar />
         <div className="flex flex-1 flex-col overflow-y-auto">
-          <MobileHeader className="md:hidden" onBack={() => go('group-chat')} title="Top picks" />
+          <MobileHeader className="md:hidden" onBack={() => navigate(`/groups/${groupSlug}`)} title="Top picks" />
           {isError ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
               <p className="text-body font-medium text-text">Couldn't load results</p>
@@ -200,7 +239,7 @@ export function TopPicksPage() {
         <div className="px-4 pb-2 pt-4">
           {/* Back to the group chat — same muted chevron style as Profile/Edit. */}
           <button
-            onClick={() => go('group-chat')}
+            onClick={() => navigate(`/groups/${groupSlug}`)}
             className="tap-target mb-2 flex items-center gap-1 text-body text-text-muted hover:text-text"
           >
             <Icon name="chevron-left" size={14} /> Back
@@ -222,7 +261,7 @@ export function TopPicksPage() {
               pick={pick}
               selected={pick.restaurant_id === activeId}
               hasVoted={(votes[pick.restaurant_id] ?? []).includes(currentUserId)}
-              onVote={() => castVote(groupId, pick.restaurant_id, currentUserId)}
+              onVote={() => castVote(groupId, pick.restaurant_id)}
               onSelect={() => setSelectedId(pick.restaurant_id)}
               showHours
             />

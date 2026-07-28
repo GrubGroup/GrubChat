@@ -1,30 +1,33 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router'
 import type { EventRecord } from '@/types'
-import { Avatar, Badge, Icon } from '@/components/ui'
+import { Avatar, Badge, Button, Icon } from '@/components/ui'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { BottomTabBar, TabBarSpacer } from '@/components/layout/BottomTabBar'
 import { MobileHeader } from '@/components/layout/MobileHeader'
 import { memberColor } from '@/constants/memberColors'
-import { useDismissOnBack } from '@/hooks/useDismissOnBack'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useEventListStore } from '@/stores/eventListStore'
 import { cn } from '@/utils/cn'
+import { idFromSlug, toSlugId } from '@/utils/slug'
 
 // A cuisine/dietary emoji is not on the API row, so pick a stable default.
 const EVENT_EMOJI = '🍽️'
 
-function EventRow({
-  e,
-  active,
-  onSelect,
-}: {
-  e: EventRecord
-  active: boolean
-  onSelect: () => void
-}) {
+// Sidebar subtitle: the event date + time, e.g. "Mon, Jul 28 · 7:00 PM".
+// Invalid dates render "".
+function formatEventDate(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const date = d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  return `${date} · ${time}`
+}
+
+function EventRow({ e, active }: { e: EventRecord; active: boolean }) {
   return (
-    <button
-      onClick={onSelect}
+    <Link
+      to={`/events/${toSlugId(`${e.group_name ?? ''} ${e.restaurant_name}`, e.id)}`}
       className={
         active
           ? 'flex w-full items-center gap-3 border-b border-border bg-surface-sunken px-4 py-3 text-left transition-colors duration-150 ease-out'
@@ -35,46 +38,34 @@ function EventRow({
         {EVENT_EMOJI}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-item-title font-semibold text-text">{e.restaurant_name}</span>
-          <span className="shrink-0 text-caption text-text-muted">{e.time_slot ?? ''}</span>
-        </div>
-        <p className="truncate text-caption text-text-muted">
-          {e.occasion ? `${e.occasion} · ` : ''}
-          {e.group_name ?? 'Group'}
-        </p>
+        <span className="block truncate text-item-title font-semibold text-text">
+          {e.restaurant_name}
+        </span>
+        <p className="truncate text-caption text-text-muted">{formatEventDate(e.date)}</p>
       </div>
-    </button>
+    </Link>
   )
 }
 
-// The events list itself, so it can serve BOTH hosts: the desktop sidebar panel
-// and the mobile tab root. It used to live inline inside <AppSidebar>, which is
-// hidden below `md` — leaving phone users no way to pick an event at all.
-function EventList({
-  events,
-  loaded,
+// A labeled group of event rows in the sidebar ("Upcoming" / "Previous").
+// Renders nothing when empty, so a user with only past outings sees just one header.
+function EventSection({
+  label,
+  list,
   activeId,
-  onSelect,
 }: {
-  events: EventRecord[]
-  loaded: boolean
-  /** Row to highlight; null on mobile, where selection means "drilled down". */
+  label: string
+  list: EventRecord[]
   activeId: number | null
-  onSelect: (id: number) => void
 }) {
+  if (list.length === 0) return null
   return (
     <>
       <p className="px-4 pt-3 text-overline font-semibold uppercase tracking-wide text-text-muted">
-        Your events
+        {label}
       </p>
-      {loaded && events.length === 0 && (
-        <p className="px-4 py-6 text-body text-text-muted">
-          No events yet. Start a session and confirm a pick to book one.
-        </p>
-      )}
-      {events.map((e) => (
-        <EventRow key={e.id} e={e} active={activeId === e.id} onSelect={() => onSelect(e.id)} />
+      {list.map((e) => (
+        <EventRow key={e.id} e={e} active={activeId === e.id} />
       ))}
     </>
   )
@@ -83,34 +74,64 @@ function EventList({
 export function EventsPage() {
   const events = useEventListStore((s) => s.events)
   const loaded = useEventListStore((s) => s.loaded)
+  const error = useEventListStore((s) => s.error)
   const load = useEventListStore((s) => s.load)
-  const [selectedId, setSelectedId] = useState<number | null>(null)
-  // Below `md` the list + detail split becomes a drill-down (frames 08 → 09).
+  // Which event the detail pane shows comes from the URL — `/events/:eventId` — so a
+  // booked outing is linkable and survives a refresh. The list read (GET /api/events)
+  // is the only source; there's no fetch-by-id endpoint, so an unknown id simply
+  // falls back to the newest event rather than 404ing.
+  const { eventId } = useParams()
+  const navigate = useNavigate()
+  // Below `md` the list + detail split becomes a drill-down (frames 08 → 09); the
+  // URL drives which is shown, so /events is the list and /events/:id the detail.
   const isMobile = useIsMobile()
+  // Snapshot "now" once at mount (lazy initializer keeps render pure) — it's the
+  // upcoming/previous cutoff. A mid-session tick past an event's time isn't worth
+  // a re-render; the split refreshes on next mount / navigation.
+  const [now] = useState(() => Date.now())
 
   useEffect(() => {
     void load()
   }, [load])
 
-  // Split the two meanings of "selected" apart: an EXPLICIT pick drives the
-  // mobile drill-down, while `active` keeps the desktop detail column filled by
-  // falling back to the first event. Deriving the drill-down from `active` would
-  // open the detail immediately and hide the list the user should land on.
-  const selected = selectedId != null ? events.find((e) => e.id === selectedId) ?? null : null
-  const active = selected ?? events[0] ?? null
+  // `active` (the detail pane's event) comes from the URL slug, falling back to
+  // the newest event so the desktop detail column is never empty.
+  const active = events.find((e) => e.id === idFromSlug(eventId)) ?? events[0] ?? null
 
-  const mobileDetailOpen = isMobile && selected != null
-  useDismissOnBack(mobileDetailOpen, () => setSelectedId(null))
+  // Split the flat list into outings still ahead (upcoming) vs. past (previous).
+  // Cutoff is the exact current time, so an outing earlier today reads as previous.
+  // Upcoming is soonest-first; previous is newest-first.
+  const { upcoming, previous } = useMemo(() => {
+    const up: EventRecord[] = []
+    const prev: EventRecord[] = []
+    for (const e of events) {
+      ;(new Date(e.date).getTime() >= now ? up : prev).push(e)
+    }
+    up.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    prev.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    return { upcoming: up, previous: prev }
+  }, [events, now])
+
+  // Below `md` a URL naming a specific event IS the drill-down; /events is the
+  // list root. Native Back (/events/:id → /events) closes the detail, so there's
+  // nothing to intercept.
+  const mobileDetailOpen = isMobile && eventId != null
 
   return (
     <div className="flex h-dvh overflow-hidden bg-surface-raised">
-      <AppSidebar activeTab="events" eyebrow="Events">
-        <EventList
-          events={events}
-          loaded={loaded}
-          activeId={active?.id ?? null}
-          onSelect={setSelectedId}
-        />
+      <AppSidebar eyebrow="Events">
+        {loaded && !error && events.length === 0 && (
+          <p className="px-4 py-6 text-body text-text-muted">
+            No events yet. Start a session and confirm a pick to book one.
+          </p>
+        )}
+        {error && events.length === 0 && (
+          <p className="px-4 py-6 text-body text-text-muted">
+            Couldn't load your events.
+          </p>
+        )}
+        <EventSection label="Upcoming" list={upcoming} activeId={active?.id ?? null} />
+        <EventSection label="Previous" list={previous} activeId={active?.id ?? null} />
       </AppSidebar>
 
       {/* MOBILE list root (<md) — the same list, as the Events tab's own screen. */}
@@ -127,7 +148,15 @@ export function EventsPage() {
           title="Events"
           subtitle={loaded ? `${events.length} booked` : undefined}
         />
-        <EventList events={events} loaded={loaded} activeId={null} onSelect={setSelectedId} />
+        {loaded && events.length === 0 && (
+          <p className="px-4 py-6 text-body text-text-muted">
+            No events yet. Start a session and confirm a pick to book one.
+          </p>
+        )}
+        {/* activeId=null: on mobile a tap drills into the detail rather than
+            highlighting a row in place. */}
+        <EventSection label="Upcoming" list={upcoming} activeId={null} />
+        <EventSection label="Previous" list={previous} activeId={null} />
         <TabBarSpacer />
       </div>
 
@@ -142,7 +171,7 @@ export function EventsPage() {
           <>
             <MobileHeader
               className="md:hidden"
-              onBack={() => setSelectedId(null)}
+              onBack={() => navigate('/events')}
               title={active.restaurant_name}
               subtitle={active.group_name ?? undefined}
             />
@@ -219,12 +248,30 @@ export function EventsPage() {
                 as the list — otherwise the attendee list ends under it. */}
             <TabBarSpacer />
           </>
+        ) : error ? (
+          <EventsErrorState onRetry={() => void load()} />
         ) : (
           <EventsEmptyState />
         )}
       </div>
 
       <BottomTabBar />
+    </div>
+  )
+}
+
+// Shown when GET /api/events failed — an honest error with a retry, so a read
+// failure surfaces instead of rendering a silent blank page.
+function EventsErrorState({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+      <p className="text-sm font-medium text-text">Couldn't load your events</p>
+      <p className="max-w-xs text-xs text-text-muted">
+        Something went wrong fetching your outings. Give it another try.
+      </p>
+      <Button variant="primary" size="sm" onClick={onRetry}>
+        Retry
+      </Button>
     </div>
   )
 }

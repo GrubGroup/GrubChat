@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { Avatar, Button, Chip, Icon, Input } from '@/components/ui'
 import { CuisineTriStatePicker } from '@/components/profile/CuisineTriStatePicker'
 import { DIETARY_RESTRICTIONS, isAllergen } from '@/constants/dietary'
 import { updateMe, UserUpdateError } from '@/api/userApi'
 import { useAuthStore } from '@/stores/authStore'
+import { memberColor } from '@/constants/memberColors'
 import { useProfileStore } from '@/stores/profileStore'
-import { useNavStore } from '@/stores/navStore'
 
 const DIET_OPTIONS = DIETARY_RESTRICTIONS.filter((o) => !isAllergen(o.value))
 const ALLERGEN_OPTIONS = DIETARY_RESTRICTIONS.filter((o) => isAllergen(o.value))
@@ -24,7 +25,7 @@ const RADIUS_OPTIONS = [0.5, 1, 2, 5]
 // Mirrors the "[Orange] Edit Profile" wireframe. Saves User via PATCH /user
 // (with username-uniqueness error surfacing) and Profile via the profile store.
 export function ProfileEditPage() {
-  const go = useNavStore((s) => s.go)
+  const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
   const patchUser = useAuthStore((s) => s.patchUser)
 
@@ -98,7 +99,7 @@ export function ProfileEditPage() {
       setFormError('Could not save your preferences. Please try again.')
       return
     }
-    go('profile')
+    navigate('/profile')
   }
 
   const displayNameLabel = displayName || user?.username || 'You'
@@ -110,7 +111,7 @@ export function ProfileEditPage() {
         <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-6 sm:px-8">
           <div className="min-w-0">
             <button
-              onClick={() => go('profile')}
+              onClick={() => navigate('/profile')}
               className="tap-target mb-2 flex items-center gap-1 text-body text-text-muted hover:text-text"
             >
               <Icon name="chevron-left" size={14} /> Back
@@ -125,7 +126,7 @@ export function ProfileEditPage() {
               on a wrapper, not on the Button — `hidden` on the Button would have to
               out-specify its own `inline-flex` base class. */}
           <div className="hidden shrink-0 sm:block">
-            <Button variant="ghost" onClick={() => go('profile')}>
+            <Button variant="ghost" onClick={() => navigate('/profile')}>
               Cancel
             </Button>
           </div>
@@ -138,7 +139,12 @@ export function ProfileEditPage() {
                 of content before padding, so the button drops to its own line
                 instead of squeezing the name to nothing. */}
             <div className="flex flex-wrap items-center gap-4 rounded-card border border-border p-4">
-              <Avatar name={displayNameLabel} src={user?.avatar_url} size="lg" colorClass="member-purple" />
+              <Avatar
+                name={displayNameLabel}
+                src={user?.avatar_url}
+                size="lg"
+                colorClass={memberColor(user?.id ?? -1)}
+              />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-body font-semibold text-text">{displayNameLabel}</p>
                 <p className="text-caption text-text-muted">PNG or JPG, up to 5MB</p>
@@ -247,7 +253,7 @@ export function ProfileEditPage() {
           {/* Actions — reversed and stacked below `sm` so Save is the wide button
               closest to the thumb, with Cancel beneath it. */}
           <div className="flex flex-col-reverse gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-end">
-            <Button variant="ghost" fullWidth className="sm:w-auto" onClick={() => go('profile')}>
+            <Button variant="ghost" fullWidth className="sm:w-auto" onClick={() => navigate('/profile')}>
               Cancel
             </Button>
             <Button

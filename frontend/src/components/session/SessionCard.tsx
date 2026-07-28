@@ -105,6 +105,7 @@ export function SessionCard({
             <Avatar
               key={m.user_id}
               name={nameForMember(m.user_id, members)}
+              src={m.avatar_url}
               size="sm"
               colorClass={memberColor(m.user_id)}
               className="h-5 w-5 border-2 border-surface-raised text-[8px]"

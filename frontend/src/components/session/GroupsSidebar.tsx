@@ -14,7 +14,6 @@ export function GroupsSidebar() {
 
   return (
     <AppSidebar
-      activeTab="groups"
       eyebrow="Groups"
       // Wider panel so the group-chat list isn't cramped (~+15% vs default w-56).
       panelWidth="w-64"

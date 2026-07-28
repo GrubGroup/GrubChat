@@ -1,14 +1,14 @@
 import { useState } from 'react'
-import { useNavStore } from '@/stores/navStore'
+import { useNavigate } from 'react-router'
 import { useGroupsStore } from '@/stores/groupsStore'
+import { toSlugId } from '@/utils/slug'
 
 // The create-a-group flow, shared by every host of the groups list. Each host
 // places its own "+" wherever its chrome puts one (the desktop sidebar's header
 // slot, the mobile Groups tab root's header) and renders its own
 // NewGroupModal with these props — the flow itself lives here once.
 export function useCreateGroup() {
-  const go = useNavStore((s) => s.go)
-  const setGroup = useNavStore((s) => s.setGroup)
+  const navigate = useNavigate()
   const addGroup = useGroupsStore((s) => s.addGroup)
   const [modalOpen, setModalOpen] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -17,8 +17,7 @@ export function useCreateGroup() {
     setCreating(true)
     try {
       const group = await addGroup(name, memberIds)
-      setGroup(group.id)
-      go('group-chat')
+      navigate(`/groups/${toSlugId(group.name, group.id)}`)
       setModalOpen(false)
     } finally {
       setCreating(false)

@@ -1,20 +1,19 @@
+import { useLocation, useNavigate } from 'react-router'
 import { Icon, type IconName } from '@/components/ui'
-import { SHOW_TAB_BAR, TAB_BAR_H } from '@/constants/mobileNav'
-import { useNavStore, type Screen } from '@/stores/navStore'
+import { showsTabBar, TAB_BAR_H } from '@/constants/mobileNav'
 import { cn } from '@/utils/cn'
 
 type Tab = {
-  key: string
   icon: IconName
   label: string
-  /** Which screens light this tab up. */
-  screens: Screen[]
+  /** Route this tab navigates to and the path prefix that lights it up. */
+  to: string
 }
 
 const TABS: Tab[] = [
-  { key: 'groups', icon: 'users', label: 'Groups', screens: ['groups'] },
-  { key: 'events', icon: 'calendar', label: 'Events', screens: ['events'] },
-  { key: 'profile', icon: 'user', label: 'Profile', screens: ['profile', 'profile-edit'] },
+  { to: '/groups', icon: 'users', label: 'Groups' },
+  { to: '/events', icon: 'calendar', label: 'Events' },
+  { to: '/profile', icon: 'user', label: 'Profile' },
 ]
 
 // Reserves the space the fixed tab bar covers at the END of a scroll area, so the
@@ -29,24 +28,16 @@ export function TabBarSpacer() {
 // hidden at ≥md where the AppSidebar rail does this job. Active tab = filled icon
 // + cocoa text, matching the rail's outline↔filled treatment.
 export function BottomTabBar() {
-  const screen = useNavStore((s) => s.screen)
-  const go = useNavStore((s) => s.go)
-  const openProfile = useNavStore((s) => s.openProfile)
+  const { pathname } = useLocation()
+  const navigate = useNavigate()
 
-  // Self-gates on the allow-list rather than trusting each caller, so a page that
-  // renders the bar on a screen it doesn't belong on (or a screen change under a
-  // mounted page) can't surface it over a composer.
-  if (!SHOW_TAB_BAR.includes(screen)) return null
-
-  const handleTab = (key: string) => {
-    if (key === 'events') return go('events')
-    // openProfile stamps returnTo so Profile's back returns where we came from.
-    if (key === 'profile') return openProfile()
-    // Groups lands on the LIST, never on a chat — WhatsApp-style, the chat is a
-    // level deeper and is reached by tapping a row. Tapping the tab from inside a
-    // chat is therefore the same "up" move as the header's back chevron.
-    go('groups')
-  }
+  // Self-gates on the route rather than trusting each caller, so a page that
+  // renders the bar on a route it doesn't belong on (or a navigation under a
+  // mounted page) can't surface it over a composer. Groups lands on the LIST,
+  // never on a chat — WhatsApp-style, the chat is a level deeper reached by
+  // tapping a row, so tapping the tab from inside a chat is the same "up" move as
+  // the header's back chevron.
+  if (!showsTabBar(pathname)) return null
 
   return (
     <nav
@@ -55,11 +46,11 @@ export function BottomTabBar() {
     >
       <div className={cn('flex items-stretch', TAB_BAR_H)}>
         {TABS.map((tab) => {
-          const active = tab.screens.includes(screen)
+          const active = pathname === tab.to || pathname.startsWith(`${tab.to}/`)
           return (
             <button
-              key={tab.key}
-              onClick={() => handleTab(tab.key)}
+              key={tab.to}
+              onClick={() => navigate(tab.to)}
               aria-current={active ? 'page' : undefined}
               className={cn(
                 'flex flex-1 flex-col items-center justify-center gap-0.5',
