@@ -105,40 +105,49 @@ export function ProfileEditPage() {
   const displayNameLabel = displayName || user?.username || 'You'
 
   return (
-    <div className="h-screen overflow-y-auto bg-surface-raised">
+    <div className="h-dvh overflow-y-auto bg-surface-raised">
       <div className="mx-auto max-w-3xl">
         {/* Header bar */}
-        <div className="flex items-start justify-between gap-4 border-b border-border px-8 py-6">
-          <div>
+        <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-6 sm:px-8">
+          <div className="min-w-0">
             <button
               onClick={() => navigate('/profile')}
-              className="mb-2 flex items-center gap-1 text-sm text-text-muted hover:text-text"
+              className="tap-target mb-2 flex items-center gap-1 text-body text-text-muted hover:text-text"
             >
               <Icon name="chevron-left" size={14} /> Back
             </button>
-            <h1 className="font-display text-2xl font-bold text-text">Edit profile</h1>
-            <p className="text-sm text-text-muted">
+            <h1 className="font-display text-display font-bold text-text">Edit profile</h1>
+            <p className="text-body text-text-muted">
               Update your details — your agent uses these across every session
             </p>
           </div>
-          <Button variant="ghost" onClick={() => navigate('/profile')}>
-            Cancel
-          </Button>
+          {/* The footer Cancel is the reachable one at phone width; this duplicate
+              would only crowd the title, and Back already leaves the form. Hidden
+              on a wrapper, not on the Button — `hidden` on the Button would have to
+              out-specify its own `inline-flex` base class. */}
+          <div className="hidden shrink-0 sm:block">
+            <Button variant="ghost" onClick={() => navigate('/profile')}>
+              Cancel
+            </Button>
+          </div>
         </div>
 
-        <div className="flex flex-col gap-7 px-8 py-6">
+        <div className="flex flex-col gap-7 px-4 py-6 sm:px-8">
           {/* Profile photo */}
           <Field label="Profile photo">
-            <div className="flex items-center gap-4 rounded-card border border-border p-4">
+            {/* Wraps below `sm`: avatar + name + a "Change photo" button is ~330px
+                of content before padding, so the button drops to its own line
+                instead of squeezing the name to nothing. */}
+            <div className="flex flex-wrap items-center gap-4 rounded-card border border-border p-4">
               <Avatar
                 name={displayNameLabel}
                 src={user?.avatar_url}
                 size="lg"
                 colorClass={memberColor(user?.id ?? -1)}
               />
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-text">{displayNameLabel}</p>
-                <p className="text-xs text-text-muted">PNG or JPG, up to 5MB</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-body font-semibold text-text">{displayNameLabel}</p>
+                <p className="text-caption text-text-muted">PNG or JPG, up to 5MB</p>
               </div>
               <Button variant="primary" size="sm" leftIcon={<Icon name="plus" size={13} />} disabled>
                 Change photo
@@ -239,14 +248,21 @@ export function ProfileEditPage() {
             />
           </Field>
 
-          {formError && <p className="text-sm text-error">{formError}</p>}
+          {formError && <p className="text-body text-error">{formError}</p>}
 
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-3 border-t border-border pt-5">
-            <Button variant="ghost" onClick={() => navigate('/profile')}>
+          {/* Actions — reversed and stacked below `sm` so Save is the wide button
+              closest to the thumb, with Cancel beneath it. */}
+          <div className="flex flex-col-reverse gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-end">
+            <Button variant="ghost" fullWidth className="sm:w-auto" onClick={() => navigate('/profile')}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleSave} isLoading={saving || savingUser}>
+            <Button
+              variant="primary"
+              fullWidth
+              className="sm:w-auto"
+              onClick={handleSave}
+              isLoading={saving || savingUser}
+            >
               Save changes
             </Button>
           </div>
@@ -259,7 +275,7 @@ export function ProfileEditPage() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-text-subtle">
+      <span className="text-overline font-semibold uppercase tracking-wide text-text-subtle">
         {label}
       </span>
       {children}

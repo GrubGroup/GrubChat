@@ -6,7 +6,7 @@ import { Spinner, Wordmark } from '@/components/ui'
 // before the app renders.
 export function AppSplash() {
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-6 bg-surface">
+    <div className="flex h-dvh flex-col items-center justify-center gap-6 bg-surface">
       <Wordmark size="lg" />
       <Spinner size="lg" className="text-text-muted" />
     </div>
