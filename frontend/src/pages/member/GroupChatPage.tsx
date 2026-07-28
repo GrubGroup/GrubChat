@@ -42,6 +42,7 @@ import {
 } from '@/stores/groupChatStore'
 import { useBindSession } from '@/hooks/useBindSession'
 import { useSocket } from '@/hooks/useSocket'
+import { useSessionCountdown } from '@/hooks/useSessionCountdown'
 import { useScrollToBottom } from '@/hooks/useScrollToBottom'
 import { useNewItemIds } from '@/hooks/useNewItemIds'
 
@@ -136,12 +137,23 @@ export function GroupChatPage() {
   //     others" (#6).
   //   else     → nobody's finished yet, so offer Join.
   const allDone = total > 0 && doneCount === total
+  // Local countdown: once a running session's timer hits zero, the session is over
+  // for everyone regardless of any server broadcast. Folding `expired` into
+  // isComplete flips the card to "complete" (Results) immediately on timeout — the
+  // server signals (sessionFinalizing/allDone) only arrive after the host generates,
+  // so without this a plain timeout left the card stuck on "in progress / Join".
+  const { expired } = useSessionCountdown(startedAt, sessionObj?.time_limit ?? 0)
+  const timedOut = sessionStartIndex !== null && expired
   // sessionFinalizing: the host force-finished / the timer expired (session:member_done
   // with allDone). Flips the card to complete for EVERY member the instant it arrives —
   // before the recommendation is generated — so no one is left on a stale "in progress /
   // Join" card. `recommendation != null` is the later "results ready" signal.
   const isComplete =
-    recommendation != null || allDone || sessionFinalizing || sessionObj?.closed_at != null
+    recommendation != null ||
+    allDone ||
+    sessionFinalizing ||
+    timedOut ||
+    sessionObj?.closed_at != null
   const iAmDone =
     phase === 'done' || members.find((m) => m.user_id === currentUserId)?.status === true
   const cardState = isComplete ? 'complete' : iAmDone ? 'waiting' : 'not-joined'

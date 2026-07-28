@@ -20,15 +20,16 @@ import { useEventListStore } from '@/stores/eventListStore'
 // this pattern must change with it, or the confirm-redirect silently stops firing.
 const SESSION_ROUTE = /^\/groups\/([^/]+)\/sessions(?:\/|$)/
 
-// The AGENT-CHAT screens a member sits on WHILE the session runs: the live chat
-// (`/sessions/:id`) and its "you're done, waiting for the group" state
-// (`/sessions/:id/done`). Deliberately does NOT match the results page
-// (`/sessions/:id/picks`) — someone already viewing results must not be yanked —
-// nor the group chat or anywhere else. Capture group 1 is the group slug (id at
-// its tail). Used to auto-forward a member to the results page the moment picks
-// land (e.g. the session timer expired), so they don't have to leave the chat by
-// hand. Mirror App.tsx's session route tree; if it changes, change this too.
-const AGENT_CHAT_ROUTE = /^\/groups\/([^/]+)\/sessions\/[^/]+(?:\/done)?$/
+// The screens a member sits on WHILE a session runs, from which they should be
+// auto-forwarded to the results page the moment picks land (host force-finish,
+// timer expiry, or everyone finishing — all broadcast session:picks): the group
+// chat (`/groups/:slug`), the live agent chat (`/sessions/:id`), and its "waiting"
+// state (`/sessions/:id/done`). Deliberately does NOT match the results page
+// itself (`/sessions/:id/picks`) — someone already viewing results must not be
+// yanked — nor Events / Profile / anywhere else. Capture group 1 is the group slug
+// (authoritative id at its tail). Mirror App.tsx's route tree; if the group/session
+// paths change, change this too.
+const RESULTS_REDIRECT_ROUTE = /^\/groups\/([^/]+)(?:\/sessions\/[^/]+(?:\/done)?)?$/
 
 // App-level session sync. Adopts session:picks regardless of the current screen —
 // group chat OR the results page (TopPicksPage), where useSocket is NOT mounted and
@@ -68,18 +69,39 @@ export function useSessionSync() {
         sessionId: p.sessionId,
         items: p.items,
       })
-      // Picks are ready (all members finished, or the timer expired and the host's
-      // client force-generated). Auto-forward a member still sitting in THIS group's
-      // agent chat straight to the results page, so they don't have to leave the chat
-      // by hand. Scoped to the agent-chat screens only — a member already on the
-      // results page, the group chat, or elsewhere is left alone. `replace` keeps the
-      // dead chat URL out of history so Back doesn't return to a finished session.
-      const match = AGENT_CHAT_ROUTE.exec(pathRef.current)
+      // Picks are ready — via host force-finish, timer expiry, or everyone finishing
+      // (all three broadcast session:picks). Auto-forward EVERY member sitting on
+      // THIS group's chat or agent chat straight to the results page, so the whole
+      // group lands there together without leaving by hand. A member already on the
+      // results page (or off in Events/Profile) is left alone. `replace` keeps the
+      // now-dead chat URL out of history.
+      const match = RESULTS_REDIRECT_ROUTE.exec(pathRef.current)
       if (match && idFromSlug(match[1]) === p.groupId) {
         navigate(`/groups/${match[1]}/sessions/${p.sessionId}/picks`, { replace: true })
       }
     }
     socket.on('session:picks', handlePicks)
+
+    // Session finalized — the host force-finished or the timer expired
+    // (session:member_done with allDone:true), which arrives IMMEDIATELY, before the
+    // recommendation is generated (picks can take up to ~120s). Forward every member
+    // still on this group's chat/agent-chat to the results page NOW, so they don't
+    // sit on the "Session complete" card waiting; the picks page shows its own loading
+    // state until generation lands. Only acts on allDone (a single member finishing
+    // must not move anyone). Same route guard as handlePicks; the later session:picks
+    // redirect is then a no-op since they're already on /picks.
+    const handleMemberDone = (p: {
+      groupId: number
+      sessionId: number
+      allDone?: boolean
+    }) => {
+      if (!p.allDone) return
+      const match = RESULTS_REDIRECT_ROUTE.exec(pathRef.current)
+      if (match && idFromSlug(match[1]) === p.groupId) {
+        navigate(`/groups/${match[1]}/sessions/${p.sessionId}/picks`, { replace: true })
+      }
+    }
+    socket.on('session:member_done', handleMemberDone)
 
     // Live restaurant voting on the results page (ephemeral, never persisted). The
     // gateway relays vote:cast → vote:update to each member's per-user room, so a
@@ -116,6 +138,7 @@ export function useSessionSync() {
 
     return () => {
       socket.off('session:picks', handlePicks)
+      socket.off('session:member_done', handleMemberDone)
       socket.off('vote:update', handleVote)
       socket.off('session:confirmed', handleConfirmed)
     }
