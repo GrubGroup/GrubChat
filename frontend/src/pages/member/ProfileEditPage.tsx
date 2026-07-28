@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { Avatar, Button, Chip, Icon, Input } from '@/components/ui'
 import { CuisineTriStatePicker } from '@/components/profile/CuisineTriStatePicker'
 import { DIETARY_RESTRICTIONS, isAllergen } from '@/constants/dietary'
@@ -26,8 +26,16 @@ const RADIUS_OPTIONS = [0.5, 1, 2, 5]
 // (with username-uniqueness error surfacing) and Profile via the profile store.
 export function ProfileEditPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const user = useAuthStore((s) => s.user)
   const patchUser = useAuthStore((s) => s.patchUser)
+
+  // Back/Cancel return to the profile view. Pop history (navigate(-1)) rather than
+  // pushing /profile — a push leaves a dangling /profile/edit entry that ProfilePage's
+  // own Back then returns to, trapping the user in a profile ↔ edit loop that never
+  // reaches /groups. A 'default' key means the editor was the entry point (deep link /
+  // refresh) with nothing to pop, so fall back to the profile view.
+  const goBack = () => (location.key === 'default' ? navigate('/profile') : navigate(-1))
 
   const profile = useProfileStore((s) => s.profile)
   const load = useProfileStore((s) => s.load)
@@ -111,7 +119,7 @@ export function ProfileEditPage() {
         <div className="flex items-start justify-between gap-4 border-b border-border px-8 py-6">
           <div>
             <button
-              onClick={() => navigate('/profile')}
+              onClick={goBack}
               className="mb-2 flex items-center gap-1 text-sm text-text-muted hover:text-text"
             >
               <Icon name="chevron-left" size={14} /> Back
@@ -121,7 +129,7 @@ export function ProfileEditPage() {
               Update your details — your agent uses these across every session
             </p>
           </div>
-          <Button variant="ghost" onClick={() => navigate('/profile')}>
+          <Button variant="ghost" onClick={goBack}>
             Cancel
           </Button>
         </div>
@@ -243,7 +251,7 @@ export function ProfileEditPage() {
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-3 border-t border-border pt-5">
-            <Button variant="ghost" onClick={() => navigate('/profile')}>
+            <Button variant="ghost" onClick={goBack}>
               Cancel
             </Button>
             <Button variant="primary" onClick={handleSave} isLoading={saving || savingUser}>
