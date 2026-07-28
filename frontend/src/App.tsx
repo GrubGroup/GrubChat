@@ -16,6 +16,7 @@ import { AgentChatPage } from '@/pages/member/session/AgentChatPage'
 import { TopPicksPage } from '@/pages/member/session/TopPicksPage'
 import { ProfilePage } from '@/pages/member/ProfilePage'
 import { ProfileEditPage } from '@/pages/member/ProfileEditPage'
+import { SettingsPage } from '@/pages/member/SettingsPage'
 
 // The app's route tree. Three layout routes carry what used to be tangled together
 // in one component:
@@ -68,6 +69,8 @@ function App() {
             <Route index element={<ProfilePage />} />
             <Route path="edit" element={<ProfileEditPage />} />
           </Route>
+
+          <Route path="settings" element={<SettingsPage />} />
         </Route>
 
         {/* Unknown path — send them home rather than rendering a blank screen. */}

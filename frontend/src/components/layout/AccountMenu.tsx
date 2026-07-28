@@ -5,7 +5,7 @@ import { cn } from '@/utils/cn'
 
 // Account menu popover — opened by clicking the sidebar rail user avatar. Mirrors
 // the "Account Menu (popover)" wireframe and its interaction-states frame:
-//   - View profile (person), Account settings (gear, disabled — out of scope),
+//   - View profile (person), Account settings (gear → /settings),
 //     Sign out (logout, destructive red)
 //   - neutral hover #F0EEE9 / pressed #E5E4DF; sign-out red hover@8% / pressed@15%
 //   - item radius 10, focus-visible accent ring
@@ -19,6 +19,7 @@ export interface AccountMenuProps {
    * user's chat/session avatar when they have no photo. */
   colorClass?: string
   onViewProfile: () => void
+  onAccountSettings: () => void
   onSignOut: () => void
   /** Positioning classes for the popover; defaults to the full-width footer anchor. */
   positionClass?: string
@@ -32,6 +33,7 @@ export function AccountMenu({
   avatarUrl,
   colorClass,
   onViewProfile,
+  onAccountSettings,
   onSignOut,
   positionClass = 'bottom-full left-3 right-3 mb-2',
 }: AccountMenuProps) {
@@ -85,7 +87,14 @@ export function AccountMenu({
           onViewProfile()
         }}
       />
-      <MenuItem icon="settings" label="Account settings" disabled />
+      <MenuItem
+        icon="settings"
+        label="Account settings"
+        onClick={() => {
+          onClose()
+          onAccountSettings()
+        }}
+      />
 
       <div className="my-1 h-px bg-border" />
 
