@@ -1,19 +1,17 @@
 import { useState } from 'react'
+import { useNavigate, useOutletContext } from 'react-router'
 import { Button, Input } from '@/components/ui'
-import { useNavStore } from '@/stores/navStore'
 import { useGroupsStore, mostRecentGroup } from '@/stores/groupsStore'
+import { toSlugId } from '@/utils/slug'
 import { useAuthStore } from '@/stores/authStore'
 import { signIn, signUp } from '@/lib/authClient'
 import { fetchProfile } from '@/api/profileApi'
 import { fetchAuthMethods } from '@/api/authApi'
+import type { AuthFlowContext } from '@/components/layout/AuthFlowShell'
 import type { SessionUser } from '@/stores/authStore'
 
 export interface AuthFormProps {
   mode: 'signin' | 'signup'
-  // Lets the surrounding shell show a full-screen branded splash while the
-  // post-auth forward (profile + groups fetch) into the app runs. NOT set on the
-  // new-account path — that stays in the shell and slides to onboarding.
-  setForwarding: (v: boolean) => void
 }
 
 const GoogleMark = () => (
@@ -28,9 +26,12 @@ const GoogleMark = () => (
 // Sign-in / sign-up form content. Rendered inside AuthFlowShell, which owns the
 // persistent brand panel and the slide transition into onboarding — this is just
 // the right-panel form.
-export function AuthForm({ mode, setForwarding }: AuthFormProps) {
-  const go = useNavStore((s) => s.go)
-  const setGroup = useNavStore((s) => s.setGroup)
+export function AuthForm({ mode }: AuthFormProps) {
+  const navigate = useNavigate()
+  // The shell owns the full-screen branded splash shown while the post-auth forward
+  // (profile + groups fetch) runs. NOT used on the new-account path — that stays in
+  // the shell and slides to onboarding.
+  const { setForwarding } = useOutletContext<AuthFlowContext>()
   const loadGroups = useGroupsStore((s) => s.load)
   const setSessionUser = useAuthStore((s) => s.setSessionUser)
   const setEntryFlowActive = useAuthStore((s) => s.setEntryFlowActive)
@@ -53,16 +54,16 @@ export function AuthForm({ mode, setForwarding }: AuthFormProps) {
   // and returns to the app, so it doesn't reach here.)
   //
   // First gate on onboarding: no saved profile (brand-new signup, or a returning
-  // user who abandoned onboarding) → onboarding-1. That stays inside the shell, so
+  // user who abandoned onboarding) → /onboarding. That stays inside the shell, so
   // the right panel SLIDES into onboarding (no splash). Otherwise forward into the
   // app — an existing user with groups lands in their most recent group chat; one
-  // with none sees the empty-groups landing page — showing the splash meanwhile.
+  // with none sees /groups — showing the splash meanwhile.
   const onAuthed = async () => {
     // A brand-new account can't have a saved profile — go straight to onboarding
     // so the right panel SLIDES in immediately (no profile fetch stalling the
     // transition, and no splash). The persistent BrandPanel (left) doesn't remount.
     if (isSignup) {
-      go('onboarding-1')
+      navigate('/onboarding')
       return
     }
     // Returning user: gate on whether they finished onboarding before. If they
@@ -70,18 +71,13 @@ export function AuthForm({ mode, setForwarding }: AuthFormProps) {
     // forward into the app behind the branded splash.
     const profile = await fetchProfile()
     if (!profile) {
-      go('onboarding-1')
+      navigate('/onboarding')
       return
     }
     setForwarding(true)
     await loadGroups()
     const latest = mostRecentGroup(useGroupsStore.getState().groups)
-    if (latest) {
-      setGroup(latest.id)
-      go('group-chat')
-    } else {
-      go('empty-groups')
-    }
+    navigate(latest ? `/groups/${toSlugId(latest.name, latest.id)}` : '/groups')
   }
 
   const handleSubmit = async () => {
@@ -170,10 +166,10 @@ export function AuthForm({ mode, setForwarding }: AuthFormProps) {
   return (
     <div className="mx-auto flex w-full max-w-sm flex-col gap-5">
       <div>
-        <h1 className="font-display text-3xl font-bold text-text">
+        <h1 className="font-display text-display font-bold text-text">
           {isSignup ? 'Create your account' : 'Welcome back'}
         </h1>
-        <p className="mt-1 text-sm text-text-muted">
+        <p className="mt-1 text-body text-text-muted">
           {isSignup
             ? 'Set your preferences once. Never repeat yourself.'
             : 'Sign in to your account to continue'}
@@ -185,7 +181,7 @@ export function AuthForm({ mode, setForwarding }: AuthFormProps) {
           type="button"
           onClick={handleGoogle}
           disabled={loading}
-          className={`flex h-11 w-full items-center justify-center gap-2 rounded-input border bg-surface-raised text-sm font-medium text-text hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50 ${
+          className={`flex h-11 w-full items-center justify-center gap-2 rounded-input border bg-surface-raised text-body font-medium text-text hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50 ${
             googleHint ? 'border-text ring-2 ring-focus-ring' : 'border-border'
           }`}
         >
@@ -193,7 +189,7 @@ export function AuthForm({ mode, setForwarding }: AuthFormProps) {
         </button>
       </div>
 
-      <div className="flex items-center gap-3 text-xs text-text-muted">
+      <div className="flex items-center gap-3 text-caption text-text-muted">
         <span className="h-px flex-1 bg-border" />
         or
         <span className="h-px flex-1 bg-border" />
@@ -234,8 +230,8 @@ export function AuthForm({ mode, setForwarding }: AuthFormProps) {
         <div className="flex flex-col gap-1.5">
           {!isSignup && (
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-text">PASSWORD</span>
-              <button type="button" className="text-xs text-text-muted hover:text-text">
+              <span className="text-body font-medium text-text">PASSWORD</span>
+              <button type="button" className="text-caption text-text-muted hover:text-text">
                 Forgot password?
               </button>
             </div>
@@ -253,22 +249,22 @@ export function AuthForm({ mode, setForwarding }: AuthFormProps) {
         </div>
       </div>
 
-      {error && <p className="text-sm text-error">{error}</p>}
+      {error && <p className="text-body text-error">{error}</p>}
 
       <Button fullWidth variant="primary" onClick={handleSubmit} isLoading={loading}>
         {isSignup ? 'Create account' : 'Sign in'}
       </Button>
 
       {isSignup && (
-        <p className="text-center text-xs text-text-muted">
+        <p className="text-center text-caption text-text-muted">
           By signing up you agree to our Terms and Privacy Policy.
         </p>
       )}
 
-      <p className="text-center text-sm text-text-muted">
+      <p className="text-center text-body text-text-muted">
         {isSignup ? 'Already have an account? ' : "Don't have an account? "}
         <button
-          onClick={() => go(isSignup ? 'sign-in' : 'sign-up')}
+          onClick={() => navigate(isSignup ? '/login' : '/signup')}
           className="font-semibold text-text hover:text-primary"
         >
           {isSignup ? 'Sign in' : 'Sign up'}

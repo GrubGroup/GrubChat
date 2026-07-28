@@ -33,7 +33,7 @@ export function ChatStream({ groupId, done = false }: ChatStreamProps) {
       <AgentTypingBubble visible={sending} />
       {done && (
         <div className="flex justify-center pt-1">
-          <span className="flex items-center gap-2 rounded-pill border border-border bg-surface-raised px-4 py-2 text-sm text-text-muted shadow-sm">
+          <span className="flex items-center gap-2 rounded-pill border border-border bg-surface-raised px-4 py-2 text-body text-text-muted shadow-sm">
             <span className="text-success">
               <Icon name="check" size={14} />
             </span>

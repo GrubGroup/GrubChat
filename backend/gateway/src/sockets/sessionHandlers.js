@@ -57,6 +57,9 @@ const toWireMessage = (row, fallbackName = null) => {
     groupId: row.group_id,
     userId: row.user_id,
     name: row.user?.display_name ?? row.user?.username ?? fallbackName,
+    // OAuth profile photo (Better Auth image → avatar_url); null for
+    // email/password users, where the client falls back to colored initials.
+    avatarUrl: row.user?.avatar_url ?? null,
     // SESSION_BLOCK carries its data in `block`; `text` is left empty for it so
     // the client never renders the raw JSON. Other types use `content` as text.
     text: type === 'session_block' ? '' : row.content,
@@ -89,19 +92,36 @@ const registerSessionHandlers = (io, socket) => {
   // GroupMessage.user_id is Int — coerce once so every write/guard uses the Int.
   const userId = Number(socket.data.userId);
 
+  // Groups this socket has PROVEN membership of (verified against the DB in
+  // group:join). Rooms are the unit of fan-out, so being in one is what exposes a
+  // group's live traffic — this set is the record of who earned that.
+  //
+  // Used only to gate high-frequency ephemeral relays (typing), which would
+  // otherwise cost a DB round-trip per keystroke. Anything that PERSISTS or drives
+  // other clients' state re-checks the DB, since membership can be revoked while a
+  // socket is still connected.
+  const verifiedGroups = new Set();
+
   // Join a group's room, then replay recent history to THIS socket so a fresh
   // connection (reload / late joiner) sees the existing conversation.
   socket.on('group:join', async ({ groupId }) => {
-    if (groupId == null) return;
+    if (!Number.isInteger(groupId)) return;
+
+    // Membership FIRST, then join. Joining before the check would put a non-member
+    // in the room, and while the history below would still be withheld, they would
+    // receive every later broadcast to it — chat:message, session:start/picks/
+    // member_done/confirmed, typing. The room IS the boundary, so nothing may enter
+    // it unverified.
+    if (!(await isGroupMember(groupId, userId))) return;
+    verifiedGroups.add(groupId);
     socket.join(room(groupId));
 
     try {
-      if (!(await isGroupMember(groupId, userId))) return;
       const rows = await prisma.groupMessage.findMany({
         where: { group_id: groupId },
         orderBy: { id: 'desc' },
         take: HISTORY_LIMIT,
-        include: { user: { select: { display_name: true, username: true } } },
+        include: { user: { select: { display_name: true, username: true, avatar_url: true } } },
       });
       // Query is newest-first for the LIMIT; send oldest-first for rendering.
       const messages = rows.reverse().map((row) => toWireMessage(row));
@@ -114,6 +134,7 @@ const registerSessionHandlers = (io, socket) => {
 
   socket.on('group:leave', ({ groupId }) => {
     if (groupId == null) return;
+    verifiedGroups.delete(groupId);
     socket.leave(room(groupId));
   });
 
@@ -129,9 +150,30 @@ const registerSessionHandlers = (io, socket) => {
       if (!(await isGroupMember(groupId, userId))) return;
       const row = await prisma.groupMessage.create({
         data: { group_id: groupId, user_id: userId, content: trimmed },
-        include: { user: { select: { display_name: true, username: true } } },
+        include: { user: { select: { display_name: true, username: true, avatar_url: true } } },
       });
-      io.to(room(groupId)).emit('chat:message', toWireMessage(row, socket.data.name));
+      const wire = toWireMessage(row, socket.data.name);
+      io.to(room(groupId)).emit('chat:message', wire);
+
+      // Update EVERY member's sidebar preview live — including members not currently
+      // viewing this group, who aren't in its room and so never see the chat:message
+      // above. Emit a lightweight preview to each member's per-user room (joined on
+      // connect in sockets/index.js). Best-effort — a failure must not break send.
+      try {
+        const members = await prisma.groupMember.findMany({
+          where: { group_id: groupId },
+          select: { user_id: true },
+        });
+        const preview = {
+          groupId,
+          last_message: { text: wire.text, name: wire.name, user_id: wire.userId, at: wire.at },
+        };
+        for (const { user_id } of members) {
+          io.to(`user:${user_id}`).emit('group:preview', preview);
+        }
+      } catch (previewErr) {
+        console.error('group:preview broadcast failed', previewErr);
+      }
     } catch (err) {
       console.error('chat:message persist failed', err);
     }
@@ -146,8 +188,12 @@ const registerSessionHandlers = (io, socket) => {
   // session (load its roster, drive analyze/ready) and share one synchronized
   // countdown anchored to `at`. `sessionId` may be absent for a legacy/no-op
   // start — clients then fall back to their own session state.
-  socket.on('session:start', ({ groupId, sessionId }) => {
-    if (groupId == null) return;
+  socket.on('session:start', async ({ groupId, sessionId }) => {
+    if (!Number.isInteger(groupId)) return;
+    // DB-checked rather than cached: this drives every other client to ADOPT a
+    // session id, so an unverified sender could plant a bogus session card in a
+    // group's chat. Once per session, so the round-trip is worth the certainty.
+    if (!(await isGroupMember(groupId, userId))) return;
     io.to(room(groupId)).emit('session:start', {
       groupId,
       sessionId: sessionId ?? null,
@@ -158,17 +204,47 @@ const registerSessionHandlers = (io, socket) => {
 
   // Typing presence — ephemeral, never stored. Relay to OTHERS in the room
   // (socket.to excludes the sender) so you never see your own "typing…".
+  // Gated on the verified set, not the DB: this fires on every keystroke burst, and
+  // a socket can only be in the set by having passed the check in group:join.
   const emitTyping = (groupId, isTyping) => {
-    if (groupId == null) return;
+    if (!verifiedGroups.has(groupId)) return;
     socket.to(room(groupId)).emit('typing:update', {
       groupId,
       userId: socket.data.userId ?? null,
       name: socket.data.name ?? null,
+      avatarUrl: socket.data.avatarUrl ?? null,
       isTyping,
     });
   };
   socket.on('typing:start', ({ groupId }) => emitTyping(groupId, true));
   socket.on('typing:stop', ({ groupId }) => emitTyping(groupId, false));
+
+  // A member voted for a restaurant on the results page. Ephemeral — never persisted;
+  // it exists only to show the group's live consensus before the host confirms a pick.
+  // Relay to EVERY group member's per-user room (not the group room): a member on the
+  // results page has left the group room (useSocket's unmount emits group:leave), so a
+  // group-room emit wouldn't reach them — the per-user room does (same reason
+  // group:preview / session:picks fan out per-user). The echo also reaches the sender,
+  // so their own client applies the vote from the single source of truth (no local
+  // double-toggle). voterId comes from the authenticated socket, never the client.
+  socket.on('vote:cast', async ({ groupId, restaurantId }) => {
+    const gid = Number(groupId);
+    const rid = Number(restaurantId);
+    if (!Number.isInteger(gid) || !Number.isInteger(rid)) return;
+    try {
+      if (!(await isGroupMember(gid, userId))) return;
+      const payload = { groupId: gid, restaurantId: rid, userId };
+      const members = await prisma.groupMember.findMany({
+        where: { group_id: gid },
+        select: { user_id: true },
+      });
+      for (const { user_id } of members) {
+        io.to(`user:${user_id}`).emit('vote:update', payload);
+      }
+    } catch (err) {
+      console.error('vote:cast relay failed', err);
+    }
+  });
 };
 
 export { registerSessionHandlers };

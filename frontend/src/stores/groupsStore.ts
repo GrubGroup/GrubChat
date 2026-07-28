@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { isAxiosError } from 'axios'
-import type { Group } from '@/types'
+import type { Group, GroupLastMessage } from '@/types'
 import { fetchGroups, createGroup, addGroupMember, removeGroupMember } from '@/api/groupsApi'
 
 // The user's group list, loaded from the gateway (each group carries its latest
@@ -35,6 +35,9 @@ interface GroupsState {
   // it starts true.
   loaded: boolean
   load: () => Promise<void>
+  // Patch one group's last_message from a live socket preview, so the sidebar
+  // preview + sort update without a full refetch (no-op if the group isn't loaded).
+  applyPreview: (groupId: number, last_message: GroupLastMessage) => void
   reset: () => void
   addGroup: (name: string, memberIds?: number[]) => Promise<Group>
   inviteMember: (groupId: number, username: string) => Promise<InviteResult>
@@ -57,6 +60,14 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
       set({ groups: [], loaded: true })
     }
   },
+
+  // Live sidebar preview: replace the matching group's last_message with the one
+  // from a group:preview socket event. Immutable map; leaves the list untouched
+  // when the group isn't present (a group:added reload will bring it in).
+  applyPreview: (groupId, last_message) =>
+    set((s) => ({
+      groups: s.groups.map((g) => (g.id === groupId ? { ...g, last_message } : g)),
+    })),
 
   // Drop the current account's groups (call on sign-out so the next account
   // never sees the previous one's list before load() runs).

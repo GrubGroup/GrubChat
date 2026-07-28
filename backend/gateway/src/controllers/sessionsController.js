@@ -30,15 +30,28 @@ const broadcastToGroup = (req, groupId, event, payload) => {
  * persisted GroupMessage). Shared by the manual generate path and the auto-
  * complete path so both emit an identical `session:picks` event.
  */
-const broadcastPicks = (io, groupId, sessionId, recommendation) => {
-  if (groupId == null) return;
+const broadcastPicks = async (io, groupId, sessionId, recommendation) => {
+  if (groupId == null || !io) return;
+  const payload = {
+    groupId,
+    sessionId,
+    recommendationId: recommendation.id,
+    items: recommendation.items ?? [],
+  };
   try {
-    io?.to(`group:${groupId}`).emit('session:picks', {
-      groupId,
-      sessionId,
-      recommendationId: recommendation.id,
-      items: recommendation.items ?? [],
+    io.to(`group:${groupId}`).emit('session:picks', payload);
+    // Also deliver to each member's always-joined per-user room (user:{id}, joined
+    // on connect in sockets/index.js). A member viewing the results page has left
+    // the group room (useSocket's unmount emits group:leave), so the group-room
+    // emit above never reaches them — the per-user room does. Duplicate delivery to
+    // a member still in the group room is harmless: receivePicks is idempotent.
+    const members = await prisma.sessionMember.findMany({
+      where: { session_id: sessionId },
+      select: { user_id: true },
     });
+    for (const { user_id } of members) {
+      io.to(`user:${user_id}`).emit('session:picks', payload);
+    }
   } catch (err) {
     console.error('socket broadcast session:picks failed', err);
   }
@@ -73,7 +86,7 @@ const maybeAutoComplete = async (io, sessionId, groupId) => {
     if (existing) return; // already generated (timer/manual/another finisher)
 
     const recommendation = await fetchRecommendations(sessionId, { forcePartial: false });
-    broadcastPicks(io, groupId, sessionId, recommendation);
+    await broadcastPicks(io, groupId, sessionId, recommendation);
   } catch (err) {
     // 409 (not all confirmed — shouldn't happen here), 502 (upstream), etc. The
     // timer fallback / manual generate remain as recovery paths.
@@ -159,7 +172,7 @@ const getRecommendations = async (req, res, next) => {
         where: { id: sessionId },
         select: { group_id: true },
       });
-      broadcastPicks(req.app.get('io'), session?.group_id, sessionId, recommendation);
+      await broadcastPicks(req.app.get('io'), session?.group_id, sessionId, recommendation);
     } catch (deliveryErr) {
       console.error('top-picks broadcast failed', deliveryErr);
     }
@@ -334,7 +347,7 @@ const getSession = async (req, res, next) => {
             user_id: true,
             status: true,
             joined_at: true,
-            user: { select: { display_name: true, username: true } },
+            user: { select: { display_name: true, username: true, avatar_url: true } },
           },
         },
       },
@@ -350,6 +363,7 @@ const getSession = async (req, res, next) => {
       user_id,
       display_name: user?.display_name ?? null,
       username: user?.username ?? null,
+      avatar_url: user?.avatar_url ?? null,
       status,
       joined_at,
     }));
@@ -411,7 +425,7 @@ const listMembers = async (req, res, next) => {
         user_id: true,
         status: true,
         joined_at: true,
-        user: { select: { display_name: true, username: true } },
+        user: { select: { display_name: true, username: true, avatar_url: true } },
       },
       orderBy: { joined_at: 'asc' },
     });
@@ -423,6 +437,7 @@ const listMembers = async (req, res, next) => {
       user_id,
       display_name: user?.display_name ?? null,
       username: user?.username ?? null,
+      avatar_url: user?.avatar_url ?? null,
       status,
       joined_at,
     }));
@@ -626,7 +641,8 @@ const submitQa = async (req, res, next) => {
 
 /**
  * GET /api/sessions/:session_id/recommendations — fetch the latest stored
- * recommendation for the session (gateway-direct Prisma read). 404 when none.
+ * recommendation for the session (gateway-direct Prisma read). Member-scoped.
+ * 403 for a non-member, 404 when the session has no results yet.
  */
 const getLatestRecommendation = async (req, res, next) => {
   const sessionId = toPositiveInt(req.params.session_id);
@@ -635,6 +651,18 @@ const getLatestRecommendation = async (req, res, next) => {
   }
 
   try {
+    // Membership guard: a recommendation carries the group's picks AND the LLM's
+    // justifications, which describe their dietary needs and budget — private to
+    // that session's members. Mirrors getRecommendations / submitQa / analyzeTurn.
+    // Checked BEFORE the lookup so a non-member gets 403 whether or not results
+    // exist — a 403-vs-404 split would otherwise leak which sessions have results.
+    const member = await prisma.sessionMember.findUnique({
+      where: { session_id_user_id: { session_id: sessionId, user_id: req.user.id } },
+    });
+    if (!member) {
+      return res.status(403).json({ error: 'Not a session member.' });
+    }
+
     const recommendation = await prisma.recommendation.findFirst({
       where: { session_id: sessionId },
       orderBy: { created_at: 'desc' },
@@ -721,6 +749,7 @@ const closeSession = async (req, res, next) => {
       include: {
         group: { select: { name: true } },
         members: { select: { user_id: true } },
+        host: { select: { display_name: true, username: true } },
       },
     });
     if (!session) {
@@ -735,24 +764,24 @@ const closeSession = async (req, res, next) => {
 
     const restaurant = await prisma.restaurant.findUnique({
       where: { id: restaurant_id },
-      select: { name: true },
+      // The Event location is the CHOSEN RESTAURANT's address/coords (where the
+      // group actually meets to eat) — not the host's search location. Note the
+      // Restaurant column is `long`; the Event column is `lon`.
+      select: { name: true, address: true, lat: true, long: true },
     });
     if (!restaurant) {
       return res.status(400).json({ error: 'restaurant_id does not exist.' });
     }
 
-    // occasion + the geocoded primary location live on the HOST's Qa row (set in
-    // the pre-session modal). Snapshot them onto the durable Event before the Qa
-    // rows are deleted below. The event TIME comes from Session.scheduled_for.
+    // occasion lives on the HOST's Qa row (set in the pre-session modal). Snapshot
+    // it onto the durable Event before the Qa rows are deleted below. The event
+    // TIME comes from Session.scheduled_for; the LOCATION comes from the restaurant.
     const hostQa = await prisma.qa.findUnique({
       where: {
         session_id_user_id: { session_id: sessionId, user_id: session.host_user_id },
       },
       select: {
         occasion: true,
-        location_address: true,
-        location_lat: true,
-        location_lon: true,
       },
     });
 
@@ -761,10 +790,12 @@ const closeSession = async (req, res, next) => {
     const eventDate = date
       ? new Date(date)
       : (session.scheduled_for ?? new Date());
+    // Event location = the chosen restaurant's address/coords. An explicit
+    // `address` in the request still overrides (kept for backward compatibility).
     const eventAddress =
       (typeof address === 'string' && address.trim())
         ? address
-        : (hostQa?.location_address ?? 'TBD');
+        : (restaurant.address ?? 'TBD');
 
     // Close the session, create the Event, and clear the session's Qa rows
     // atomically. Qa holds each member's TEMPORARY, session-scoped overrides;
@@ -780,8 +811,8 @@ const closeSession = async (req, res, next) => {
         data: {
           date: eventDate,
           address: eventAddress,
-          lat: hostQa?.location_lat ?? null,
-          lon: hostQa?.location_lon ?? null,
+          lat: restaurant.lat ?? null,
+          lon: restaurant.long ?? null,
           restaurant_id,
           restaurant_name: restaurant.name,
           occasion: hostQa?.occasion ?? null,
@@ -796,15 +827,47 @@ const closeSession = async (req, res, next) => {
       prisma.qa.deleteMany({ where: { session_id: sessionId } }),
     ]);
 
-    // Announce the confirmed pick in the group chat (best-effort) so members see
-    // the event was booked without polling.
+    // Announce the confirmed pick (best-effort — never fail the close on a socket/DB
+    // hiccup). Two things fan out:
+    //   1. A persisted SYSTEM chat message ("X picked <restaurant> for this session")
+    //      over the existing chat pipeline, so live clients append it and reloads
+    //      replay it in history (mirrors the add/remove-member system lines).
+    //   2. session:confirmed to the group room AND every member's per-user room, so a
+    //      member viewing the results page (who has left the group room) still learns
+    //      the session closed and can be redirected back to the group chat.
     if (session.group_id != null) {
-      broadcastToGroup(req, session.group_id, 'session:confirmed', {
-        groupId: session.group_id,
-        sessionId,
-        event,
-        at: closedSession.closed_at?.toISOString?.() ?? new Date().toISOString(),
-      });
+      const io = req.app.get('io');
+      const closedAt = closedSession.closed_at?.toISOString?.() ?? new Date().toISOString();
+
+      try {
+        const hostName =
+          session.host?.display_name ?? session.host?.username ?? 'The host';
+        const row = await prisma.groupMessage.create({
+          data: {
+            group_id: session.group_id,
+            user_id: session.host_user_id,
+            content: `${restaurant.name} was picked by ${hostName}`,
+            message_type: 'SYSTEM',
+          },
+        });
+        io?.to(`group:${session.group_id}`).emit('chat:message', {
+          id: String(row.id),
+          groupId: session.group_id,
+          userId: session.host_user_id,
+          name: hostName,
+          text: row.content,
+          at: row.created_at.toISOString(),
+          type: 'system',
+        });
+      } catch (msgErr) {
+        console.error('confirm system message failed', msgErr);
+      }
+
+      const payload = { groupId: session.group_id, sessionId, event, closedAt, at: closedAt };
+      io?.to(`group:${session.group_id}`).emit('session:confirmed', payload);
+      for (const { user_id } of session.members) {
+        io?.to(`user:${user_id}`).emit('session:confirmed', payload);
+      }
     }
 
     return res.status(200).json({ session: closedSession, event });

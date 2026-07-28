@@ -11,12 +11,12 @@ export function ChatMessage({ message, isNew = false }: ChatMessageProps) {
   let content
   if (message.role === 'system') {
     content = (
-      <p className="mx-auto max-w-md text-center text-caption text-text-muted">{message.text}</p>
+      <p className="mx-auto max-w-md text-center text-caption-touch text-text-muted md:text-caption">{message.text}</p>
     )
   } else if (message.role === 'user') {
     content = (
       <div className="flex justify-end">
-        <div className="max-w-[80%] rounded-2xl rounded-tr-lg bg-bubble-user px-3.5 py-2.5 text-body text-white">
+        <div className="max-w-[80%] rounded-2xl rounded-tr-lg bg-bubble-user px-4 py-3 text-body-touch text-white md:px-3.5 md:py-2.5 md:text-body">
           {message.text}
         </div>
       </div>
@@ -33,7 +33,7 @@ export function ChatMessage({ message, isNew = false }: ChatMessageProps) {
             Food agent
           </span>
         </div>
-        <div className="rounded-2xl border border-border bg-surface-raised px-4 py-3 text-body text-text shadow-sm">
+        <div className="rounded-2xl border border-border bg-surface-raised px-4 py-3.5 text-body-touch text-text shadow-sm md:py-3 md:text-body">
           {message.text}
         </div>
       </div>
