@@ -87,6 +87,7 @@ export function AppSidebar({
               avatarUrl={user?.avatar_url}
               colorClass={avatarColor}
               onViewProfile={() => navigate('/profile')}
+              onAccountSettings={() => navigate('/settings')}
               onSignOut={handleSignOut}
               // Opens beside the rail avatar (bottom-aligned to the right).
               positionClass="bottom-0 left-full ml-2 w-56"

@@ -37,6 +37,7 @@ import { useGroupId } from '@/hooks/useGroupId'
 import { useSessionId } from '@/hooks/useSessionId'
 import { useBindSession } from '@/hooks/useBindSession'
 import { useSocket } from '@/hooks/useSocket'
+import { useVoiceSession } from '@/hooks/useVoiceSession'
 import { useSessionCountdown } from '@/hooks/useSessionCountdown'
 import { setReady } from '@/api/sessionApi'
 import { chipsForMissing } from '@/constants/agentChat'
@@ -106,6 +107,12 @@ export function AgentChatPage({ done = false }: AgentChatPageProps) {
   // is unmounted here). The singleton socket makes the room join idempotent.
   useSocket(groupId)
 
+  // Hands-free voice loop for THIS group's session. Owns mic capture, the voice:*
+  // socket events, and TTS playback; feeds turns into chatStore server-side (so it
+  // never fires a duplicate HTTP /analyze). Inert until the member taps the mic and
+  // there's a real session — guarded internally on sessionId != null.
+  const voice = useVoiceSession(groupId, activeSessionId)
+
   useEffect(() => {
     // Seed the conversation when there's none yet, or re-seed when it belongs to
     // a GENUINELY DIFFERENT session — so a new session never inherits the prior
@@ -158,7 +165,11 @@ export function AgentChatPage({ done = false }: AgentChatPageProps) {
     }
   }, [expired, sessionPath, navigate])
 
-  const handleSend = (text: string) => void sendUserMessage(groupId, text, activeSessionId)
+  // `source` comes from the composer (mic vs keyboard) and rides through to the
+  // analyze endpoint's message_source, so a dictated turn gets transcription-noise
+  // tolerance from the prompt.
+  const handleSend = (text: string, source: 'voice' | 'text') =>
+    void sendUserMessage(groupId, text, activeSessionId, source)
 
   // Host ends the session early over the answers gathered so far, then opens
   // results. The gateway broadcasts session:picks; the picks screen polls until
@@ -284,7 +295,9 @@ export function AgentChatPage({ done = false }: AgentChatPageProps) {
                     <button
                       key={q}
                       disabled={sending}
-                      onClick={() => handleSend(q)}
+                      // A tapped chip is canned text, never dictation — so it sends
+                      // as 'text' even if the user has been speaking.
+                      onClick={() => handleSend(q, 'text')}
                       // tap-target: the 31px pill keeps its size, the hit area grows
                       // to 44px. shrink-0 so labels don't compress in the scroll row.
                       className="tap-target shrink-0 rounded-pill border border-border-strong bg-surface-raised px-3 py-1.5 text-caption font-medium text-text hover:bg-surface-sunken disabled:opacity-50"
@@ -294,7 +307,7 @@ export function AgentChatPage({ done = false }: AgentChatPageProps) {
                   ))}
                 </div>
               )}
-              <VoiceComposer onSend={handleSend} disabled={sending} privacyNote />
+              <VoiceComposer onSend={handleSend} disabled={sending} privacyNote controller={voice} />
               {/* "All set" banner: once the agent has nothing left to ask, nudge
                   the user to finish while making clear they can still make changes. */}
               {allSet && (

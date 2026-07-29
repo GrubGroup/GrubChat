@@ -5,6 +5,7 @@ import pg from 'pg';
 import { config } from '../config/index.js';
 import { auth } from '../lib/auth.js';
 import { registerSessionHandlers } from './sessionHandlers.js';
+import { registerVoiceHandlers } from './voiceHandlers.js';
 
 /**
  * Wire a Postgres adapter so room broadcasts (chat/typing/session) fan out
@@ -99,6 +100,7 @@ const createSocketServer = (httpServer) => {
     const userId = Number(socket.data.userId);
     if (Number.isInteger(userId)) socket.join(`user:${userId}`);
     registerSessionHandlers(io, socket);
+    registerVoiceHandlers(io, socket);
   });
 
   return io;

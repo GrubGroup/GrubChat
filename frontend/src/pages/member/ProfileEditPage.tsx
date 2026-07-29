@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { Avatar, Button, Chip, Icon, Input } from '@/components/ui'
 import { CuisineTriStatePicker } from '@/components/profile/CuisineTriStatePicker'
 import { DIETARY_RESTRICTIONS, isAllergen } from '@/constants/dietary'
@@ -26,8 +26,16 @@ const RADIUS_OPTIONS = [0.5, 1, 2, 5]
 // (with username-uniqueness error surfacing) and Profile via the profile store.
 export function ProfileEditPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const user = useAuthStore((s) => s.user)
   const patchUser = useAuthStore((s) => s.patchUser)
+
+  // Back/Cancel return to the profile view. Pop history (navigate(-1)) rather than
+  // pushing /profile — a push leaves a dangling /profile/edit entry that ProfilePage's
+  // own Back then returns to, trapping the user in a profile ↔ edit loop that never
+  // reaches /groups. A 'default' key means the editor was the entry point (deep link /
+  // refresh) with nothing to pop, so fall back to the profile view.
+  const goBack = () => (location.key === 'default' ? navigate('/profile') : navigate(-1))
 
   const profile = useProfileStore((s) => s.profile)
   const load = useProfileStore((s) => s.load)
@@ -111,7 +119,7 @@ export function ProfileEditPage() {
         <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-6 sm:px-8">
           <div className="min-w-0">
             <button
-              onClick={() => navigate('/profile')}
+              onClick={goBack}
               className="tap-target mb-2 flex items-center gap-1 text-body text-text-muted hover:text-text"
             >
               <Icon name="chevron-left" size={14} /> Back
@@ -126,7 +134,7 @@ export function ProfileEditPage() {
               on a wrapper, not on the Button — `hidden` on the Button would have to
               out-specify its own `inline-flex` base class. */}
           <div className="hidden shrink-0 sm:block">
-            <Button variant="ghost" onClick={() => navigate('/profile')}>
+            <Button variant="ghost" onClick={goBack}>
               Cancel
             </Button>
           </div>
@@ -253,7 +261,7 @@ export function ProfileEditPage() {
           {/* Actions — reversed and stacked below `sm` so Save is the wide button
               closest to the thumb, with Cancel beneath it. */}
           <div className="flex flex-col-reverse gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-end">
-            <Button variant="ghost" fullWidth className="sm:w-auto" onClick={() => navigate('/profile')}>
+            <Button variant="ghost" fullWidth className="sm:w-auto" onClick={goBack}>
               Cancel
             </Button>
             <Button

@@ -147,6 +147,22 @@ export function ProfilePage() {
             </span>
           </div>
 
+          {/* Account settings — MOBILE ONLY. At ≥md this is reached from the
+              sidebar rail's AccountMenu, but that rail is hidden below `md`, so
+              this is the only route to /settings at phone width. Ghost + border
+              reads as a quiet navigation control, not a primary CTA. */}
+          <div className="md:hidden">
+            <Button
+              variant="ghost"
+              fullWidth
+              className="border border-border"
+              leftIcon={<Icon name="settings" size={16} />}
+              onClick={() => navigate('/settings')}
+            >
+              Account settings
+            </Button>
+          </div>
+
           {/* Dietary needs */}
           <Section label="Dietary needs">
             {allergyValues.length + dietValues.length === 0 ? (

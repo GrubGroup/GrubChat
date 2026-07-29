@@ -5,6 +5,8 @@ import type { SVGProps } from 'react'
 // the `size` prop; color inherits `currentColor`.
 export type IconName =
   | 'mic'
+  | 'mic-off'
+  | 'square'
   | 'send'
   | 'plus'
   | 'check'
@@ -34,6 +36,7 @@ export type IconName =
   | 'heart'
   | 'settings'
   | 'user'
+  | 'speaker'
 
 const PATHS: Record<IconName, ReactSvgContent> = {
   mic: (
@@ -43,6 +46,22 @@ const PATHS: Record<IconName, ReactSvgContent> = {
       <path d="M12 18v4M8 22h8" />
     </>
   ),
+  // Slashed mic — the mute affordance. Drawn as an outline (no filled variant); a
+  // diagonal cut across the mic reads as "muted" regardless of fill.
+  'mic-off': (
+    <>
+      <path d="M2 2 22 22" />
+      <path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2" />
+      <path d="M5 10v2a7 7 0 0 0 12 5" />
+      <path d="M15 9.34V5a3 3 0 0 0-5.68-1.33" />
+      <path d="M9 9v3a3 3 0 0 0 5.12 2.12" />
+      <path d="M12 18v4M8 22h8" />
+    </>
+  ),
+  // Stop glyph — a rounded square filling most of the viewBox (Lucide's stop
+  // proportions) so it reads as a solid "stop recording" block, not a small dot.
+  // The closed rect fills cleanly, so no purpose-built FILLED_PATHS entry is needed.
+  square: <rect x="5" y="5" width="14" height="14" rx="3" />,
   send: (
     <>
       <path d="m22 2-7 20-4-9-9-4Z" />
@@ -167,6 +186,15 @@ const PATHS: Record<IconName, ReactSvgContent> = {
     <>
       <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
       <circle cx="12" cy="7" r="4" />
+    </>
+  ),
+  // Speaker emitting sound waves — the "voice / speaking" affordance for the AI
+  // voice setting. A speaker cone (box + triangular horn) plus two arced waves.
+  speaker: (
+    <>
+      <path d="M11 5 6 9H2v6h4l5 4Z" />
+      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+      <path d="M19 5a9 9 0 0 1 0 14" />
     </>
   ),
 }

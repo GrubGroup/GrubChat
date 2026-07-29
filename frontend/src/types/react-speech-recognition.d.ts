@@ -11,6 +11,10 @@ declare module 'react-speech-recognition' {
     listening: boolean
     resetTranscript: () => void
     browserSupportsSpeechRecognition: boolean
+    // True until the browser denies the mic permission prompt (then false).
+    isMicrophoneAvailable: boolean
+    // False on browsers (e.g. Android Chrome) where continuous mode misbehaves.
+    browserSupportsContinuousListening: boolean
   }
 
   const SpeechRecognition: {

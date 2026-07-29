@@ -13,17 +13,20 @@ from openai import AsyncOpenAI
 from app.core.config import settings
 
 
-@lru_cache(maxsize=1)
-def get_llm_client() -> AsyncOpenAI:
-    """Build the chat LLM client for the provider named by settings.llm_provider.
+@lru_cache(maxsize=4)
+def get_client_for(provider: str) -> AsyncOpenAI:
+    """Build (and cache) an OpenAI-compatible client for a NAMED provider.
 
-    Salesforce (LLM_PROVIDER=salesforce): the OpenAI-compatible internal gateway,
-    verifying TLS against the corporate CA bundle from NODE_EXTRA_CA_CERTS when set.
-    OpenRouter (default): OPENROUTER_API_KEY / OPENROUTER_BASE_URL. The process
-    reads one provider per run (lru_cache), and settings.active_llm_model already
-    resolves to the matching model name.
+    Keyed by provider name so the extraction path can use a different provider
+    from the ranking path within one process — the conversational analyze turn
+    routes to a fast provider/model pair while ranking stays on the strong one
+    (see settings.active_extraction_provider).
+
+    Salesforce: the internal gateway, verifying TLS against the corporate CA
+    bundle from NODE_EXTRA_CA_CERTS when set. OpenRouter: OPENROUTER_API_KEY /
+    OPENROUTER_BASE_URL.
     """
-    if settings.llm_provider.strip().lower() == "salesforce":
+    if provider.strip().lower() == "salesforce":
         return AsyncOpenAI(
             api_key=settings.salesforce_api_key,
             base_url=settings.salesforce_base_url,
@@ -38,22 +41,28 @@ def get_llm_client() -> AsyncOpenAI:
     )
 
 
+def get_llm_client() -> AsyncOpenAI:
+    """The chat client for the provider named by settings.llm_provider."""
+    return get_client_for(settings.llm_provider)
+
+
 async def chat_completion(
     messages: list[dict[str, Any]],
     *,
     model: str | None = None,
     temperature: float = 0.2,
     response_format: dict[str, Any] | None = None,
+    provider: str | None = None,
     max_tokens: int | None = None,
 ) -> str:
     """Run a chat completion and return the assistant message content.
 
     `model` defaults to settings.active_llm_model (the model for the selected
-    provider). `response_format` (e.g. JSON mode) is passed through when provided;
-    providers that ignore it simply return text. `max_tokens`, when set, caps the
-    completion length — LLM latency is dominated by output tokens, so callers that
-    know their response is bounded (e.g. the group re-rank returns a short JSON
-    array) pass it to hard-stop runaway generation.
+    provider). `provider` overrides which provider's client is used — pass both
+    together, since a model name is only valid for its own provider. `max_tokens`
+    caps generation, which matters because latency here is output-token-bound
+    (~13 ms/token measured). `response_format` (e.g. JSON mode) is passed through
+    when provided; providers that ignore it simply return text.
     """
     kwargs: dict[str, Any] = {
         "model": model or settings.active_llm_model,
@@ -65,7 +74,8 @@ async def chat_completion(
     if max_tokens is not None:
         kwargs["max_tokens"] = max_tokens
 
-    response = await get_llm_client().chat.completions.create(**kwargs)
+    client = get_client_for(provider) if provider else get_llm_client()
+    response = await client.chat.completions.create(**kwargs)
     return response.choices[0].message.content
 
 

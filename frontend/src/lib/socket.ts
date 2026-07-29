@@ -21,6 +21,15 @@ export function getSocket(auth?: SocketAuth): Socket | null {
       auth: auth ?? undefined,
       withCredentials: true,
       autoConnect: true,
+      // Pin the WebSocket transport (no long-polling fallback). engine.io defaults
+      // to ['polling','websocket'], which for the first few hundred ms of a voice
+      // session base64-bloats mic audio over polling POSTs AND hard-blocks it during
+      // the upgrade pause (buffered, then flushed as one out-of-realtime burst) —
+      // enough to corrupt Flux's endpointing and trip a spurious EndOfTurn. Transports
+      // are a Manager-level option (not per-namespace) and this is the one singleton
+      // socket shared with group chat, so pinning it here removes polling for chat too
+      // — acceptable on this stack, and Socket.IO's own recommendation.
+      transports: ['websocket'],
     })
   }
   return socket

@@ -41,8 +41,9 @@ PREFERENCE_TURN_SYSTEM = (
     "asked about budget and they answer the budget AND revise an earlier cuisine. "
     "Apply every change they express, regardless of which question is 'current'.\n\n"
     "=== ARBITRARY WORDING -> TAGS (be generous, map to the catalog) ===\n"
-    "The user speaks loosely; you convert to lowercase single-concept underscore "
-    "tags (thai, fine_dining, gluten_free). Two special cases:\n"
+    "The user speaks loosely; you convert to lowercase single-concept tags — "
+    "cuisines/styles use underscores (thai, fine_dining) while dietary tags use "
+    "hyphens (gluten-free, nut-free). Two special cases:\n"
     "  1. BROAD CUISINE GROUPS. If they name a whole region/culture ('Asian "
     "food', 'something Latin', 'European', 'Mediterranean'), expand it to the "
     "member cuisines of that group — put the GROUP KEY plus its members into the "
@@ -74,8 +75,9 @@ PREFERENCE_TURN_SYSTEM = (
     "  - Only touch fields the user spoke to; carry everything else through "
     "unchanged. A partial turn never nulls an earlier answer.\n\n"
     "Signal fields (all optional):\n"
-    '  "dietary_restrictions" (list[str]): hard dietary needs — controlled tags '
-    "(vegan, vegetarian, halal, kosher, gluten_free, nut_free).\n"
+    '  "dietary_restrictions" (list[str]): hard dietary needs — controlled tags, '
+    "HYPHENATED where multi-word (vegan, vegetarian, halal, kosher, gluten-free, "
+    "nut-free, dairy-free, shellfish-free).\n"
     '  "preferred_cuisines" (list[str]): cuisines / groups / styles they want.\n'
     '  "disliked_cuisines" (list[str]): cuisines / groups / styles to avoid.\n'
     '  "removed_preferred" / "removed_disliked" / "removed_dietary" (list[str]): '
@@ -136,6 +138,44 @@ PREFERENCE_TURN_SYSTEM = (
 )
 
 
+# --- Low-latency output override (voice path) ---------------------------------
+# Appended to PREFERENCE_TURN_SYSTEM when the turn must fit a real-time budget.
+#
+# Why this exists: the analyze turn's latency is dominated by OUTPUT tokens
+# (~13 ms/token measured — dropping 123 output tokens saved ~1.6 s, while
+# removing 2439 INPUT tokens saved only ~42 ms). So the lever is emitting fewer
+# tokens, and `agent_reply` is the one part that is pure redundancy: the server
+# already composes the next question deterministically from `missing_signals`
+# (see the ASK-ORDER rules and conversation_agent._fallback_reply). Dropping it
+# means the server authors the whole spoken line — which the voice design wants
+# anyway, so TTS speaks exact wording instead of a model paraphrase.
+#
+# WHAT THIS DELIBERATELY DOES **NOT** DO: it does not ask for a "delta" (only the
+# changed fields). That was tried and it broke corrections. Told to send only
+# what changed, the model resolved the flip turn "actually I do like chinese, and
+# drop the mexican" as `preferred_cuisines: [], removed_preferred: [mexican]` —
+# reporting the removal but silently dropping the ADDITION, so "chinese" was lost
+# and the reconciled list came back empty. Tightening the wording (including an
+# explicit worked example of that exact turn) did not fix it. The root cause is a
+# contract clash, not phrasing: `_reconcile` / `_merge_cuisine_field` are built on
+# "a list the model returns is the FULL intended set and REPLACES the prior list",
+# which is what makes a correction drop a stale tag. A delta response violates
+# that premise. Keeping the full signal set costs a few dozen output tokens and
+# preserves the documented correction behavior — a good trade.
+PREFERENCE_TURN_DELTA_OVERRIDE = (
+    "\n\n=== OUTPUT OVERRIDE (this SUPERSEDES the JSON shape above) ===\n"
+    "Emit exactly two keys: \"extracted_signals\" and \"missing_signals\".\n"
+    "Do NOT emit \"agent_reply\" at all — the server writes the spoken reply "
+    "itself, so any reply you write is discarded work.\n"
+    "\"extracted_signals\" keeps the SAME shape and rules as above: for each list "
+    "field, return the COMPLETE updated list after this turn (adds included, "
+    "corrected/removed values excluded), and report dropped values in "
+    "removed_preferred / removed_disliked / removed_dietary. Carry unchanged "
+    "fields through unchanged.\n"
+    "No prose, no markdown, no code fences — the JSON object only."
+)
+
+
 def build_preference_turn_messages(
     message: str,
     *,
@@ -144,6 +184,7 @@ def build_preference_turn_messages(
     current_signals: dict[str, Any] | None = None,
     is_host: bool = False,
     host_location_label: str | None = None,
+    low_latency: bool = False,
 ) -> list[dict[str, Any]]:
     """Build chat messages for one conversational preference-parse turn.
 
@@ -156,9 +197,15 @@ def build_preference_turn_messages(
     relative to the host's chosen spot for a MEMBER (occasion/time are set in the
     pre-session modal, never here). `host_location_label` (for a MEMBER) surfaces
     the host's chosen location so the agent can frame that question relative to it.
+    `low_latency` appends PREFERENCE_TURN_DELTA_OVERRIDE — a much smaller (faster)
+    response that omits agent_reply, so the CALLER must author the reply itself
+    from missing_signals.
     """
     history = conversation_history or []
     signals = current_signals or {}
+    system = PREFERENCE_TURN_SYSTEM + (
+        PREFERENCE_TURN_DELTA_OVERRIDE if low_latency else ""
+    )
 
     context_lines = [
         f"MESSAGE_SOURCE: {message_source}",
@@ -188,7 +235,7 @@ def build_preference_turn_messages(
     ]
 
     return [
-        {"role": "system", "content": PREFERENCE_TURN_SYSTEM},
+        {"role": "system", "content": system},
         {"role": "user", "content": "\n".join(context_lines)},
     ]
 
