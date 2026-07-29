@@ -269,8 +269,9 @@ function HeroCluster({ float, reduce }: { float: (d: number, dist?: number) => o
     <div className="relative mx-auto h-[440px] w-full max-w-[540px] sm:h-[520px]">
       {/* soft-orange glow behind the focal card */}
       <div className="absolute right-6 top-24 h-72 w-72 rounded-pill bg-primary-soft/40 blur-[90px]" />
-      {/* recessed lightbox */}
-      <div className="absolute inset-x-2 inset-y-6 rounded-[32px] bg-surface-panel" />
+      {/* recessed lightbox — in dark mode it drops away so the cards float on the
+          pure-black page (the grey box reads as a muddy backdrop on true black). */}
+      <div className="absolute inset-x-2 inset-y-6 rounded-[32px] bg-surface-panel dark:bg-transparent" />
 
       {/* Group chat (back) */}
       <FloatCard
@@ -495,7 +496,7 @@ function HowItWorksStatic() {
             )}
           >
             {/* ghost numeral peeking above the card */}
-            <span className="pointer-events-none absolute -top-14 left-4 font-display text-[120px] font-extrabold leading-none text-text/[0.05]">
+            <span className="pointer-events-none absolute -top-14 left-4 font-display text-[120px] font-extrabold leading-none text-text/[0.05] dark:text-text/[0.28]">
               {s.n}
             </span>
             <span className="relative flex h-13 w-13 items-center justify-center rounded-2xl bg-primary-soft/25 text-primary">
@@ -605,7 +606,7 @@ function HowItWorksPinned() {
                       y: motions[i].cardY,
                       scale: motions[i].cardScale,
                     }}
-                    className="absolute inset-0 flex flex-col justify-center rounded-[20px] border border-surface-sunken bg-surface-raised p-7 shadow-[0_36px_80px_rgba(26,18,8,0.18)] lg:p-8"
+                    className="absolute inset-0 flex flex-col justify-center rounded-[20px] border border-surface-sunken bg-surface-raised p-7 shadow-[0_36px_80px_rgba(26,18,8,0.18)] dark:border-border dark:bg-surface lg:p-8"
                   >
                     <span className="flex h-13 w-13 items-center justify-center rounded-2xl bg-primary-soft/25 text-primary">
                       <Icon name={s.icon} size={24} />
@@ -642,7 +643,7 @@ function HowItWorksPinned() {
               )}
             >
               {/* ghost numeral peeking above the card */}
-              <span className="pointer-events-none absolute -top-14 left-4 font-display text-[120px] font-extrabold leading-none text-text/[0.05]">
+              <span className="pointer-events-none absolute -top-14 left-4 font-display text-[120px] font-extrabold leading-none text-text/[0.05] dark:text-text/[0.28]">
                 {s.n}
               </span>
               <span className="relative flex h-13 w-13 items-center justify-center rounded-2xl bg-primary-soft/25 text-primary">

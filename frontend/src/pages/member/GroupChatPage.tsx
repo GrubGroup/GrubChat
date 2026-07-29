@@ -315,13 +315,13 @@ export function GroupChatPage() {
               onClick={() => setHostModalOpen(true)}
               disabled={sessionOngoing}
               title={sessionOngoing ? 'A session is already in progress' : undefined}
-              className="flex items-center gap-1.5 rounded-input bg-surface-inverse px-3 py-1.5 text-caption font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex items-center gap-1.5 rounded-input border border-border-strong bg-surface-inverse px-3 py-1.5 text-caption font-medium text-on-inverse dark:bg-surface-sunken dark:text-text dark:hover:bg-surface-panel disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Icon name="sparkles" size={12} /> Start session
             </button>
             <button
               onClick={() => setEditing(true)}
-              className="flex items-center gap-1.5 rounded-input border border-border px-3 py-1.5 text-caption font-medium text-text hover:bg-surface-sunken"
+              className="flex items-center gap-1.5 rounded-input border border-border-strong bg-surface-sunken px-3 py-1.5 text-caption font-medium text-text hover:bg-surface-panel"
             >
               <Icon name="users" size={12} /> Edit group
             </button>
