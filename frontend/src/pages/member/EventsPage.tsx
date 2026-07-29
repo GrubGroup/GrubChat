@@ -71,6 +71,29 @@ function EventSection({
   )
 }
 
+// The events search box. Filters the list below by a case-insensitive substring
+// match on the event name (restaurant) + group name (see EventsPage's useMemo).
+// Rendered in both list regions (desktop sidebar + mobile root) so the two stay
+// identical — mirrors the Groups search (components/session/GroupList.tsx).
+function EventSearch({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="px-2.5 py-1.5">
+      <div className="flex items-center gap-2 rounded-[10px] border border-border bg-surface-raised px-2.5 py-2">
+        <span className="text-text-muted">
+          <Icon name="search" size={14} />
+        </span>
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Search by event or group name"
+          aria-label="Search events"
+          className="min-w-0 flex-1 bg-transparent text-caption font-medium text-text placeholder:text-text-muted focus:outline-none"
+        />
+      </div>
+    </div>
+  )
+}
+
 export function EventsPage() {
   const events = useEventListStore((s) => s.events)
   const loaded = useEventListStore((s) => s.loaded)
@@ -89,6 +112,9 @@ export function EventsPage() {
   // upcoming/previous cutoff. A mid-session tick past an event's time isn't worth
   // a re-render; the split refreshes on next mount / navigation.
   const [now] = useState(() => Date.now())
+  // Client-side search — a purely presentational substring filter over the
+  // already-fetched list, mirroring the Groups search. Local state, no store.
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     void load()
@@ -102,15 +128,23 @@ export function EventsPage() {
   // Cutoff is the exact current time, so an outing earlier today reads as previous.
   // Upcoming is soonest-first; previous is newest-first.
   const { upcoming, previous } = useMemo(() => {
+    // Filter before the split so both sections + both device layouts stay in sync
+    // from one source. Empty query matches everything.
+    const q = query.trim().toLowerCase()
+    const matches = (e: EventRecord) =>
+      !q ||
+      // Event name (the restaurant shown as the row/detail title) + group name only.
+      [e.restaurant_name, e.group_name].some((f) => f?.toLowerCase().includes(q))
     const up: EventRecord[] = []
     const prev: EventRecord[] = []
     for (const e of events) {
+      if (!matches(e)) continue
       ;(new Date(e.date).getTime() >= now ? up : prev).push(e)
     }
     up.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
     prev.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     return { upcoming: up, previous: prev }
-  }, [events, now])
+  }, [events, now, query])
 
   // Below `md` a URL naming a specific event IS the drill-down; /events is the
   // list root. Native Back (/events/:id → /events) closes the detail, so there's
@@ -120,10 +154,14 @@ export function EventsPage() {
   return (
     <div className="flex h-dvh overflow-hidden bg-surface-raised">
       <AppSidebar eyebrow="Events">
+        <EventSearch value={query} onChange={setQuery} />
         {loaded && !error && events.length === 0 && (
           <p className="px-4 py-6 text-body text-text-muted">
             No events yet. Start a session and confirm a pick to book one.
           </p>
+        )}
+        {loaded && !error && events.length > 0 && upcoming.length === 0 && previous.length === 0 && (
+          <p className="px-4 py-6 text-body text-text-muted">No events match your search.</p>
         )}
         {error && events.length === 0 && (
           <p className="px-4 py-6 text-body text-text-muted">
@@ -146,10 +184,14 @@ export function EventsPage() {
         {/* `brand` matches the Groups tab root: at ≥md the sidebar panel header
             carries the wordmark, and it's hidden here. */}
         <MobileHeader brand title="Events" />
+        <EventSearch value={query} onChange={setQuery} />
         {loaded && events.length === 0 && (
           <p className="px-4 py-6 text-body text-text-muted">
             No events yet. Start a session and confirm a pick to book one.
           </p>
+        )}
+        {loaded && events.length > 0 && upcoming.length === 0 && previous.length === 0 && (
+          <p className="px-4 py-6 text-body text-text-muted">No events match your search.</p>
         )}
         {/* activeId=null: on mobile a tap drills into the detail rather than
             highlighting a row in place. */}

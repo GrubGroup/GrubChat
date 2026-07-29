@@ -368,6 +368,19 @@ def _fallback_reply(signals: ExtractedSignals, missing: list[str]) -> str:
     return f"{confirm} That's everything I need — thanks!"
 
 
+# Output-token cap for the analyze call. The turn's response is small — a
+# delta-shaped signals JSON in fast mode, plus a one-line reply in full mode — so
+# it never needs the model's full output ceiling. Beyond keeping latency low
+# (output-token-bound, ~13 ms/token), this is LOAD-BEARING on OpenRouter: its
+# credit precheck rejects a request with HTTP 402 unless the balance can afford
+# the requested max_tokens, and an UNCAPPED call implicitly asks for the model's
+# full ceiling (65535 for gemini-2.5-flash) — which a low-credit account can't
+# cover, 402-ing every extraction turn before generation. `_FAST` covers the
+# delta-only response; `_FULL` leaves headroom for the model-written reply.
+_ANALYZE_MAX_TOKENS_FAST = 512
+_ANALYZE_MAX_TOKENS_FULL = 1024
+
+
 async def analyze_turn(
     message: str,
     *,
@@ -429,9 +442,12 @@ async def analyze_turn(
             temperature=0.2,
             provider=settings.active_extraction_provider,
             model=settings.active_extraction_model,
+            max_tokens=_ANALYZE_MAX_TOKENS_FAST,
         ) or ""
     else:
-        raw = await chat_completion(messages, temperature=0.2) or ""
+        raw = await chat_completion(
+            messages, temperature=0.2, max_tokens=_ANALYZE_MAX_TOKENS_FULL
+        ) or ""
 
     try:
         parsed = json.loads(strip_json_fence(raw))
