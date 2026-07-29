@@ -3,7 +3,7 @@ import type { Restaurant } from '@/types'
 import { Badge, Card, Icon } from '@/components/ui'
 import { LikeStarButton } from './LikeStarButton'
 import { DIETARY_RESTRICTIONS, labelFor } from '@/constants/dietary'
-import { POPULAR_MIN, restaurantEmoji, restaurantTint } from '@/constants/restaurantVisuals'
+import { POPULAR_MIN, restaurantTint } from '@/constants/restaurantVisuals'
 import { formatDistanceMi } from '@/utils/distance'
 import { priceLevel } from '@/utils/price'
 import { cn } from '@/utils/cn'
@@ -51,13 +51,8 @@ export function RestaurantExploreCard({
 
   return (
     <Card padding="none" className="overflow-hidden">
-      {/* Banner — deterministic tint + cuisine emoji, with the state badge overlaid. */}
-      <div
-        className={cn(
-          'relative flex h-28 items-center justify-center text-5xl',
-          restaurantTint(r.id),
-        )}
-      >
+      {/* Banner — deterministic tint placeholder, with the state badge overlaid. */}
+      <div className={cn('relative h-28', restaurantTint(r.id))}>
         {liked ? (
           <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-pill bg-primary px-2.5 py-0.5 text-caption font-semibold text-on-primary">
             <Icon name="star" size={11} filled /> Liked
@@ -67,7 +62,6 @@ export function RestaurantExploreCard({
             Popular
           </span>
         ) : null}
-        <span aria-hidden>{restaurantEmoji(r.cuisine_tags)}</span>
       </div>
 
       {/* Body */}
