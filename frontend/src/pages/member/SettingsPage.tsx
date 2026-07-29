@@ -8,7 +8,10 @@ import { changeEmail, changePassword, linkSocial } from '@/lib/authClient'
 import { fetchAuthMethods, type AuthMethods } from '@/api/authApi'
 import { useAuthStore } from '@/stores/authStore'
 import { useVoicePrefStore } from '@/stores/voicePrefStore'
+import { useThemeStore } from '@/stores/themeStore'
 import { VOICE_OPTIONS } from '@/constants/voices'
+import { THEME_OPTIONS, type Theme } from '@/constants/theme'
+import type { IconName } from '@/components/ui'
 import { cn } from '@/utils/cn'
 
 // Account settings screen. Mirrors the "Account settings" wireframe (Account /
@@ -32,6 +35,12 @@ export function SettingsPage() {
   // `start` frame, so a change takes effect on the next voice session.
   const voiceId = useVoicePrefStore((s) => s.voiceId)
   const setVoiceId = useVoicePrefStore((s) => s.setVoiceId)
+
+  // Color theme — a per-device rendering preference (themeStore, persisted to
+  // localStorage). Changing it re-applies immediately via the store's applyTheme
+  // (toggles the `.dark` class on <html>); no reload needed.
+  const theme = useThemeStore((s) => s.theme)
+  const setTheme = useThemeStore((s) => s.setTheme)
 
   // Which auth providers this account has. Email/password lives on a 'credential'
   // provider (→ authMethods.password); Google-only accounts can't change email or
@@ -342,6 +351,26 @@ export function SettingsPage() {
             </div>
           </Section>
 
+          {/* APPEARANCE */}
+          <Section label="Appearance">
+            <div className="overflow-hidden rounded-card border border-border">
+              <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-sunken text-primary">
+                    <Icon name="moon" size={18} />
+                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-sm font-semibold text-text">Dark mode</span>
+                    <span className="text-xs text-text-muted">
+                      Follow your system setting, or force a light or dark theme
+                    </span>
+                  </div>
+                </div>
+                <ThemeSegmented value={theme} onChange={setTheme} />
+              </div>
+            </div>
+          </Section>
+
           {/* AI SETTINGS */}
           <Section label="AI settings">
             <div className="overflow-hidden rounded-card border border-border">
@@ -435,6 +464,51 @@ function SettingRow({
       >
         {actionLabel}
       </Button>
+    </div>
+  )
+}
+
+// 3-way segmented control for the color theme (System · Light · Dark), matching
+// the wireframe. Each segment carries a visible TEXT label, so state never
+// relies on the icon/color alone (WCAG); System = monitor, Light = sun, Dark =
+// moon. The active segment is a raised filled pill; `aria-pressed` exposes
+// selection to assistive tech.
+const THEME_ICONS: Record<Theme, IconName> = { system: 'monitor', light: 'sun', dark: 'moon' }
+
+function ThemeSegmented({
+  value,
+  onChange,
+}: {
+  value: Theme
+  onChange: (theme: Theme) => void
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Theme"
+      className="inline-flex items-center gap-1 rounded-pill border border-border bg-surface-sunken p-1"
+    >
+      {THEME_OPTIONS.map((opt) => {
+        const active = value === opt.value
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(opt.value)}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-pill px-3 py-1.5 text-xs font-semibold transition-colors',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+              active
+                ? 'bg-surface-raised text-text shadow-sm'
+                : 'text-text-muted hover:text-text',
+            )}
+          >
+            <Icon name={THEME_ICONS[opt.value]} size={14} />
+            {opt.label}
+          </button>
+        )
+      })}
     </div>
   )
 }
