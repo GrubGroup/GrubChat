@@ -158,7 +158,7 @@ export function TopPicksPage() {
 
   // While the group's picks are still being fetched/generated, take over the whole
   // results area (everything right of the sidebar) with a single contained loading
-  // screen — the GrubGroup loading circle — instead of an empty list beside a small
+  // screen — the GrubChat loading circle — instead of an empty list beside a small
   // panel spinner. The sidebar stays put so the app frame never flickers.
   if (isLoading) {
     return (

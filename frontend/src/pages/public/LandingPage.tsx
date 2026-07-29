@@ -877,7 +877,7 @@ function EmotionalBenefit() {
             More dining.
           </h2>
           <p className="mt-5 max-w-md text-[17px] leading-relaxed text-text-muted">
-            No more forty-message threads or the friend who “doesn't care, anything's fine.” GrubGroup
+            No more forty-message threads or the friend who “doesn't care, anything's fine.” GrubChat
             turns indecision into a table, booked.
           </p>
           <button
@@ -980,7 +980,7 @@ function Footer() {
           ))}
         </div>
         <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-white/[0.06] pt-6 sm:flex-row">
-          <span className="text-[13px] text-white/40">© 2026 GrubGroup</span>
+          <span className="text-[13px] text-white/40">© 2026 GrubChat</span>
           <div className="flex gap-2">
             {[0, 1, 2, 3, 4, 5].map((i) => (
               <span key={i} className={cn('h-2.5 w-2.5 rounded-pill', MEMBER_BG[i])} />

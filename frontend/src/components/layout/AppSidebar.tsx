@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router'
-import { Avatar, Icon, Wordmark, type IconName } from '@/components/ui'
+import { Avatar, BrandMark, Icon, Wordmark, type IconName } from '@/components/ui'
 import { AccountMenu } from './AccountMenu'
 import { useAuthStore } from '@/stores/authStore'
 import { useSignOut } from '@/hooks/useSignOut'
@@ -13,7 +13,7 @@ import { cn } from '@/utils/cn'
 export const COLUMN_HEADER_H = 'h-[61px]'
 
 export interface AppSidebarProps {
-  /** Small uppercase eyebrow under the constant "GrubGroup" wordmark (e.g. "Groups", "Events"). */
+  /** Small uppercase eyebrow under the constant "GrubChat" wordmark (e.g. "Groups", "Events"). */
   eyebrow?: string
   /** Optional action rendered on the right of the panel header (e.g. add button). */
   headerAction?: ReactNode
@@ -64,10 +64,9 @@ export function AppSidebar({
     >
       {/* Icon rail */}
       <div className="flex w-16 flex-col items-center gap-1.5 border-r border-border bg-surface-sunken px-3 pb-4 pt-4">
-        {/* Brand badge */}
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface-inverse text-white">
-          <Icon name="utensils" size={16} />
-        </span>
+        {/* Brand badge — the chat-bubble mark stands in for the wordmark on the rail. */}
+        <BrandMark size={34} className="text-text" />
+
 
         <div className="mt-2 flex flex-col items-center gap-1.5">
           <RailTab icon="users" label="Groups" to="/groups" />

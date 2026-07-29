@@ -159,7 +159,7 @@ export function BrandPanel({ onLogoClick }: BrandPanelProps = {}) {
 
         {/* Bottom — footer */}
         <motion.p variants={fu} className="text-caption text-white/30">
-          © 2026 GrubGroup
+          © 2026 GrubChat
         </motion.p>
       </motion.div>
     </div>
