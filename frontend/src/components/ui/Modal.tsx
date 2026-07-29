@@ -27,7 +27,10 @@ export interface ModalProps {
 const sizeClasses: Record<ModalSize, string> = {
   sm: 'max-w-sm',
   md: 'max-w-md',
-  lg: 'max-w-2xl',
+  // `lg` = a roomy single-column form (e.g. the host-session setup) — wide enough
+  // that a field like "Search a place, e.g. Salesforce Tower" shows its full
+  // placeholder, without the over-wide feel of a two-column 2xl dialog.
+  lg: 'max-w-xl',
   full: 'max-w-4xl',
 }
 
@@ -146,10 +149,13 @@ export function Modal({
               // without it the footer's square bg paints over the centered
               // dialog's rounded BOTTOM corners on desktop.
               'flex w-full flex-col overflow-hidden bg-surface-raised shadow-xl focus:outline-none',
-              sizeClasses[size],
+              // A bottom sheet ignores the size cap and fills the phone's full width
+              // edge-to-edge (the container's p-0 keeps it flush), sizing to its own
+              // content up to a 96dvh cap (so a short action sheet stays short and a
+              // long form scrolls). A centered dialog keeps its max-width cap + margin.
               isSheet
-                ? 'max-h-[92dvh] rounded-t-card'
-                : 'max-h-[calc(100dvh-2rem)] rounded-card',
+                ? 'max-h-[96dvh] rounded-t-card'
+                : cn(sizeClasses[size], 'max-h-[calc(100dvh-2rem)] rounded-card'),
             )}
             {...panelMotion}
             transition={{ duration: reduce ? 0.2 : 0.22, ease: EASE }}

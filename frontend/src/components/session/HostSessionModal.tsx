@@ -18,8 +18,34 @@ export interface HostSessionModalProps {
 // field overrides so the host can type anything.
 const OCCASION_PRESETS = ["Dinner", "Group lunch", "Date", "Coffee chat"];
 
-// "Members answer within" options (minutes) — drives the expiry timer.
-const TIME_LIMIT_OPTIONS = [2, 5, 10, 15, 30, 60];
+// "Members answer within" preset durations — the combobox dropdown. The host can
+// also type any custom duration (see parseMinutes); these are just quick picks.
+const TIME_LIMIT_PRESETS = [
+  { label: "5 minutes", value: 5 },
+  { label: "15 minutes", value: 15 },
+  { label: "30 minutes", value: 30 },
+  { label: "1 hour", value: 60 },
+];
+
+// Parse a free-text duration into whole minutes (drives the expiry timer). Accepts
+// the preset labels plus loose input: "1 hr"/"2 hours" → hours, "45 min"/"45m" →
+// minutes, a bare number → minutes. Returns null when it can't read a positive
+// duration, so the caller can block submit + show a hint.
+function parseMinutes(text: string): number | null {
+  const t = text.trim().toLowerCase();
+  if (!t) return null;
+  const hours = t.match(/^(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hour|hours)$/);
+  if (hours) {
+    const mins = Math.round(parseFloat(hours[1]) * 60);
+    return mins > 0 ? mins : null;
+  }
+  const mins = t.match(/^(\d+)\s*(?:m|min|mins|minute|minutes)?$/);
+  if (mins) {
+    const n = parseInt(mins[1], 10);
+    return n > 0 ? n : null;
+  }
+  return null;
+}
 
 // Hour options for the scheduled time dropdown (12h labels -> 24h value).
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => {
@@ -73,7 +99,12 @@ export function HostSessionModal({
   const [date, setDate] = useState(todayIso());
   const [hour, setHour] = useState(19); // 7 PM default
 
-  const [timeLimit, setTimeLimit] = useState(15);
+  // Free-text answer window (combobox): defaults to the "15 minutes" preset but the
+  // host can type any duration. `timeLimit` is the parsed whole-minute value, null
+  // when the text doesn't read as a positive duration.
+  const [timeLimitText, setTimeLimitText] = useState("15 minutes");
+  const [timeLimitOpen, setTimeLimitOpen] = useState(false);
+  const timeLimit = parseMinutes(timeLimitText);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -117,7 +148,7 @@ export function HostSessionModal({
   };
 
   const canSubmit =
-    Boolean(trimmedAddress) && geoStatus === "ok" && !submitting;
+    Boolean(trimmedAddress) && geoStatus === "ok" && timeLimit !== null && !submitting;
 
   const buildScheduledFor = (): string | "now" => {
     if (timeMode === "now") return "now";
@@ -134,7 +165,7 @@ export function HostSessionModal({
     try {
       const session = await createSession({
         group_id: groupId,
-        time_limit: timeLimit,
+        time_limit: timeLimit ?? 15,
         occasion: occasion.trim() || null,
         scheduled_for: buildScheduledFor(),
         location_address: trimmedAddress,
@@ -156,7 +187,9 @@ export function HostSessionModal({
       open={open}
       onClose={onClose}
       title="Start a group session"
-      size="md"
+      // `lg` on desktop so the location field is wide enough to show its full
+      // "Search a place, e.g. Salesforce Tower" placeholder without truncating.
+      size="lg"
       variant={isMobile ? "sheet" : "center"}
       // Sticky footer so "Start session" stays reachable while the form scrolls.
       footer={
@@ -326,22 +359,104 @@ export function HostSessionModal({
           )}
         </div>
 
-        {/* Answer window */}
+        {/* Answer window — an editable combobox: pick a preset from the dropdown
+            (5 min / 15 min / 30 min / 1 hour) OR type any custom duration.
+            parseMinutes reads whatever the host types. Built as an input + a
+            custom menu (not a native <datalist>, which renders inconsistently and
+            didn't open reliably here) mirroring the location autocomplete above. */}
         <div className="flex flex-col gap-2">
-          <label className="text-body font-medium text-text">
+          <label
+            htmlFor="answer-window"
+            className="text-body font-medium text-text"
+          >
             Members answer within
           </label>
-          {/* Chips, not a <select>: with only 6 fixed options every choice is
-              visible and one tap away, instead of a picker wheel. */}
-          <div className="flex flex-wrap gap-2">
-            {TIME_LIMIT_OPTIONS.map((m) => (
-              <Chip
-                key={m}
-                label={`${m} min`}
-                selected={timeLimit === m}
-                onToggle={() => setTimeLimit(m)}
-              />
-            ))}
+          <div className="relative">
+            <Input
+              id="answer-window"
+              role="combobox"
+              aria-expanded={timeLimitOpen}
+              aria-controls="answer-window-options"
+              autoComplete="off"
+              leftIcon={<Icon name="calendar" size={14} />}
+              // pr-11 keeps the typed value clear of the inset chevron affordance.
+              className="pr-11"
+              placeholder="e.g. 15 minutes"
+              value={timeLimitText}
+              onChange={(e) => {
+                setTimeLimitText(e.target.value);
+                setTimeLimitOpen(true);
+              }}
+              onFocus={() => setTimeLimitOpen(true)}
+              onBlur={() => {
+                // Delay so a menu click registers before the blur closes it.
+                window.setTimeout(() => setTimeLimitOpen(false), 150);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setTimeLimitOpen(false);
+                if (e.key === "ArrowDown") setTimeLimitOpen(true);
+              }}
+              error={
+                timeLimitText.trim() && timeLimit === null
+                  ? "Enter a duration like “15 minutes” or “1 hour”."
+                  : undefined
+              }
+            />
+            {/* Dropdown chevron — the same affordance the native <select> Time
+                control shows, so this reads as a dropdown. onMouseDown (not click)
+                + preventDefault toggles the menu without stealing/blurring focus. */}
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label="Toggle duration options"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setTimeLimitOpen((o) => !o);
+              }}
+              className={cn(
+                "absolute right-3.5 top-[22px] -translate-y-1/2 text-text-muted transition-transform hover:text-text",
+                timeLimitOpen && "rotate-180",
+              )}
+            >
+              <Icon name="chevron-down" size={16} />
+            </button>
+            {timeLimitOpen && (
+              <ul
+                id="answer-window-options"
+                role="listbox"
+                className="absolute z-20 mt-1 w-full overflow-hidden rounded-input border border-border bg-surface py-1 shadow-lg"
+              >
+                {TIME_LIMIT_PRESETS.map((o) => (
+                  <li key={o.value}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={timeLimit === o.value}
+                      // onMouseDown fires before the input's onBlur, so the pick
+                      // isn't lost to the blur-close above.
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setTimeLimitText(o.label);
+                        setTimeLimitOpen(false);
+                      }}
+                      className={cn(
+                        "flex w-full items-center justify-between px-3 py-2 text-left text-body text-text hover:bg-surface-sunken",
+                        timeLimit === o.value && "bg-surface-sunken",
+                      )}
+                    >
+                      {o.label}
+                      {timeLimit === o.value && (
+                        <Icon
+                          name="check"
+                          size={14}
+                          className="text-primary"
+                        />
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
 
