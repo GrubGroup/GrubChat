@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router'
 import { motion, useReducedMotion } from 'framer-motion'
 import type { Session } from '@/types'
@@ -93,6 +93,30 @@ export function GroupChatPage() {
   // the message index where the card belongs (null = not started), so every
   // client shows the card inline at the same point. Broadcasts to the whole room.
   const sessionStartIndex = useGroupChatStore(selectSessionStartIndex(groupId))
+
+  // Where the session card actually sits in the transcript. It must land at the
+  // point the session STARTED — after the messages that predate it, before those
+  // that follow. We derive that split from the session's start timestamp vs each
+  // message's `at`, NOT from the raw message-count the store captured when
+  // session:start arrived: on a reload / late-join the session:start echo (or the
+  // useBindSession rebind) can run BEFORE the async chat:history backlog lands, so
+  // the captured count is 0 and the card gets pinned to the TOP of the chat. That's
+  // the "session card randomly jumps to the top" bug — it shows up on the deployed
+  // site (real network latency reorders the two async loads) but not on localhost
+  // (mock mode has no socket; local latency is ~0). A timestamp split is recomputed
+  // after history replaces the list, so it's reload-safe. sessionStartIndex stays
+  // the "a session card should show" marker (null vs set) below; only its numeric
+  // value was unreliable.
+  const sessionSplitIndex = useMemo(() => {
+    if (sessionStartIndex === null) return null
+    const startMs = startedAt ? Date.parse(startedAt) : NaN
+    // startedAt not loaded yet (a brief window on cold entry): keep the card at the
+    // BOTTOM (all messages above it) until it arrives — never the top. It snaps into
+    // its real position the moment the session loads.
+    if (Number.isNaN(startMs)) return messages.length
+    const i = messages.findIndex((m) => Date.parse(m.at) >= startMs)
+    return i === -1 ? messages.length : i
+  }, [sessionStartIndex, startedAt, messages])
 
   // Auto-scroll to newest. Opening a chat (or switching groups via the groupId
   // reset key, or the initial socket history bulk-load) jumps to the bottom
@@ -304,7 +328,7 @@ export function GroupChatPage() {
           ) : (
           <>
           {/* Messages that existed before the session started */}
-          {(sessionStartIndex === null ? messages : messages.slice(0, sessionStartIndex)).map((m) => (
+          {(sessionSplitIndex === null ? messages : messages.slice(0, sessionSplitIndex)).map((m) => (
             <GroupMessageRow
               key={m.id}
               message={m}
@@ -351,7 +375,7 @@ export function GroupChatPage() {
               </motion.div>
 
               {/* Messages that arrived after the session started */}
-              {messages.slice(sessionStartIndex).map((m) => (
+              {messages.slice(sessionSplitIndex ?? messages.length).map((m) => (
                 <GroupMessageRow
                   key={m.id}
                   message={m}
