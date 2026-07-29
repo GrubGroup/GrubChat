@@ -213,40 +213,29 @@ const likeRestaurant = async (req, res, next) => {
       return res.status(404).json({ error: 'Restaurant not found.' });
     }
 
-    const profile = await prisma.profile.findUnique({
-      where: { user_id: req.user.id },
-    });
-
-    // No profile yet — seed a minimal one carrying just this like.
-    if (!profile) {
-      const created = await prisma.profile.create({
-        data: {
-          user_id: req.user.id,
-          dietary_restrictions: [],
-          disliked_cuisines: [],
-          preferred_cuisines: [],
-          budget_min: 0,
-          budget_max: 0,
-          liked_restaurant_ids: [restaurantId],
-        },
-        select: { liked_restaurant_ids: true },
-      });
-      return res.status(200).json({ liked_restaurant_ids: created.liked_restaurant_ids });
-    }
-
-    // Idempotent: only append if not already present.
-    if (profile.liked_restaurant_ids.includes(restaurantId)) {
-      return res
-        .status(200)
-        .json({ liked_restaurant_ids: profile.liked_restaurant_ids });
-    }
-
-    const updated = await prisma.profile.update({
-      where: { user_id: req.user.id },
-      data: { liked_restaurant_ids: [...profile.liked_restaurant_ids, restaurantId] },
-      select: { liked_restaurant_ids: true },
-    });
-    return res.status(200).json({ liked_restaurant_ids: updated.liked_restaurant_ids });
+    // Atomic upsert: create a minimal profile if the caller has none (same seed
+    // as before — empty arrays, zero budget), else append idempotently. Done in a
+    // single statement so concurrent likes can't lose an update — the DO UPDATE's
+    // array_append reads the row under the lock the upsert holds. A plain
+    // findUnique-then-update would race (two requests read the old array, the
+    // second write clobbers the first).
+    const rows = await prisma.$queryRaw`
+      INSERT INTO "Profile"
+        (user_id, dietary_restrictions, disliked_cuisines, preferred_cuisines,
+         budget_min, budget_max, liked_restaurant_ids, created_at, updated_at)
+      VALUES
+        (${req.user.id}, '{}'::text[], '{}'::text[], '{}'::text[], 0, 0,
+         ARRAY[${restaurantId}::int], now(), now())
+      ON CONFLICT (user_id) DO UPDATE SET
+        liked_restaurant_ids = CASE
+          WHEN ${restaurantId}::int = ANY("Profile".liked_restaurant_ids)
+            THEN "Profile".liked_restaurant_ids
+          ELSE array_append("Profile".liked_restaurant_ids, ${restaurantId}::int)
+        END,
+        updated_at = now()
+      RETURNING liked_restaurant_ids
+    `;
+    return res.status(200).json({ liked_restaurant_ids: rows[0].liked_restaurant_ids });
   } catch (err) {
     return next(err);
   }
@@ -271,20 +260,16 @@ const unlikeRestaurant = async (req, res, next) => {
       return res.status(404).json({ error: 'Restaurant not found.' });
     }
 
-    const profile = await prisma.profile.findUnique({
-      where: { user_id: req.user.id },
-    });
-    if (!profile) {
-      return res.status(200).json({ liked_restaurant_ids: [] });
-    }
-
-    const filtered = profile.liked_restaurant_ids.filter((id) => id !== restaurantId);
-    const updated = await prisma.profile.update({
-      where: { user_id: req.user.id },
-      data: { liked_restaurant_ids: filtered },
-      select: { liked_restaurant_ids: true },
-    });
-    return res.status(200).json({ liked_restaurant_ids: updated.liked_restaurant_ids });
+    // Atomic single-statement remove — no read-then-write race. 0 rows updated
+    // (the caller has no profile) yields an empty liked list, as before.
+    const rows = await prisma.$queryRaw`
+      UPDATE "Profile"
+         SET liked_restaurant_ids = array_remove(liked_restaurant_ids, ${restaurantId}::int),
+             updated_at = now()
+       WHERE user_id = ${req.user.id}
+       RETURNING liked_restaurant_ids
+    `;
+    return res.status(200).json({ liked_restaurant_ids: rows[0]?.liked_restaurant_ids ?? [] });
   } catch (err) {
     return next(err);
   }
