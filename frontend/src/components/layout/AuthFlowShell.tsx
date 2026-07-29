@@ -148,7 +148,15 @@ export function AuthFlowShell() {
           otherwise cause transient horizontal scroll, but `overflow-hidden` on both
           axes is what clipped tall steps. Vertical centering only from `sm` up,
           where the content reliably fits the viewport. */}
-      <div className="flex min-w-0 flex-1 justify-center overflow-y-auto overflow-x-clip p-4 sm:items-center sm:p-8">
+      <div
+        className={cn(
+          'flex min-w-0 flex-1 justify-center overflow-y-auto overflow-x-clip p-4 sm:items-center sm:p-8',
+          // Auth screens (no onboarding `step`) are short, so center them
+          // vertically on mobile too. Onboarding steps can exceed the viewport, so
+          // they stay top-aligned below `sm` and scroll (see min-h note above).
+          step == null && 'items-center',
+        )}
+      >
         <div className={cn('flex w-full flex-col gap-5 py-4 sm:py-0', narrow ? 'max-w-sm' : 'max-w-md')}>
           {/* Progress ticks — only during onboarding; persist + driven by `step`. */}
           {step != null && (

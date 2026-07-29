@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion'
-import { Button, Icon } from '@/components/ui'
+import { Button, BrandMark, Icon } from '@/components/ui'
 import { makeFloat } from '@/lib/motion'
 import { BottomTabBar, TabBarSpacer } from '@/components/layout/BottomTabBar'
 import { MobileHeader } from '@/components/layout/MobileHeader'
@@ -134,11 +134,8 @@ export function GroupsPage() {
             'sm:px-8 sm:pb-12 sm:pt-16',
           )}
         >
-          <motion.span
-            {...heroFloat}
-            className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-inverse text-white shadow-lg"
-          >
-            <Icon name="utensils" size={32} />
+          <motion.span {...heroFloat} className="mb-5 text-text drop-shadow-lg">
+            <BrandMark size={64} />
           </motion.span>
           <h1 className="font-display text-section-title font-bold tracking-tight text-text sm:text-display">
             Find restaurants
@@ -146,7 +143,7 @@ export function GroupsPage() {
             your whole group loves
           </h1>
           <p className="mt-3 max-w-md text-body leading-relaxed text-text-muted sm:text-item-title">
-            Everyone tells their own AI agent what they want. GrubGroup finds the one restaurant
+            Everyone tells their own AI agent what they want. GrubChat finds the one restaurant
             that works for all of you.
           </p>
           {/* Stacked full-width below `sm` — two side-by-side buttons plus a gap
