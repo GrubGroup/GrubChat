@@ -16,8 +16,12 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 // Visual decisions live here, not scattered in JSX. Semantic tokens only.
 // The wireframe uses DARK cocoa for primary CTAs; orange is an accent.
+// The hairline border is invisible on light mode (near-black button on light
+// page) but delineates the raised near-black CTA against the #000 page in dark
+// mode — the macOS-dark-button idiom. text-on-inverse (ivory in dark, white in
+// light) keeps it token-pure instead of a raw text-white.
 const variantClasses: Record<ButtonVariant, string> = {
-  primary: 'bg-surface-inverse text-white hover:opacity-90',
+  primary: 'border border-border-strong bg-surface-inverse text-on-inverse hover:opacity-90',
   accent: 'bg-primary text-on-primary hover:bg-primary-hover',
   secondary: 'bg-primary text-on-primary hover:bg-primary-hover',
   ghost: 'bg-transparent text-text hover:bg-surface-sunken',
