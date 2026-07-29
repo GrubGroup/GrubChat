@@ -166,10 +166,10 @@ export function AuthForm({ mode }: AuthFormProps) {
   return (
     <div className="mx-auto flex w-full max-w-sm flex-col gap-5">
       <div>
-        <h1 className="font-display text-3xl font-bold text-text">
+        <h1 className="font-display text-display font-bold text-text">
           {isSignup ? 'Create your account' : 'Welcome back'}
         </h1>
-        <p className="mt-1 text-sm text-text-muted">
+        <p className="mt-1 text-body text-text-muted">
           {isSignup
             ? 'Set your preferences once. Never repeat yourself.'
             : 'Sign in to your account to continue'}
@@ -181,7 +181,7 @@ export function AuthForm({ mode }: AuthFormProps) {
           type="button"
           onClick={handleGoogle}
           disabled={loading}
-          className={`flex h-11 w-full items-center justify-center gap-2 rounded-input border bg-surface-raised text-sm font-medium text-text hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50 ${
+          className={`flex h-11 w-full items-center justify-center gap-2 rounded-input border bg-surface-raised text-body font-medium text-text hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50 ${
             googleHint ? 'border-text ring-2 ring-focus-ring' : 'border-border'
           }`}
         >
@@ -189,7 +189,7 @@ export function AuthForm({ mode }: AuthFormProps) {
         </button>
       </div>
 
-      <div className="flex items-center gap-3 text-xs text-text-muted">
+      <div className="flex items-center gap-3 text-caption text-text-muted">
         <span className="h-px flex-1 bg-border" />
         or
         <span className="h-px flex-1 bg-border" />
@@ -230,8 +230,8 @@ export function AuthForm({ mode }: AuthFormProps) {
         <div className="flex flex-col gap-1.5">
           {!isSignup && (
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-text">PASSWORD</span>
-              <button type="button" className="text-xs text-text-muted hover:text-text">
+              <span className="text-body font-medium text-text">PASSWORD</span>
+              <button type="button" className="text-caption text-text-muted hover:text-text">
                 Forgot password?
               </button>
             </div>
@@ -249,19 +249,19 @@ export function AuthForm({ mode }: AuthFormProps) {
         </div>
       </div>
 
-      {error && <p className="text-sm text-error">{error}</p>}
+      {error && <p className="text-body text-error">{error}</p>}
 
       <Button fullWidth variant="primary" onClick={handleSubmit} isLoading={loading}>
         {isSignup ? 'Create account' : 'Sign in'}
       </Button>
 
       {isSignup && (
-        <p className="text-center text-xs text-text-muted">
+        <p className="text-center text-caption text-text-muted">
           By signing up you agree to our Terms and Privacy Policy.
         </p>
       )}
 
-      <p className="text-center text-sm text-text-muted">
+      <p className="text-center text-body text-text-muted">
         {isSignup ? 'Already have an account? ' : "Don't have an account? "}
         <button
           onClick={() => navigate(isSignup ? '/login' : '/signup')}

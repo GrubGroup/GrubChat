@@ -89,105 +89,115 @@ export function VoiceComposer({
   }
 
   return (
-    <div className="border-t border-border bg-surface-raised px-4 pb-3 pt-3">
-      <div className="flex items-center gap-3">
-        {/* Distinct circular mic button */}
-        {supported && (
+    // Two divs on purpose: the outer one carries pb-safe-b so the composer clears
+    // the iOS home indicator (the page paints under it via viewport-fit=cover),
+    // while the inner one keeps the visual padding. Both on one element would be
+    // two competing padding-bottom utilities.
+    <div className="shrink-0 border-t border-border bg-surface-raised pb-safe-b">
+      <div className="px-4 pb-3 pt-3">
+        <div className="flex items-center gap-3">
+          {/* Distinct circular mic button */}
+          {supported && (
+            <button
+              type="button"
+              aria-label={listening ? 'Stop listening' : 'Start voice input'}
+              disabled={disabled}
+              onClick={toggleMic}
+              className={cn(
+                'relative flex h-11 w-11 shrink-0 items-center justify-center rounded-pill shadow-sm transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+                'disabled:cursor-not-allowed disabled:opacity-50',
+                listening
+                  ? 'bg-primary text-on-primary'
+                  : 'bg-surface-inverse text-white hover:opacity-90',
+              )}
+            >
+              {/* Radiating ring while listening — feels active without the whole
+                  button pulsing. Reduced-motion users get the solid fill only. */}
+              {listening && !reduce && (
+                <span className="pointer-events-none absolute inset-0 animate-wave rounded-pill bg-primary" />
+              )}
+              {/* Filled glyph while active so it reads as "on". */}
+              <Icon name="mic" size={18} filled={listening} className="relative" />
+            </button>
+          )}
+
+          {/* Rounded pill input (or waveform while listening) */}
+          {listening ? (
+            <div className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-pill bg-surface-sunken px-5">
+              {/* min-w-0 + overflow-hidden: 14 bars plus "Listening…" overflow a
+                  390px row once the mic and send buttons take their share. */}
+              <div className="flex items-center gap-0.5 overflow-hidden" aria-hidden="true">
+                {WAVE_BARS.map((h, i) =>
+                  reduce ? (
+                    <span
+                      key={i}
+                      className="w-0.5 rounded-pill bg-text/70"
+                      style={{ height: `${h}px` }}
+                    />
+                  ) : (
+                    <motion.span
+                      key={i}
+                      className="w-0.5 shrink-0 rounded-pill bg-text/70"
+                      animate={{ height: [h, Math.min(h + 8, 24), Math.max(h - 4, 4), h] }}
+                      transition={{
+                        duration: 0.9 + (i % 4) * 0.15,
+                        repeat: Infinity,
+                        ease: 'easeInOut',
+                        delay: i * 0.06,
+                      }}
+                      style={{ height: `${h}px` }}
+                    />
+                  ),
+                )}
+              </div>
+              <span className="shrink-0 text-body text-text-muted">Listening…</span>
+            </div>
+          ) : (
+            <input
+              value={displayValue}
+              disabled={disabled}
+              placeholder={placeholder}
+              onChange={(e) => {
+                setText(e.target.value)
+                if (e.target.value) bumpTyping()
+                else stopTyping()
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSend()
+              }}
+              className={cn(
+                'h-11 min-w-0 flex-1 rounded-pill bg-surface-sunken px-5 text-body text-text',
+                'placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-focus-ring',
+              )}
+            />
+          )}
+
+          {/* Circular send button */}
           <button
             type="button"
-            aria-label={listening ? 'Stop listening' : 'Start voice input'}
-            disabled={disabled}
-            onClick={toggleMic}
+            aria-label="Send message"
+            disabled={disabled || !displayValue.trim()}
+            onClick={handleSend}
             className={cn(
-              'relative flex h-11 w-11 shrink-0 items-center justify-center rounded-pill shadow-sm transition-colors',
+              // tap-target: the pill stays 36px (design system) while the hit area
+              // grows to 44px — the annotation is explicit about not resizing it.
+              'tap-target flex h-9 w-9 shrink-0 items-center justify-center rounded-pill bg-surface-sunken text-text-muted transition-colors',
+              'hover:bg-surface-inverse hover:text-white',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
-              'disabled:cursor-not-allowed disabled:opacity-50',
-              listening
-                ? 'bg-primary text-on-primary'
-                : 'bg-surface-inverse text-white hover:opacity-90',
+              'disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-surface-sunken disabled:hover:text-text-muted',
             )}
           >
-            {/* Radiating ring while listening — feels active without the whole
-                button pulsing. Reduced-motion users get the solid fill only. */}
-            {listening && !reduce && (
-              <span className="pointer-events-none absolute inset-0 animate-wave rounded-pill bg-primary" />
-            )}
-            {/* Filled glyph while active so it reads as "on". */}
-            <Icon name="mic" size={18} filled={listening} className="relative" />
+            <Icon name="send" size={15} />
           </button>
-        )}
+        </div>
 
-        {/* Rounded pill input (or waveform while listening) */}
-        {listening ? (
-          <div className="flex h-11 flex-1 items-center gap-3 rounded-pill bg-surface-sunken px-5">
-            <div className="flex items-center gap-0.5" aria-hidden="true">
-              {WAVE_BARS.map((h, i) =>
-                reduce ? (
-                  <span
-                    key={i}
-                    className="w-0.5 rounded-pill bg-text/70"
-                    style={{ height: `${h}px` }}
-                  />
-                ) : (
-                  <motion.span
-                    key={i}
-                    className="w-0.5 rounded-pill bg-text/70"
-                    animate={{ height: [h, Math.min(h + 8, 24), Math.max(h - 4, 4), h] }}
-                    transition={{
-                      duration: 0.9 + (i % 4) * 0.15,
-                      repeat: Infinity,
-                      ease: 'easeInOut',
-                      delay: i * 0.06,
-                    }}
-                    style={{ height: `${h}px` }}
-                  />
-                ),
-              )}
-            </div>
-            <span className="text-sm text-text-muted">Listening…</span>
-          </div>
-        ) : (
-          <input
-            value={displayValue}
-            disabled={disabled}
-            placeholder={placeholder}
-            onChange={(e) => {
-              setText(e.target.value)
-              if (e.target.value) bumpTyping()
-              else stopTyping()
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSend()
-            }}
-            className={cn(
-              'h-11 flex-1 rounded-pill bg-surface-sunken px-5 text-sm text-text',
-              'placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-focus-ring',
-            )}
-          />
+        {privacyNote && (
+          <p className="mt-2 text-center text-caption text-text-subtle">
+            Only you can see this · your privacy is protected
+          </p>
         )}
-
-        {/* Circular send button */}
-        <button
-          type="button"
-          aria-label="Send message"
-          disabled={disabled || !displayValue.trim()}
-          onClick={handleSend}
-          className={cn(
-            'flex h-9 w-9 shrink-0 items-center justify-center rounded-pill bg-surface-sunken text-text-muted transition-colors',
-            'hover:bg-surface-inverse hover:text-white',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
-            'disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-surface-sunken disabled:hover:text-text-muted',
-          )}
-        >
-          <Icon name="send" size={15} />
-        </button>
       </div>
-
-      {privacyNote && (
-        <p className="mt-2 text-center text-caption text-text-subtle">
-          Only you can see this · your privacy is protected
-        </p>
-      )}
     </div>
   )
 }

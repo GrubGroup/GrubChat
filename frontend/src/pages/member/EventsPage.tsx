@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import type { EventRecord } from '@/types'
 import { Avatar, Badge, Button, Icon } from '@/components/ui'
 import { AppSidebar } from '@/components/layout/AppSidebar'
+import { BottomTabBar, TabBarSpacer } from '@/components/layout/BottomTabBar'
+import { MobileHeader } from '@/components/layout/MobileHeader'
 import { memberColor } from '@/constants/memberColors'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { useEventListStore } from '@/stores/eventListStore'
+import { cn } from '@/utils/cn'
 import { idFromSlug, toSlugId } from '@/utils/slug'
 
 // A cuisine/dietary emoji is not on the API row, so pick a stable default.
@@ -77,6 +81,10 @@ export function EventsPage() {
   // is the only source; there's no fetch-by-id endpoint, so an unknown id simply
   // falls back to the newest event rather than 404ing.
   const { eventId } = useParams()
+  const navigate = useNavigate()
+  // Below `md` the list + detail split becomes a drill-down (frames 08 → 09); the
+  // URL drives which is shown, so /events is the list and /events/:id the detail.
+  const isMobile = useIsMobile()
   // Snapshot "now" once at mount (lazy initializer keeps render pure) — it's the
   // upcoming/previous cutoff. A mid-session tick past an event's time isn't worth
   // a re-render; the split refreshes on next mount / navigation.
@@ -86,6 +94,8 @@ export function EventsPage() {
     void load()
   }, [load])
 
+  // `active` (the detail pane's event) comes from the URL slug, falling back to
+  // the newest event so the desktop detail column is never empty.
   const active = events.find((e) => e.id === idFromSlug(eventId)) ?? events[0] ?? null
 
   // Split the flat list into outings still ahead (upcoming) vs. past (previous).
@@ -102,8 +112,13 @@ export function EventsPage() {
     return { upcoming: up, previous: prev }
   }, [events, now])
 
+  // Below `md` a URL naming a specific event IS the drill-down; /events is the
+  // list root. Native Back (/events/:id → /events) closes the detail, so there's
+  // nothing to intercept.
+  const mobileDetailOpen = isMobile && eventId != null
+
   return (
-    <div className="flex h-screen overflow-hidden bg-surface-raised">
+    <div className="flex h-dvh overflow-hidden bg-surface-raised">
       <AppSidebar eyebrow="Events">
         {loaded && !error && events.length === 0 && (
           <p className="px-4 py-6 text-body text-text-muted">
@@ -119,22 +134,62 @@ export function EventsPage() {
         <EventSection label="Previous" list={previous} activeId={active?.id ?? null} />
       </AppSidebar>
 
-      {/* Detail */}
-      <div className="flex flex-1 flex-col overflow-y-auto">
+      {/* MOBILE list root (<md) — the same list, as the Events tab's own screen.
+          `bg-surface-panel` gives it the same two-tone beige as the Groups tab
+          root: rows sit transparent on the beige panel and tint only on state. */}
+      <div
+        className={cn(
+          'w-full flex-col overflow-y-auto bg-surface-panel md:hidden',
+          mobileDetailOpen ? 'hidden' : 'flex',
+        )}
+      >
+        {/* `brand` matches the Groups tab root: at ≥md the sidebar panel header
+            carries the wordmark, and it's hidden here. */}
+        <MobileHeader brand title="Events" />
+        {loaded && events.length === 0 && (
+          <p className="px-4 py-6 text-body text-text-muted">
+            No events yet. Start a session and confirm a pick to book one.
+          </p>
+        )}
+        {/* activeId=null: on mobile a tap drills into the detail rather than
+            highlighting a row in place. */}
+        <EventSection label="Upcoming" list={upcoming} activeId={null} />
+        <EventSection label="Previous" list={previous} activeId={null} />
+        <TabBarSpacer />
+      </div>
+
+      {/* Detail — the second column at ≥md, a pushed screen below it. */}
+      <div
+        className={cn(
+          'flex-1 flex-col overflow-y-auto',
+          mobileDetailOpen ? 'flex' : 'hidden md:flex',
+        )}
+      >
         {active ? (
           <>
-            <div className="relative flex h-56 shrink-0 flex-col justify-end bg-surface-inverse p-6 text-white">
-              <span className="absolute right-6 top-6 text-caption text-white/70">
-                {active.time_slot ?? ''}
-              </span>
+            <MobileHeader
+              className="md:hidden"
+              onBack={() => navigate('/events')}
+              title={active.restaurant_name}
+              subtitle={active.group_name ?? undefined}
+            />
+            <div className="flex h-56 shrink-0 flex-col justify-end gap-1 bg-surface-inverse p-4 text-white md:p-6">
+              {/* The time was absolutely positioned top-right, where it collided
+                  with the text-display title at 390px. In flow above the address
+                  it reads as part of the same block at every width. */}
+              {active.time_slot && (
+                <span className="text-caption text-white/70">{active.time_slot}</span>
+              )}
               <p className="text-caption text-white/70">
                 📍 {active.address ?? active.group_name ?? 'Location TBD'}
               </p>
-              <h1 className="font-display text-display font-bold">{active.restaurant_name}</h1>
+              <h1 className="font-display text-section-title font-bold md:text-display">
+                {active.restaurant_name}
+              </h1>
               {active.occasion && <p className="text-body text-white/80">{active.occasion}</p>}
             </div>
 
-            <div className="flex flex-col gap-5 p-6">
+            <div className="flex flex-col gap-5 p-4 md:p-6">
               <div className="flex flex-wrap gap-2">
                 <Badge tone="neutral">
                   <Icon name="map-pin" size={11} /> {active.address ?? 'Address TBD'}
@@ -162,10 +217,10 @@ export function EventsPage() {
               {active.attendees && active.attendees.length > 0 && (
                 <div>
                   <div className="mb-2 flex items-center justify-between">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                    <p className="text-overline font-semibold uppercase tracking-wide text-text-muted">
                       Who's going
                     </p>
-                    <span className="text-xs text-text-muted">
+                    <span className="text-caption text-text-muted">
                       {active.attendees.length}{' '}
                       {active.attendees.length === 1 ? 'person' : 'people'}
                     </span>
@@ -179,7 +234,7 @@ export function EventsPage() {
                           className="flex items-center gap-3 border-b border-border py-2.5 last:border-b-0"
                         >
                           <Avatar name={name} size="sm" colorClass={memberColor(a.id)} />
-                          <span className="flex-1 text-sm text-text">{name}</span>
+                          <span className="flex-1 text-body text-text">{name}</span>
                         </div>
                       )
                     })}
@@ -187,6 +242,9 @@ export function EventsPage() {
                 </div>
               )}
             </div>
+            {/* Frame 09 keeps the tab bar, so the detail needs the same clearance
+                as the list — otherwise the attendee list ends under it. */}
+            <TabBarSpacer />
           </>
         ) : error ? (
           <EventsErrorState onRetry={() => void load()} />
@@ -194,6 +252,8 @@ export function EventsPage() {
           <EventsEmptyState />
         )}
       </div>
+
+      <BottomTabBar />
     </div>
   )
 }
@@ -222,8 +282,8 @@ function EventsEmptyState() {
       <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-surface-raised text-2xl">
         🍽️
       </span>
-      <p className="text-sm font-medium text-text">No events yet</p>
-      <p className="max-w-xs text-xs text-text-muted">
+      <p className="text-body font-medium text-text">No events yet</p>
+      <p className="max-w-xs text-caption text-text-muted">
         Start a group session and confirm a restaurant — your booked outings will
         show up here.
       </p>

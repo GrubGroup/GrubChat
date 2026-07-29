@@ -20,16 +20,21 @@ export function SegmentedProgress({ value, total, tone = 'dark' }: SegmentedProg
     <div className="flex items-center gap-1">
       {Array.from({ length: total }).map((_, i) => {
         const filled = i < value
+        // min-w-[3px]: with many members, flex-1 segments go sub-pixel in a
+        // narrow mobile strip and the bar reads as an empty line.
         if (reduce) {
           return (
             <span
               key={i}
-              className={cn('h-1.5 flex-1 rounded-pill', filled ? fill : 'bg-text/10')}
+              className={cn('h-1.5 min-w-[3px] flex-1 rounded-pill', filled ? fill : 'bg-text/10')}
             />
           )
         }
         return (
-          <span key={i} className="relative h-1.5 flex-1 overflow-hidden rounded-pill bg-text/10">
+          <span
+            key={i}
+            className="relative h-1.5 min-w-[3px] flex-1 overflow-hidden rounded-pill bg-text/10"
+          >
             <motion.span
               className={cn('absolute inset-0 rounded-pill', fill)}
               initial={false}

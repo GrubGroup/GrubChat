@@ -12,6 +12,10 @@ export type IconName =
   | 'x'
   | 'lock'
   | 'chevron-left'
+  | 'chevron-up'
+  | 'chevron-down'
+  | 'menu'
+  | 'dots'
   | 'arrow-left'
   | 'arrow-right'
   | 'utensils'
@@ -56,6 +60,19 @@ const PATHS: Record<IconName, ReactSvgContent> = {
     </>
   ),
   'chevron-left': <path d="m15 18-6-6 6-6" />,
+  'chevron-up': <path d="m18 15-6-6-6 6" />,
+  'chevron-down': <path d="m6 9 6 6 6-6" />,
+  // Hamburger.
+  menu: <path d="M4 6h16M4 12h16M4 18h16" />,
+  // Horizontal ellipsis — the mobile overflow menu. Dots are filled discs (a
+  // 1px-radius stroked circle renders as a hairline ring, not a dot).
+  dots: (
+    <>
+      <circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none" />
+    </>
+  ),
   'arrow-left': (
     <>
       <path d="M19 12H5" />
@@ -157,7 +174,7 @@ const PATHS: Record<IconName, ReactSvgContent> = {
 // A few icons only make sense as a clean SOLID glyph when `filled` (their stroke
 // paths have open arcs/ticks that auto-close into artifacts under fill). Provide
 // purpose-built filled variants for those; everything else just fills its stroke
-// path. Only the rail tab icons (users, calendar) need this today.
+// path. Needed by the tab/rail icons (users, calendar, user) and the mic.
 const FILLED_PATHS: Partial<Record<IconName, ReactSvgContent>> = {
   // Solid mic: filled capsule head + a solid "cradle" wedge (the u-shaped stand
   // ring, drawn as a closed shape so no open arc self-intersects) + a short
@@ -184,6 +201,15 @@ const FILLED_PATHS: Partial<Record<IconName, ReactSvgContent>> = {
     <>
       <path d="M8 2a1 1 0 0 0-1 1v1H6a3 3 0 0 0-3 3v1h18V7a3 3 0 0 0-3-3h-1V3a1 1 0 1 0-2 0v1H9V3a1 1 0 0 0-1-1Z" />
       <path d="M3 10v8a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-8H3Z" />
+    </>
+  ),
+  // Solid single person — the active Profile tab. Head + a closed shoulders
+  // shape on the same y=21 baseline (the outline's open "M19 21v-2" arc would
+  // auto-close into a wedge under fill).
+  user: (
+    <>
+      <circle cx="12" cy="7" r="4.5" />
+      <path d="M9 13h6a5 5 0 0 1 5 5v2a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-2a5 5 0 0 1 5-5Z" />
     </>
   ),
 }

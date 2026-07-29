@@ -37,7 +37,7 @@ export function SessionTimer({ startedAt, minutes, onExpire }: SessionTimerProps
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-pill px-3 py-1 text-sm font-semibold tabular-nums',
+        'inline-flex items-center gap-1.5 rounded-pill px-3 py-1 text-body font-semibold tabular-nums',
         expired
           ? 'bg-error/10 text-error'
           : urgent

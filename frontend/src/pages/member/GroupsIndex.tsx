@@ -1,6 +1,7 @@
 import { Navigate } from 'react-router'
 import { AppSplash } from '@/components/layout/AppSplash'
-import { EmptyGroupsPage } from './EmptyGroupsPage'
+import { GroupsPage } from './GroupsPage'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { useGroupsStore, mostRecentGroup } from '@/stores/groupsStore'
 import { toSlugId } from '@/utils/slug'
 
@@ -13,6 +14,7 @@ import { toSlugId } from '@/utils/slug'
 // has to resolve to something real rather than a dead end. RequireAuth owns the
 // fetch; this only decides where to go once the list has landed.
 export function GroupsIndex() {
+  const isMobile = useIsMobile()
   const groups = useGroupsStore((s) => s.groups)
   const loaded = useGroupsStore((s) => s.loaded)
 
@@ -21,9 +23,16 @@ export function GroupsIndex() {
   if (!loaded) return <AppSplash />
 
   const latest = mostRecentGroup(groups)
-  // `replace` keeps /groups out of the history stack, so Back doesn't land on a URL
-  // that immediately redirects again.
-  if (latest) return <Navigate to={`/groups/${toSlugId(latest.name, latest.id)}`} replace />
+  // Desktop: the sidebar carries the group list beside the chat, so /groups just
+  // forwards to the most recent chat. `replace` keeps /groups out of the history
+  // stack, so Back doesn't land on a URL that immediately redirects again. On
+  // mobile the tab root IS the list (a chat is a level deeper), so we render the
+  // groups home instead of redirecting straight into a chat.
+  if (!isMobile && latest) {
+    return <Navigate to={`/groups/${toSlugId(latest.name, latest.id)}`} replace />
+  }
 
-  return <EmptyGroupsPage />
+  // GroupsPage shows the list on mobile (or the zero-state marketing when there are
+  // no groups — the desktop empty-state too).
+  return <GroupsPage />
 }

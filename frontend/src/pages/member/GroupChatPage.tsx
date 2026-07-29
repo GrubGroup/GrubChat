@@ -8,9 +8,11 @@ import { GroupMessageRow } from '@/components/session/GroupMessageRow'
 import { SessionCard } from '@/components/session/SessionCard'
 import { GroupDetailPanel } from '@/components/session/GroupDetailPanel'
 import { HostSessionModal } from '@/components/session/HostSessionModal'
-import { Icon, Spinner } from '@/components/ui'
+import { Icon, IconButton, Spinner } from '@/components/ui'
 import { AppSplash } from '@/components/layout/AppSplash'
 import { COLUMN_HEADER_H } from '@/components/layout/AppSidebar'
+import { MobileActionSheet } from '@/components/layout/MobileActionSheet'
+import { MobileHeader } from '@/components/layout/MobileHeader'
 import { VoiceComposer } from '@/components/voice/VoiceComposer'
 import { TypingIndicator } from '@/components/session/TypingIndicator'
 import { cn } from '@/utils/cn'
@@ -115,6 +117,9 @@ export function GroupChatPage() {
   const [hostModalOpen, setHostModalOpen] = useState(false)
   // Host "Force finish" request in flight (disables the card's button).
   const [forcing, setForcing] = useState(false)
+  // Mobile-only chrome: the ⋯ header overflow. Below `md` the two desktop header
+  // buttons don't fit beside the title, so both move behind it.
+  const [overflowOpen, setOverflowOpen] = useState(false)
 
   // Reload survival: rebind the group's in-progress session, which the socket's
   // session:start announced before this page existed. Gated on membership so we
@@ -246,13 +251,42 @@ export function GroupChatPage() {
   if (!isMember) return <AppSplash />
 
   return (
-    <div className="flex h-screen overflow-hidden bg-surface-raised">
+    <div className="flex h-dvh overflow-hidden bg-surface-raised">
       <GroupsSidebar />
 
-      {/* Chat area */}
-      <div className="flex flex-1 flex-col">
-        {/* Header — same height as sidebar/right-panel headers for seamless borders */}
-        <div className={cn('flex items-center justify-between border-b border-border px-5', COLUMN_HEADER_H)}>
+      {/* Chat area — min-w-0 so a long message can't push this flex child past the
+          viewport (which would scroll the whole page sideways at 390px). */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* MOBILE header (<md): the chat is a PUSHED screen — its back chevron pops
+            up to the groups list (WhatsApp-style), which is also where the Groups
+            tab goes. "Start session" and "Edit group" move into the ⋯ overflow,
+            since neither fits beside the name at 390px. The avatar stack drops —
+            the member count in the subtitle carries the same information. */}
+        <MobileHeader
+          className="md:hidden"
+          onBack={() => navigate('/groups')}
+          title={groupName}
+          subtitle={
+            <>
+              {memberCount} members
+              {sessionStartIndex !== null && !isComplete && (
+                <> · <span className="text-primary">session active</span></>
+              )}
+            </>
+          }
+          actions={
+            <IconButton
+              label="More options"
+              size="md"
+              icon={<Icon name="dots" size={20} />}
+              onClick={() => setOverflowOpen(true)}
+            />
+          }
+        />
+
+        {/* DESKTOP header (≥md) — hidden below md, where the MobileHeader takes over;
+            same height as the sidebar/right-panel headers for seamless borders. */}
+        <div className={cn('hidden items-center justify-between border-b border-border px-5 md:flex', COLUMN_HEADER_H)}>
           <div className="flex items-center gap-3">
             {/* Same rounded emoji badge as the group's sidebar row, so the header
                 matches the chat's list image — larger here, with the name + member
@@ -281,7 +315,7 @@ export function GroupChatPage() {
               onClick={() => setHostModalOpen(true)}
               disabled={sessionOngoing}
               title={sessionOngoing ? 'A session is already in progress' : undefined}
-              className="flex items-center gap-1.5 rounded-input bg-surface-inverse px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex items-center gap-1.5 rounded-input bg-surface-inverse px-3 py-1.5 text-caption font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Icon name="sparkles" size={12} /> Start session
             </button>
@@ -294,8 +328,9 @@ export function GroupChatPage() {
           </div>
         </div>
 
-        {/* Messages */}
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-5">
+        {/* Messages — min-h-0 so this is the element that scrolls, rather than the
+            column growing and pushing the composer below the viewport. */}
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 md:p-5">
           {loadingHistory ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-text-muted">
               <Spinner size="md" />
@@ -395,6 +430,25 @@ export function GroupChatPage() {
         groupId={groupId}
         onClose={() => setHostModalOpen(false)}
         onCreated={handleSessionCreated}
+      />
+
+      {/* MOBILE (<md) ⋯ overflow — the two desktop header buttons as full-width
+          rows. "Start session" keeps its disabled-while-running semantics, with the
+          desktop tooltip's text as a visible note. */}
+      <MobileActionSheet
+        open={overflowOpen}
+        onClose={() => setOverflowOpen(false)}
+        title={groupName}
+        items={[
+          {
+            icon: 'sparkles',
+            label: 'Start session',
+            onSelect: () => setHostModalOpen(true),
+            disabled: sessionOngoing,
+            note: sessionOngoing ? 'A session is already in progress' : undefined,
+          },
+          { icon: 'users', label: 'Edit group', onSelect: () => setEditing(true) },
+        ]}
       />
     </div>
   )

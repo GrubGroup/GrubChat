@@ -115,6 +115,23 @@
   --text-display: 1.875rem; /* 30px — page/detail hero <h1> */
   --text-display--line-height: 1.15;
 
+  /* ------------------------------------------------------------------
+   * Touch-scale bumps — the SAME roles one step up, for the dense
+   * read-heavy surfaces on a phone (chat bubbles, group rows, event rows).
+   * The desktop scale is tuned for a ~60cm viewing distance in a 3-column
+   * layout; at arm's length on a 390px screen those same 12/14px roles read
+   * cramped. Applied via `md:` pairs (e.g. `text-body-touch md:text-body`),
+   * so ONLY mobile changes and the desktop layout is untouched.
+   * Line-heights are looser than their desktop twins too — the leading is
+   * most of what makes small type feel tight, not the size alone.
+   * ------------------------------------------------------------------ */
+  --text-caption-touch: 0.8125rem; /* 13px — was 12px: timestamps, previews */
+  --text-caption-touch--line-height: 1.45;
+  --text-body-touch: 0.9375rem; /* 15px — was 14px: chat bubbles, row body */
+  --text-body-touch--line-height: 1.55;
+  --text-item-title-touch: 1.0625rem; /* 17px — was 15px: group/event row title */
+  --text-item-title-touch--line-height: 1.35;
+
   /* Radius (semantic; wireframe uses generous 12-16px rounding) */
   --radius-input: 0.75rem;
   --radius-card: 1rem;
@@ -123,13 +140,23 @@
   /* Named spacing steps (extend Tailwind's numeric scale) */
   --spacing-gutter: 1.25rem;
   --spacing-section: 2rem;
+
+  /* iOS safe areas as spacing tokens, so mobile chrome can clear the notch and
+   * home indicator with `pb-safe-b` / `pt-safe-t` and components stay token-only
+   * (no arbitrary env() values inline). Needs viewport-fit=cover in index.html;
+   * resolves to 0px on every non-notched device and in desktop browsers. */
+  --spacing-safe-b: env(safe-area-inset-bottom, 0px);
+  --spacing-safe-t: env(safe-area-inset-top, 0px);
 }
 
 /* Minimal global resets — layout/visuals belong in components via tokens. */
 html,
 body,
 #root {
-  min-height: 100vh;
+  /* dvh, not vh: on mobile Safari/Chrome the URL bar makes 100vh taller than the
+   * visible viewport, which pushes fixed bottom chrome (composer, tab bar) off
+   * screen. dvh tracks the *dynamic* viewport, so it stays reachable. */
+  min-height: 100dvh;
 }
 
 body {
@@ -253,4 +280,30 @@ body {
 @utility animate-bubble-pop {
   transform-origin: bottom;
   animation: bubble-pop 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/*
+ * Touch-target expander. Several controls are intentionally small pills (Chip 34px,
+ * quick-reply 31px, VoiceComposer send 36px, RailButton 40px) — under the 44px
+ * minimum comfortable tap size. This grows the *hit area* with a centered
+ * transparent overlay and leaves the visual box untouched, so the design is
+ * unchanged while the control becomes reliably tappable.
+ *
+ * Caveat: the ::after is clipped by an `overflow-hidden` ancestor. Pad the parent
+ * row instead in those cases.
+ */
+@utility tap-target {
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    min-width: 44px;
+    min-height: 44px;
+    transform: translate(-50%, -50%);
+  }
 }
