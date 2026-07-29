@@ -115,10 +115,12 @@ gateway/
     │   └── errorMiddleware.js    # Central error handling
     ├── sockets/                  # Real-time WebSocket logic
     │   ├── index.js              # Socket.IO setup + session-cookie handshake
-    │   └── sessionHandlers.js    # group:join/leave, chat:message, session:start/picks/confirmed, typing:*
+    │   ├── sessionHandlers.js    # group:join/leave, chat:message, session:start/picks/confirmed, typing:*, vote:*
+    │   └── voiceHandlers.js      # voice:* binary relay — bridges the browser mic loop to ai_service's voice WS
     ├── services/                 # Outbound clients
     │   ├── aiClient.js           # Talks to the FastAPI ai_service (embed, recommendations, analyze)
-    │   └── geocodeClient.js      # Server-side geocoding (Geocodio) for the host modal
+    │   ├── geocodeClient.js      # Server-side geocoding (Geocodio) for the host modal
+    │   └── voiceClient.js        # Opens a raw WS to ai_service's /voice/session (forwards X-Internal-Secret)
     └── utils/
         └── logger.js             # Logging helper
 ```
@@ -130,11 +132,12 @@ gateway/
 ### 3b. `backend/ai_service/` — AI / Data Service (FastAPI)
 
 The Python "brains." Responsibilities: the database (read-side mirror + recommendation/Qa writes),
-the AI agents, and restaurant search (RAG). Voice input arrives as browser-transcribed text today;
-a **server-side STT/TTS voice relay is scaffolded but unwired** (`ai/voice/`, `routes/voice.py`,
-`schemas/voice.py`) — the next planned feature. After the July 2026 cleanup the tree is almost
-entirely wired; the only stubs are `db/init_db.py` (intentional — Prisma owns DDL) and the voice
-scaffolding.
+the AI agents, restaurant search (RAG), and the **server-side voice loop**. The group-chat composer
+sends browser-transcribed text; the **session agent chat** runs a wired **cascaded STT→analyze→TTS
+voice loop** — a WebSocket in `routes/voice.py` bridging **Deepgram Flux** STT (`ai/voice/stt.py`)
+and **Cartesia** TTS (`ai/voice/tts.py`), with catalog-derived STT keyterms (`ai/voice/keyterms.py`)
+and the frame DTOs in `schemas/voice.py`. The tree is almost entirely wired; the only stub is
+`db/init_db.py` (intentional — Prisma owns DDL).
 
 ```
 ai_service/
@@ -144,11 +147,14 @@ ai_service/
 ├── README.md                     # Service-specific setup instructions
 ├── scripts/                      # One-off dev/ops scripts
 │   ├── seed_restaurants.py       # Fills the DB with ~54 mock restaurants (with embeddings)
+│   ├── backfill_embeddings.py    # (Re)embeds existing restaurants — e.g. after the embedding-model swap
 │   ├── smoke_orchestrator.py     # Direct end-to-end orchestrator graph smoke test
 │   ├── demo_orchestrator.py      # Narrated terminal walkthrough of the recommendation pipeline
 │   ├── analyze_turn_demo.py      # Conversational analyze-turn demo
 │   ├── interactive_session.py    # Interactive session harness
-│   └── live_http_gateway_e2e.py  # Live HTTP harness across ai_service + gateway (401/409/200)
+│   ├── measure_analyze_latency.py  # Measures analyze-turn latency (the voice-path budget)
+│   ├── live_http_gateway_e2e.py  # Live HTTP harness across ai_service + gateway (401/409/200)
+│   └── probe_*.py                # Ad-hoc latency/voice/DB probes (Flux STT, Cartesia TTS, voice session, …)
 └── app/                          # The actual application code
     ├── main.py                   # Builds & configures the FastAPI app (the canonical entrypoint)
     ├── core/
@@ -162,17 +168,17 @@ ai_service/
     │   ├── recommendation.py  recommendation_item.py
     │   └── timestamps.py  enums.py                                # utcnow helper; Role/MessageType
     ├── schemas/                  # Request/response shapes (Pydantic)
-    │   ├── ai.py                 # Embed / Recommendation / Analyze DTOs (the wired schema module)
-    │   └── voice.py              # STT/TTS DTOs — one-line stub, scaffolding for the voice feature
+    │   ├── ai.py                 # Embed / Recommendation / Analyze DTOs
+    │   └── voice.py              # Voice-loop frame DTOs (ready/caption/turn_result/… — wired)
     ├── api/                      # The HTTP endpoints
     │   ├── deps.py               # require_internal_secret (the X-Internal-Secret guard)
     │   └── v1/                   # Version 1 of the API (mounted at /api/v1)
-    │       ├── router.py         # Mounts exactly two route files: health + ai
+    │       ├── router.py         # Mounts three route files: health + ai + voice
     │       └── routes/
     │           ├── health.py         # Is the service up?
     │           ├── ai.py             # POST /embed, POST /sessions/{id}/recommendations,
     │           │                     #   POST /sessions/{id}/analyze, POST /analyze
-    │           └── voice.py          # STT / TTS — one-line stub, NOT mounted (scaffolding)
+    │           └── voice.py          # WS /voice/session — cascaded STT→analyze→TTS voice loop
     ├── services/                 # Business logic (multi-step workflows)
     │   ├── recommendation_service.py  # orchestrator wrapper: guard → pipeline → persist
     │   ├── session_service.py         # analyze_member_turn (in-session Qa)
@@ -188,7 +194,7 @@ ai_service/
         │   ├── client.py         # Chat client — provider chosen by LLM_PROVIDER; shared strip_json_fence
         │   └── prompts.py        # Prompt templates (conversational turn, group re-rank)
         ├── rag/                  # Restaurant search by meaning ("RAG")
-        │   ├── embeddings.py     # Turns text into vectors (Qwen3 via OpenRouter, 1024-dim)
+        │   ├── embeddings.py     # Turns text into vectors (Perplexity pplx-embed via OpenRouter, 1024-dim)
         │   └── retriever.py      # pgvector cosine search + hard filters (dietary/price/geo)
         ├── agents/               # The AI "personas"
         │   ├── preference_agent.py    # Normalizes one member's Profile → MemberPref
@@ -197,9 +203,10 @@ ai_service/
         ├── graph/                # Multi-step AI pipeline (LangGraph)
         │   ├── pipeline.py       # StateGraph: fan-out preference → orchestrator
         │   └── state.py          # Typed state passed between steps
-        ├── voice/                # STT/TTS relay — one-line stubs, unwired (scaffolding for the voice feature)
-        │   ├── stt.py            # Speech → text (Whisper / Gemini)
-        │   └── tts.py            # Text → speech (ElevenLabs)
+        ├── voice/                # Server voice loop (wired — session agent chat)
+        │   ├── stt.py            # Speech → text (Deepgram Flux, streaming WS)
+        │   ├── tts.py            # Text → speech (Cartesia sonic-3.5, HTTP SSE)
+        │   └── keyterms.py       # Catalog-derived STT keyterms (biases Flux toward restaurant names)
         └── taxonomy.py  geo.py  hours.py   # cuisine taxonomy; geo helpers; open/closed hours filter
 ```
 
@@ -244,8 +251,9 @@ src/
 ├── pages/          # Full screens (one per route)
 │   ├── public/         # LandingPage                          → /
 │   ├── auth/           # AuthForm (Better Auth sign-in/up + Google)  → /login, /signup
-│   └── member/         # EmptyGroupsPage → /groups; GroupChatPage → /groups/:groupId;
-│       │               #   EventsPage → /events[/:eventId]; ProfilePage, ProfileEditPage
+│   └── member/         # GroupsIndex → /groups (renders GroupsPage — the list/zero-state);
+│       │               #   GroupChatPage → /groups/:groupId; EventsPage → /events[/:eventId];
+│       │               #   ProfilePage, ProfileEditPage
 │       ├── onboarding/     # Onboarding1-3 + OnboardingCuisines  → /onboarding/*
 │       └── session/        # AgentChatPage, TopPicksPage
 │                           #   → /groups/:groupId/sessions/:sessionId[/done|/picks]
@@ -254,25 +262,30 @@ src/
 │   ├── layout/         # Route layouts: RootLayout (session mirror + splash), RequireAuth,
 │   │                   #   PublicOnly (post-auth forward), AuthFlowShell (keeps the brand panel
 │   │                   #   mounted across sign-in/sign-up/onboarding so the right pane slides).
-│   │                   #   Plus AppSidebar, BrandPanel, AppSplash, AccountMenu
+│   │                   #   Plus AppSidebar, BrandPanel, AppSplash, AccountMenu, and the mobile
+│   │                   #   shell: BottomTabBar, MobileHeader, MobileActionSheet
 │   ├── session/        # Session/chat widgets (HostSessionModal, SessionTopBar, SessionTimer,
-│   │                   #   GroupMessageRow, ChatStream, SessionCard, MemberRoster, …)
-│   ├── restaurant/     # RankedRestaurantCard (reused by TopPicksPage), MenuList (placeholder),
-│   │                   #   RestaurantHeader, TagRow, MenuItemRow
+│   │                   #   GroupMessageRow, ChatStream, SessionCard, MemberRoster, GroupList,
+│   │                   #   MobileSessionStrip, GroupDetailPanel, …)
+│   ├── restaurant/     # RankedRestaurantCard (reused by TopPicksPage; ephemeral voting), MenuList
+│   │                   #   (placeholder), RestaurantHeader, TagRow, MenuItemRow
 │   ├── profile/        # CuisineTriStatePicker, PreferenceTag
-│   └── voice/          # VoiceComposer (react-speech-recognition)
-├── hooks/          # Routing: useGroupId, useSessionId (numeric route params), useBindSession
+│   └── voice/          # VoiceComposer — one composer, two paths (Web Speech dictation for group
+│                       #   chat; hands-free server voice loop for the session agent chat)
+├── hooks/          # Routing: useGroupId, useSessionId (decode a name-42 slug), useBindSession
 │                   #   (rebinds a group's live session on a cold URL entry).
-│                   #   Plus useSocket, useSessionCountdown, useVoiceInput, usePlacesInput,
-│                   #   useMediaQuery, useNewItemIds, useScrollToBottom
+│                   #   Sync: useSocket, useGroupSync, useSessionSync, useSessionCountdown.
+│                   #   Voice: useVoiceInput (Web Speech), useVoiceSession (server loop).
+│                   #   Plus usePlacesInput, useMediaQuery, useIsMobile, useNewItemIds,
+│                   #   useScrollToBottom, useScrollLock, useDismissOnBack, useCreateGroup, useSignOut
 ├── stores/         # 9 zustand stores: auth, session, groupChat, chat, event, eventList,
 │                   #   profile, groups, restaurant. (No nav store — the URL owns navigation.)
 ├── lib/            # Client setup: axios, socket, authClient (Better Auth), env, motion
 ├── types/          # Shared TypeScript types (user, profile, session, recommendation, analyze,
-│                   #   group, groupChat, chat, restaurant, qa, menu, …)
+│                   #   group, groupChat, chat, restaurant, qa, voice, …)
 ├── utils/          # Small helpers (cn.ts, hours.ts — TS mirror of ai_service app/ai/hours.py,
-│                   #   memberColor.ts, memberName.ts, timeAgo.ts)
-└── constants/      # App-wide constants (dietary.ts, memberColors.ts, agentChat.ts)
+│                   #   memberColor.ts, memberName.ts, timeAgo.ts, slug.ts — the name-42 route slugs)
+└── constants/      # App-wide constants (dietary.ts, memberColors.ts, agentChat.ts, mobileNav.ts)
 ```
 
 ---

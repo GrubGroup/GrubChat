@@ -6,30 +6,30 @@ Python backend dedicated to API logic, agent orchestration, and the AI pipeline.
 
 - **SQLModel ORM** — read-side mirror of the Prisma-owned schema over PostgreSQL + pgvector (data layer)
 - **LangGraph / LangChain** multi-agent pipeline (per-user preference agent + group orchestrator agent)
-- **RAG** — Qwen embeddings via OpenRouter + pgvector retrieval over restaurants/menus
-- **LLM chat calls** via the Salesforce internal model gateway → Claude (active; OpenRouter/DeepSeek commented in `ai/llm/client.py` for deploy) for ranking, reasoning, and preference extraction
-- **Voice relay** — Whisper / Gemini STT and ElevenLabs TTS (transcribed text feeds the same pipeline as typed text)
+- **RAG** — Perplexity `pplx-embed-v1-0.6b` embeddings (1024-dim) via OpenRouter + pgvector retrieval over restaurants
+- **LLM chat calls** — provider chosen at runtime by `LLM_PROVIDER` (default `openrouter` → Claude/DeepSeek; `salesforce` → Claude via the internal gateway) for ranking, reasoning, and reply generation. Preference **extraction** routes separately to a fast model (`EXTRACTION_MODEL`, default `google/gemini-2.5-flash`) to keep the analyze turn voice-viable.
+- **Server voice loop** — a WebSocket (`/api/v1/voice/session`) running a cascaded **STT → analyze → TTS** shell: Deepgram Flux streaming STT + Cartesia TTS. Transcribed text feeds the same `analyze_turn` extraction as typed text.
 
 The Node.js **gateway** service proxies AI/RAG requests to this service.
 
 ## Stack
 
-FastAPI · SQLModel · asyncpg · pgvector · LangChain · LangGraph · OpenAI/OpenRouter · pydantic-settings. Managed with [`uv`](https://docs.astral.sh/uv/), Python 3.14.
+FastAPI · SQLModel · asyncpg · pgvector · LangChain · LangGraph · OpenAI/OpenRouter · websockets · pydantic-settings. Managed with [`uv`](https://docs.astral.sh/uv/), Python 3.14.
 
 ## Project layout
 
 ```
 app/
   main.py        # FastAPI app factory
-  core/          # config, security (end-user JWT verify — stub), logging, exceptions
-  db/            # async engine/session, metadata base, init_db (stub — Prisma owns DDL)
-  models/        # SQLModel tables
-  schemas/       # Pydantic request/response DTOs
-  api/v1/        # versioned routers (health, ai, voice, public, members, restaurants, admin)
-  services/      # business logic
-  crud/          # async data access (incl. pgvector similarity)
-  ai/            # llm / rag / agents / graph / voice subsystem
-scripts/         # seed_restaurants, reset_db
+  core/          # config.py (pydantic-settings) — the only module here
+  db/            # session.py (async engine/factory); init_db.py (intentional stub — Prisma owns DDL)
+  models/        # SQLModel tables (read-side mirror of Prisma)
+  schemas/       # Pydantic DTOs — ai.py (Embed/Recommendation/Analyze) + voice.py (voice-loop frames)
+  api/           # deps.py (X-Internal-Secret guard); v1/ routers — health, ai, voice
+  services/      # business logic (recommendation, session/analyze, profile, geocode)
+  crud/          # async data access (session, restaurant, recommendation, user)
+  ai/            # llm / rag / agents / graph / voice (Deepgram Flux STT + Cartesia TTS + keyterms) + taxonomy/geo/hours
+scripts/         # seed_restaurants, backfill_embeddings, demo/latency/voice probes (no reset_db — Prisma owns DDL)
 ```
 
 ## Getting started
