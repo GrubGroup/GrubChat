@@ -62,8 +62,13 @@ export function HostSessionModal({
     lat: number;
     lon: number;
   } | null>(null);
-  // Whether the autocomplete dropdown is open (suppressed right after a pick/blur).
-  const [showSuggestions, setShowSuggestions] = useState(false);
+  // Whether the location field is focused. The autocomplete dropdown shows whenever
+  // the field is focused AND suggestions exist — so matches appear live as the host
+  // types. (It used to be a hand-toggled "open" flag set true only in onChange and
+  // false on a 150ms blur timer; any stray blur — clicking the list's scrollbar, a
+  // focus shuffle — flipped it off and nothing turned it back on until the next
+  // keystroke, so loaded suggestions stayed hidden until you "clicked around".)
+  const [focused, setFocused] = useState(false);
 
   const [timeMode, setTimeMode] = useState<"now" | "schedule">("now");
   const [date, setDate] = useState(todayIso());
@@ -90,18 +95,19 @@ export function HostSessionModal({
     }
   };
 
-  // Editing the address invalidates a prior geocode result + picked coords.
+  // Editing the address invalidates a prior geocode result + picked coords. The
+  // dropdown follows focus + suggestion availability, so typing alone surfaces it —
+  // no explicit "open" toggle needed here.
   const handleAddressChange = (value: string) => {
     location.setValue(value);
-    setShowSuggestions(true);
     if (selectedCoords) setSelectedCoords(null);
     if (geoStatus !== "idle") setGeoStatus("idle");
   };
 
   // Pick a suggestion: resolve its address + coordinates (from the cached
-  // autocomplete result — no extra request), confirm the field.
+  // autocomplete result — no extra request), confirm the field. select() empties
+  // the suggestion list, so the dropdown closes on its own.
   const handleSelectSuggestion = (placeId: string) => {
-    setShowSuggestions(false);
     const place = location.select(placeId);
     if (place) {
       setSelectedCoords({ lat: place.lat, lon: place.lon });
@@ -189,15 +195,19 @@ export function HostSessionModal({
                 placeholder="Search a place, e.g. Salesforce Tower"
                 value={location.value}
                 onChange={(e) => handleAddressChange(e.target.value)}
+                onFocus={() => setFocused(true)}
                 onBlur={() => {
-                  // Delay so a suggestion click registers before we close/validate.
+                  // Delay so a suggestion click (onMouseDown) registers before we
+                  // close the dropdown / kick off validation.
                   window.setTimeout(() => {
-                    setShowSuggestions(false);
+                    setFocused(false);
                     if (!selectedCoords) void validateLocation();
                   }, 150);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Escape") setShowSuggestions(false);
+                  // Escape dismisses the current matches without leaving the field;
+                  // they re-appear on the next keystroke.
+                  if (e.key === "Escape") location.clear();
                 }}
                 error={
                   geoStatus === "notfound"
@@ -206,7 +216,7 @@ export function HostSessionModal({
                 }
                 hint={geoStatus === "ok" ? "✓ Location confirmed" : undefined}
               />
-              {showSuggestions && location.suggestions.length > 0 && (
+              {focused && location.suggestions.length > 0 && (
                 <ul
                   className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-input border border-border bg-surface py-1 shadow-lg"
                   role="listbox"
