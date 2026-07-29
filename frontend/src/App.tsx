@@ -11,6 +11,7 @@ import { BudgetStep } from '@/pages/member/onboarding/Onboarding2'
 import { LocationStep } from '@/pages/member/onboarding/Onboarding3'
 import { GroupsIndex } from '@/pages/member/GroupsIndex'
 import { GroupChatPage } from '@/pages/member/GroupChatPage'
+import { ExplorePage } from '@/pages/member/ExplorePage'
 import { EventsPage } from '@/pages/member/EventsPage'
 import { AgentChatPage } from '@/pages/member/session/AgentChatPage'
 import { TopPicksPage } from '@/pages/member/session/TopPicksPage'
@@ -59,6 +60,8 @@ function App() {
             <Route path=":groupId/sessions/:sessionId/done" element={<AgentChatPage done />} />
             <Route path=":groupId/sessions/:sessionId/picks" element={<TopPicksPage />} />
           </Route>
+
+          <Route path="explore" element={<ExplorePage />} />
 
           <Route path="events">
             <Route index element={<EventsPage />} />

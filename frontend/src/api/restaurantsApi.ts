@@ -16,3 +16,19 @@ export async function fetchMenu(restaurantId: number): Promise<MenuItem[]> {
   void restaurantId
   return []
 }
+
+// Like / unlike a restaurant for the current user. Both endpoints are idempotent
+// and return the caller's FULL updated liked list, so callers reconcile from the
+// response rather than trusting a local toggle. This persists to
+// `Profile.liked_restaurant_ids` — the signal the ai_service preference agent reads.
+// (PUT /profile deliberately ignores that column, so these are the ONLY way to
+// persist a like.)
+export async function likeRestaurant(id: number): Promise<number[]> {
+  const { data } = await api.post<{ liked_restaurant_ids: number[] }>(`/restaurants/${id}/like`)
+  return data.liked_restaurant_ids
+}
+
+export async function unlikeRestaurant(id: number): Promise<number[]> {
+  const { data } = await api.delete<{ liked_restaurant_ids: number[] }>(`/restaurants/${id}/like`)
+  return data.liked_restaurant_ids
+}

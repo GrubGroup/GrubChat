@@ -71,6 +71,7 @@ export function AppSidebar({
 
         <div className="mt-2 flex flex-col items-center gap-1.5">
           <RailTab icon="users" label="Groups" to="/groups" />
+          <RailTab icon="search" label="Explore" to="/explore" />
           <RailTab icon="calendar" label="Events" to="/events" />
         </div>
 
