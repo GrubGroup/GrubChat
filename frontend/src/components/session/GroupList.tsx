@@ -42,7 +42,10 @@ function lastActivity(
 }
 
 // One list row. Split out so usePreview can subscribe per-group to live chat.
-function GroupRow({ group }: { group: Group }) {
+// `divider` renders the between-rows hairline; it's suppressed on the selected row
+// and the row directly above it, so the selected card's rounded border floats
+// cleanly instead of colliding with a stray straight line.
+function GroupRow({ group, divider }: { group: Group; divider: boolean }) {
   const groupId = useGroupId()
   const { preview, time } = usePreview(group)
   const selected = group.id === groupId
@@ -55,11 +58,13 @@ function GroupRow({ group }: { group: Group }) {
         // changing its desktop look (content already renders ~50px tall).
         'relative flex min-h-16 w-full items-center gap-3 rounded-[10px] p-2.5 text-left md:min-h-14 md:gap-2.5 md:p-2',
         'transition-colors duration-150 ease-out',
-        // Inset hairline pinned to the row's bottom edge — the same edge the hover
-        // highlight ends on — so the line sits exactly under the hover box. It
-        // starts after the emoji tile (left-14 / md:left-13) rather than spanning
-        // the full width, to differentiate the otherwise-floating rows.
-        'after:pointer-events-none after:absolute after:bottom-0 after:left-14 after:right-2.5 after:h-px after:bg-border after:content-[""] md:after:left-13 md:after:right-2',
+        // Inset hairline pinned to the row's bottom edge — its right end stops at the
+        // corner-radius tangent (right-2.5 == the rounded box's 10px radius) so it
+        // lines up exactly with where the hover/selected box's edge curves in, and it
+        // starts after the emoji tile (left-14 / md:left-13). Only shown between two
+        // unselected rows (see `divider`) so it never butts against the selected card.
+        divider &&
+          'after:pointer-events-none after:absolute after:bottom-0 after:left-14 after:right-2.5 after:h-px after:bg-border after:content-[""] md:after:left-13 md:after:right-2',
         selected
           ? 'border border-border bg-surface-raised'
           : 'border border-transparent hover:bg-surface-raised/60',
@@ -87,6 +92,7 @@ function GroupRow({ group }: { group: Group }) {
 // opens its chat, which below `md` is a pushed screen over this list.
 export function GroupList() {
   const reduce = useReducedMotion()
+  const groupId = useGroupId()
   const groups = useGroupsStore((s) => s.groups)
   const load = useGroupsStore((s) => s.load)
   // Subscribe at this level so the list re-sorts live as new messages arrive.
@@ -130,18 +136,28 @@ export function GroupList() {
 
       <div className="flex flex-col gap-0.5 px-2 pt-1">
         <AnimatePresence initial={false}>
-          {visibleGroups.map((g) => (
-            <motion.div
-              key={g.id}
-              layout={!reduce}
-              initial={{ opacity: 0, y: reduce ? 0 : -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: reduce ? 0 : -4 }}
-              transition={{ duration: reduce ? 0.12 : 0.2, ease: EASE }}
-            >
-              <GroupRow group={g} />
-            </motion.div>
-          ))}
+          {visibleGroups.map((g, i) => {
+            // Show the divider only BETWEEN two unselected rows: hide it on the last
+            // row, on the selected row, and on the row right above the selected one
+            // (so the selected card's rounded border never collides with a hairline).
+            const next = visibleGroups[i + 1]
+            const divider =
+              i < visibleGroups.length - 1 &&
+              g.id !== groupId &&
+              next?.id !== groupId
+            return (
+              <motion.div
+                key={g.id}
+                layout={!reduce}
+                initial={{ opacity: 0, y: reduce ? 0 : -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: reduce ? 0 : -4 }}
+                transition={{ duration: reduce ? 0.12 : 0.2, ease: EASE }}
+              >
+                <GroupRow group={g} divider={divider} />
+              </motion.div>
+            )
+          })}
         </AnimatePresence>
         {visibleGroups.length === 0 && (
           <p className="px-2 py-6 text-center text-caption text-text-muted">
