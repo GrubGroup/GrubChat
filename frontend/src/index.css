@@ -9,7 +9,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * GrubGroup design tokens — the SINGLE source of truth for all visual design.
+ * GrubChat design tokens — the SINGLE source of truth for all visual design.
  *
  * Two tiers:
  *   Tier 1 — raw palette ("crayon box"). NEVER referenced by components.
@@ -29,7 +29,7 @@
 @theme {
   /* ============================================================
    * TIER 1 — raw palette (never used directly by components)
-   * Hexes taken verbatim from the GrubGroup Figma wireframes.
+   * Hexes taken verbatim from the GrubChat Figma wireframes.
    * ============================================================ */
 
   /* Orange — brand scale (warm terracotta) */
@@ -360,6 +360,30 @@ body {
 @utility animate-bubble-pop {
   transform-origin: bottom;
   animation: bubble-pop 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/*
+ * Ambient rising bubbles — soft discs drift from below the viewport up past the
+ * top, fading in and out along the way. Used behind the 404 page content. Each
+ * bubble gets its own duration + a NEGATIVE animation-delay (set inline) so it
+ * starts already mid-flight: the field is full from first paint and the stream
+ * never breaks. The reduced-motion backstop above freezes it to a single frame.
+ */
+@keyframes bubble-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-115vh);
+  }
 }
 
 /*
