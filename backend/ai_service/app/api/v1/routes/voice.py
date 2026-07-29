@@ -48,6 +48,7 @@ from app.ai.agents.conversation_agent import _QUESTION_FOR
 from app.ai.voice.keyterms import get_keyterms
 from app.ai.voice.stt import TurnEvent, consume_turns
 from app.ai.voice.tts import ConcurrencyLimitError, stream_audio
+from app.ai.voice.voices import resolve_voice_id
 from app.api.deps import require_internal_secret
 from app.core.config import settings
 from app.schemas.ai import AnalyzeRequest, ConversationTurn, ExtractedSignals
@@ -102,6 +103,10 @@ class _VoiceConnection:
         # analyze context matches what the text chat already tracks.
         self._history: list[ConversationTurn] = []
         self._signals = ExtractedSignals()
+        # The Cartesia voice this member picked (settings dropdown), seeded from
+        # the `start` frame and validated against the allowlist. Defaults to the
+        # configured server voice until a `start` frame supplies one.
+        self._voice_id: str = resolve_voice_id(None)
         # Per-signal re-ask counter, so a degraded turn can't loop forever.
         self._last_missing: str | None = None
         self._reask_count = 0
@@ -170,6 +175,9 @@ class _VoiceConnection:
             if isinstance(sig, dict):
                 with contextlib.suppress(Exception):
                     self._signals = ExtractedSignals(**sig)
+            # Validate the requested voice against the allowlist; an unknown value
+            # falls back to the server default rather than reaching Cartesia raw.
+            self._voice_id = resolve_voice_id(frame.get("voice_id"))
         return True
 
     async def audio_iter(self) -> AsyncIterator[bytes]:
@@ -348,7 +356,7 @@ class _VoiceConnection:
             async for pcm in stream_audio(
                 text,
                 model=settings.cartesia_model,
-                voice_id=settings.cartesia_voice_id,
+                voice_id=self._voice_id,
             ):
                 await self.ws.send_bytes(pcm)
             await self._send(SpeechEndFrame())

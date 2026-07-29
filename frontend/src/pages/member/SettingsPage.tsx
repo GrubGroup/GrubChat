@@ -7,6 +7,8 @@ import { EASE } from '@/lib/motion'
 import { changeEmail, changePassword, linkSocial } from '@/lib/authClient'
 import { fetchAuthMethods, type AuthMethods } from '@/api/authApi'
 import { useAuthStore } from '@/stores/authStore'
+import { useVoicePrefStore } from '@/stores/voicePrefStore'
+import { VOICE_OPTIONS } from '@/constants/voices'
 import { cn } from '@/utils/cn'
 
 // Account settings screen. Mirrors the "Account settings" wireframe (Account /
@@ -24,6 +26,12 @@ export function SettingsPage() {
   const location = useLocation()
   const user = useAuthStore((s) => s.user)
   const patchUser = useAuthStore((s) => s.patchUser)
+
+  // AI voice selection — the Cartesia voice the hands-free session agent speaks
+  // with. Persisted per-device (voicePrefStore) and flows into the voice loop's
+  // `start` frame, so a change takes effect on the next voice session.
+  const voiceId = useVoicePrefStore((s) => s.voiceId)
+  const setVoiceId = useVoicePrefStore((s) => s.setVoiceId)
 
   // Which auth providers this account has. Email/password lives on a 'credential'
   // provider (→ authMethods.password); Google-only accounts can't change email or
@@ -330,6 +338,37 @@ export function SettingsPage() {
                     Link Google account
                   </Button>
                 )}
+              </div>
+            </div>
+          </Section>
+
+          {/* AI SETTINGS */}
+          <Section label="AI settings">
+            <div className="overflow-hidden rounded-card border border-border">
+              <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-sunken text-primary">
+                    <Icon name="speaker" size={18} />
+                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-sm font-semibold text-text">Agent voice</span>
+                    <span className="text-xs text-text-muted">
+                      The voice your AI agent speaks with during voice sessions
+                    </span>
+                  </div>
+                </div>
+                <select
+                  aria-label="Agent voice"
+                  value={voiceId}
+                  onChange={(e) => setVoiceId(e.target.value)}
+                  className="h-11 w-full min-w-0 rounded-input border border-border bg-surface-sunken px-3 text-text focus:outline-none focus:ring-2 focus:ring-focus-ring sm:w-auto sm:min-w-56"
+                >
+                  {VOICE_OPTIONS.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name} ({v.gender})
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           </Section>

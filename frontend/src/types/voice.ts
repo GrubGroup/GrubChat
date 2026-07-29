@@ -65,6 +65,9 @@ export interface VoiceStartFrame {
   type: 'start'
   conversation_history: { role: 'user' | 'assistant'; content: string }[]
   current_signals: ExtractedSignals
+  // Cartesia voice id the agent should SPEAK with (from the settings dropdown).
+  // Optional — the server falls back to its default voice when absent/unknown.
+  voice_id?: string
 }
 export interface VoiceMuteFrame {
   type: 'mute'

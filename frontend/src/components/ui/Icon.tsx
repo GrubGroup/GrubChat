@@ -36,6 +36,7 @@ export type IconName =
   | 'heart'
   | 'settings'
   | 'user'
+  | 'speaker'
 
 const PATHS: Record<IconName, ReactSvgContent> = {
   mic: (
@@ -185,6 +186,15 @@ const PATHS: Record<IconName, ReactSvgContent> = {
     <>
       <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
       <circle cx="12" cy="7" r="4" />
+    </>
+  ),
+  // Speaker emitting sound waves — the "voice / speaking" affordance for the AI
+  // voice setting. A speaker cone (box + triangular horn) plus two arced waves.
+  speaker: (
+    <>
+      <path d="M11 5 6 9H2v6h4l5 4Z" />
+      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+      <path d="M19 5a9 9 0 0 1 0 14" />
     </>
   ),
 }

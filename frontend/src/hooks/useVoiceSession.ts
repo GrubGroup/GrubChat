@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getSocket } from '@/lib/socket'
 import { useChatStore } from '@/stores/chatStore'
+import { useVoicePrefStore } from '@/stores/voicePrefStore'
 import type { ConversationTurn, ExtractedSignals } from '@/types'
 import type { VoiceController, VoiceFrame } from '@/types/voice'
 
@@ -218,10 +219,15 @@ export function useVoiceSession(groupId: number, sessionId: number | null): Voic
             .filter((m) => m.role === 'user' || m.role === 'agent')
             .map((m) => ({ role: m.role === 'agent' ? 'assistant' : 'user', content: m.text }))
           const current_signals: ExtractedSignals = cur?.currentSignals ?? emptySignals()
+          // Read the chosen voice at emit-time (not via a hook dep) so selecting a
+          // new voice takes effect on the next session without re-attaching the
+          // socket listeners. The server validates it against its allowlist.
+          const voice_id = useVoicePrefStore.getState().voiceId
           getSocket()?.emit('voice:control', {
             type: 'start',
             conversation_history: history,
             current_signals,
+            voice_id,
           })
           break
         }

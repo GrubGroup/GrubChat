@@ -123,6 +123,11 @@ class StartFrame(BaseModel):
     type: Literal["start"]
     conversation_history: list[ConversationTurn] = Field(default_factory=list)
     current_signals: ExtractedSignals = Field(default_factory=ExtractedSignals)
+    # Cartesia voice id the member picked (settings dropdown). Optional — an
+    # absent/unknown id resolves to the server default (see voices.resolve_voice_id).
+    # The route parses the frame as a raw dict, so this field documents the wire
+    # contract rather than gating it.
+    voice_id: str | None = None
 
 
 class MuteFrame(BaseModel):
