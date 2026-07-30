@@ -167,6 +167,16 @@ export function GroupChatPage() {
   // kick off another session in the same chat.
   const sessionOngoing = sessionStartIndex !== null && !isComplete && sessionObj?.closed_at == null
 
+  // Was the session's host handed off (the original host deleted their account)?
+  // session.host_user_id is repointed on hand-off, so it can no longer name the
+  // ORIGINAL starter. The durable signal is the persisted "… is now the session
+  // host" SYSTEM line — it replays on reload via chat:history and arrives live via
+  // chat:message. When present, the "started a session" divider goes neutral rather
+  // than mis-attributing the start to the member who merely inherited the host role.
+  const hostHandedOff = messages.some(
+    (m) => m.type === 'system' && m.text.endsWith(' is now the session host'),
+  )
+
   // Header "X members" reflects the real group membership from GET /api/groups
   // (member_count); falls back to the session total when absent.
   const memberCount = group?.member_count ?? total
@@ -364,7 +374,9 @@ export function GroupChatPage() {
               >
                 <div className="flex items-center gap-3 py-1 text-caption text-text-muted">
                   <span className="h-px flex-1 bg-border" />
-                  {nameForMember(sessionObj?.host_user_id ?? 0, members)} started a session
+                  {hostHandedOff
+                    ? 'Session in progress'
+                    : `${nameForMember(sessionObj?.host_user_id ?? 0, members)} started a session`}
                   <span className="h-px flex-1 bg-border" />
                 </div>
                 <SessionCard

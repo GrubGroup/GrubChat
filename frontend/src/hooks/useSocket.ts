@@ -128,6 +128,22 @@ export function useSocket(groupId: number) {
     }
     socket.on('session:confirmed', handleConfirmed)
 
+    // The previous host deleted their account, so the gateway handed the open
+    // session off to another member. Repoint host_user_id so the new host's
+    // "Close session" control appears without a refresh (selectIsHost re-derives),
+    // and the departed host drops off the roster. Guard to this room + live session.
+    const handleHostChanged = (payload: {
+      groupId: number
+      sessionId: number
+      newHostId: number
+    }) => {
+      if (payload.groupId !== groupId) return
+      useSessionStore
+        .getState()
+        .applyHostChange(payload.groupId, payload.sessionId, payload.newHostId)
+    }
+    socket.on('session:host_changed', handleHostChanged)
+
     const handleTyping = (payload: {
       groupId: number
       userId: number | null
@@ -146,6 +162,7 @@ export function useSocket(groupId: number) {
       socket.off('session:member_done', handleMemberDone)
       socket.off('session:picks', handlePicks)
       socket.off('session:confirmed', handleConfirmed)
+      socket.off('session:host_changed', handleHostChanged)
       socket.off('typing:update', handleTyping)
     }
   }, [name, currentUserId, groupId])

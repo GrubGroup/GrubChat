@@ -98,6 +98,11 @@ export function EventsPage() {
   // the newest event so the desktop detail column is never empty.
   const active = events.find((e) => e.id === idFromSlug(eventId)) ?? events[0] ?? null
 
+  // An event still ahead of the cutoff is "upcoming". Deleted-account attendees
+  // are greyed + X'd only on upcoming events; past events already happened, so
+  // they render unchanged (the person was there at the time).
+  const activeIsUpcoming = active != null && new Date(active.date).getTime() >= now
+
   // Split the flat list into outings still ahead (upcoming) vs. past (previous).
   // Cutoff is the exact current time, so an outing earlier today reads as previous.
   // Upcoming is soonest-first; previous is newest-first.
@@ -228,13 +233,37 @@ export function EventsPage() {
                   <div className="flex flex-col">
                     {active.attendees.map((a) => {
                       const name = a.display_name ?? a.username
+                      // Grey out + X a deleted attendee, but only for an upcoming
+                      // event — a past event happened while they were still active.
+                      const removed = activeIsUpcoming && a.deactivated === true
                       return (
                         <div
                           key={a.id}
                           className="flex items-center gap-3 border-b border-border py-2.5 last:border-b-0"
                         >
-                          <Avatar name={name} size="sm" colorClass={memberColor(a.id)} />
-                          <span className="flex-1 text-body text-text">{name}</span>
+                          <Avatar
+                            name={name}
+                            size="sm"
+                            colorClass={memberColor(a.id)}
+                            className={removed ? 'opacity-50' : undefined}
+                          />
+                          <span
+                            className={cn(
+                              'flex-1 text-body',
+                              removed ? 'text-text-muted line-through' : 'text-text',
+                            )}
+                          >
+                            {name}
+                          </span>
+                          {removed && (
+                            <span
+                              className="flex items-center gap-1 text-caption text-text-muted"
+                              title="This person deleted their account"
+                            >
+                              <Icon name="x" size={12} />
+                              Removed
+                            </span>
+                          )}
                         </div>
                       )
                     })}

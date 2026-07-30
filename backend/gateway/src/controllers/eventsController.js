@@ -24,13 +24,23 @@ const listEvents = async (req, res, next) => {
         group_name: true,
         // Who attended — snapshotted from the session members at close time
         // (closeSession connects them). Surfaced so the Events detail can show a
-        // "Who's going" list with real names.
+        // "Who's going" list with real names. deactivated_at lets the UI grey out
+        // + X an attendee who has since deleted their account (upcoming events only).
         attendees: {
-          select: { id: true, username: true, display_name: true },
+          select: { id: true, username: true, display_name: true, deactivated_at: true },
         },
       },
     });
-    return res.status(200).json(events);
+    // Map deactivated_at to a clean boolean so the wire shape doesn't leak the
+    // timestamp; the frontend only needs to know whether to grey+X the name.
+    const shaped = events.map((e) => ({
+      ...e,
+      attendees: e.attendees.map(({ deactivated_at, ...a }) => ({
+        ...a,
+        deactivated: Boolean(deactivated_at),
+      })),
+    }));
+    return res.status(200).json(shaped);
   } catch (err) {
     return next(err);
   }

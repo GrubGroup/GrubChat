@@ -78,6 +78,9 @@ export interface EventAttendee {
   id: number
   username: string
   display_name?: string | null
+  // True when this attendee has since deleted (deactivated) their account. The
+  // Events UI greys out + marks their name with an X on UPCOMING events only.
+  deactivated?: boolean
 }
 
 export interface EventRecord {

@@ -2,10 +2,11 @@ import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { motion, useReducedMotion } from 'framer-motion'
-import { Button, Icon, Input } from '@/components/ui'
+import { Button, Icon, Input, Modal } from '@/components/ui'
 import { EASE } from '@/lib/motion'
 import { changeEmail, changePassword, linkSocial } from '@/lib/authClient'
 import { fetchAuthMethods, type AuthMethods } from '@/api/authApi'
+import { useDeleteAccount } from '@/hooks/useSignOut'
 import { useAuthStore } from '@/stores/authStore'
 import { useVoicePrefStore } from '@/stores/voicePrefStore'
 import { useThemeStore } from '@/stores/themeStore'
@@ -22,7 +23,8 @@ import { cn } from '@/utils/cn'
 // accounts row is state-driven: it shows Google as connected only when actually
 // linked, otherwise offers a working "Link Google account" OAuth flow (there is
 // no disconnect — unlinking would risk locking a Google-only account out). Delete
-// remains a visual stub (out of scope for now).
+// account opens a confirmation modal and, on confirm, soft-deletes the account
+// (DELETE /api/user) then runs the sign-out teardown.
 export function SettingsPage() {
   const reduce = useReducedMotion()
   const navigate = useNavigate()
@@ -99,6 +101,36 @@ export function SettingsPage() {
     if (error) {
       setLinking(false)
       setLinkError('Could not start Google linking. Please try again.')
+    }
+  }
+
+  // Delete account. deleteAccount() performs the soft-delete then the full
+  // sign-out teardown (clear stores + navigate to /login), so on success this
+  // page unmounts. Only a server error surfaces here (the delete always succeeds
+  // otherwise — any open session the user hosts is handed off or auto-closed);
+  // its message is shown in the modal.
+  const deleteAccount = useDeleteAccount()
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  const openDeleteConfirm = () => {
+    setDeleteError(null)
+    setConfirmingDelete(true)
+  }
+
+  const handleDelete = async () => {
+    setDeleteError(null)
+    setDeleting(true)
+    try {
+      await deleteAccount()
+      // On success the teardown navigates to /login and this unmounts.
+    } catch (err) {
+      setDeleting(false)
+      setDeleteError(
+        (err as { message?: string })?.message ??
+          'Could not delete your account. Please try again.',
+      )
     }
   }
 
@@ -408,21 +440,56 @@ export function SettingsPage() {
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-semibold text-error">Delete account</span>
                 <span className="text-sm text-text-muted">
-                  Permanently remove your profile, sessions, and saved preferences
+                  Delete your account and remove yourself from all groups
                 </span>
               </div>
-              {/* Stub: destructive delete is not wired — the button is disabled. */}
-              <button
-                type="button"
-                disabled
-                className="shrink-0 rounded-pill border border-error px-4 py-1.5 text-sm font-semibold text-error transition-colors hover:bg-error/5 disabled:cursor-not-allowed disabled:opacity-50"
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={openDeleteConfirm}
+                className="shrink-0"
               >
                 Delete
-              </button>
+              </Button>
             </div>
           </Section>
         </div>
       </div>
+
+      {/* Delete-account confirmation. Guard onClose while the request is in
+          flight so the modal can't be dismissed mid-delete. */}
+      <Modal
+        open={confirmingDelete}
+        onClose={() => (deleting ? undefined : setConfirmingDelete(false))}
+        title="Delete account?"
+        size="sm"
+      >
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-3 text-body text-text-muted">
+            <p>
+              This deletes your account and signs you out. You'll be removed from all
+              your groups, and you won't be able to log back in.
+            </p>
+            <p>
+              Your past messages stay in group chats, and your username and email are
+              freed up for future sign-ups.
+            </p>
+          </div>
+          {deleteError && <p className="text-sm text-error">{deleteError}</p>}
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setConfirmingDelete(false)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={handleDelete} isLoading={deleting}>
+              Delete account
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </motion.div>
   )
 }

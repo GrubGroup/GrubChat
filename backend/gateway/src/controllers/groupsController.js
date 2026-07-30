@@ -197,7 +197,8 @@ const addMember = async (req, res, next) => {
     const target = user_id !== undefined
       ? await prisma.user.findUnique({ where: { id: user_id } })
       : await prisma.user.findUnique({ where: { username } });
-    if (!target) {
+    // A soft-deleted account must not be re-addable to a group.
+    if (!target || target.deactivated_at) {
       return res.status(404).json({ error: 'User not found.' });
     }
 
