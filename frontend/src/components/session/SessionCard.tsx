@@ -92,7 +92,7 @@ export function SessionCard({
         {complete && (
           <button
             onClick={onViewResults}
-            className="flex h-9 w-full items-center justify-center gap-1.5 rounded-input bg-success px-3 text-caption font-medium text-white md:h-auto md:w-auto md:py-1.5"
+            className="flex h-9 w-full items-center justify-center gap-1.5 rounded-input bg-success px-3 text-caption font-medium text-white md:h-auto md:w-auto md:py-1.5 dark:bg-[#16a34a]"
           >
             <Icon name="utensils" size={12} /> Results
           </button>

@@ -296,17 +296,20 @@ export function GroupChatPage() {
 
         {/* DESKTOP header (≥md) — hidden below md, where the MobileHeader takes over;
             same height as the sidebar/right-panel headers for seamless borders. */}
-        <div className={cn('hidden items-center justify-between border-b border-border px-5 md:flex', COLUMN_HEADER_H)}>
-          <div className="flex items-center gap-3">
+        <div className={cn('hidden items-center justify-between gap-3 border-b border-border px-5 md:flex', COLUMN_HEADER_H)}>
+          {/* min-w-0 lets this flex child shrink below its content width so the
+              name can truncate (instead of forcing the buttons to wrap) when the
+              Edit-group panel opens and narrows the chat column. */}
+          <div className="flex min-w-0 items-center gap-3">
             {/* Same rounded emoji badge as the group's sidebar row, so the header
                 matches the chat's list image — larger here, with the name + member
                 count stacked beside it. */}
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[13px] border border-border bg-surface-raised text-xl">
               {group?.emoji}
             </span>
-            <div className="flex flex-col">
-              <span className="font-display text-item-title font-bold text-text">{groupName}</span>
-              <p className="text-caption text-text-muted">
+            <div className="flex min-w-0 flex-col">
+              <span className="truncate font-display text-item-title font-bold text-text">{groupName}</span>
+              <p className="truncate text-caption text-text-muted">
                 {memberCount} members
                 {/* "Session active" only while a live session is in progress — not
                     before one starts, and not once it's complete. */}
@@ -316,7 +319,9 @@ export function GroupChatPage() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          {/* shrink-0 keeps the actions at their natural width; whitespace-nowrap on
+              each button stops its label wrapping to two lines when space is tight. */}
+          <div className="flex shrink-0 items-center gap-2">
             {/* Start session stays PRESENT the whole time — it's only DISABLED
                 while a session is actively running (started but not yet complete),
                 and re-enables once results land / the session closes so the group
@@ -325,13 +330,13 @@ export function GroupChatPage() {
               onClick={() => setHostModalOpen(true)}
               disabled={sessionOngoing}
               title={sessionOngoing ? 'A session is already in progress' : undefined}
-              className="flex items-center gap-1.5 rounded-input border border-border-strong bg-surface-inverse px-3 py-1.5 text-caption font-medium text-on-inverse dark:bg-surface-sunken dark:text-text dark:hover:bg-surface-panel disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-input border border-border-strong bg-surface-inverse px-3 py-1.5 text-caption font-medium text-on-inverse dark:bg-surface-sunken dark:text-text dark:hover:bg-surface-panel disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Icon name="sparkles" size={12} /> Start session
             </button>
             <button
               onClick={() => setEditing(true)}
-              className="flex items-center gap-1.5 rounded-input border border-border-strong bg-surface-sunken px-3 py-1.5 text-caption font-medium text-text hover:bg-surface-panel"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-input border border-border-strong bg-surface-sunken px-3 py-1.5 text-caption font-medium text-text hover:bg-surface-panel"
             >
               <Icon name="users" size={12} /> Edit group
             </button>

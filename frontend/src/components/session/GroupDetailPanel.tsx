@@ -362,14 +362,19 @@ export function GroupDetailPanel({
     <div
       className={cn(
         'hidden shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out md:block',
-        open ? 'w-80' : 'w-0',
+        // Proportional (not a fixed w-80): clamp between 15rem and 20rem, tracking
+        // 24vw so a narrower window shrinks the panel and leaves the chat room —
+        // which is what stops the header buttons from being squeezed into wrapping.
+        open ? 'w-[clamp(15rem,24vw,20rem)]' : 'w-0',
       )}
       aria-hidden={!open}
       inert={!open}
     >
       <aside
         aria-label="Group details"
-        className="flex h-full w-80 flex-col border-l border-border bg-surface-raised"
+        // Same clamp as the open-state container so the content keeps a stable
+        // width while the outer element clips it open/closed (the reveal animation).
+        className="flex h-full w-[clamp(15rem,24vw,20rem)] flex-col border-l border-border bg-surface-raised"
       >
         {/* Header — same height as the chat/sidebar headers so borders line up */}
         <div
