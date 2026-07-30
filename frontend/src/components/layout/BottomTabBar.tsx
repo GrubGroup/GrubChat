@@ -13,6 +13,7 @@ type Tab = {
 const TABS: Tab[] = [
   { to: '/groups', icon: 'users', label: 'Groups' },
   { to: '/events', icon: 'calendar', label: 'Events' },
+  { to: '/explore', icon: 'search', label: 'Explore' },
   { to: '/profile', icon: 'user', label: 'Profile' },
 ]
 

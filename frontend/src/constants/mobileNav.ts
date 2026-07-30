@@ -6,6 +6,7 @@
 // user finishes or backs out of), and from `/profile/edit` (a pushed screen).
 export function showsTabBar(pathname: string): boolean {
   if (pathname === '/groups') return true
+  if (pathname === '/explore') return true
   if (pathname === '/profile') return true
   // Events keeps the bar on its detail route too (the detail is a drawer over the
   // list, so the tab root is conceptually still in view).
