@@ -6,7 +6,11 @@ import { logger } from '../utils/logger.js';
 const EMBEDDING_DIMS = 1024;
 
 const DEFAULT_LIST_LIMIT = 20;
-const MAX_LIST_LIMIT = 100;
+// Per-request ceiling. Kept generous so the frontend can page the FULL catalog
+// (~2k+ rows) into its client-side store — the Explore/Top Picks/Profile views
+// resolve restaurant ids against that store, so a low cap silently drops any
+// row not loaded. The default (20) still protects future unpaginated callers.
+const MAX_LIST_LIMIT = 1000;
 
 /** Parse a route param to a positive integer, or null when invalid. */
 const toPositiveInt = (value) => {

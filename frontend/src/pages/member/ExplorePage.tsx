@@ -71,7 +71,6 @@ export function ExplorePage() {
     reset,
     visible,
     hasMore,
-    remaining,
     showMore,
     count,
     countLabel,
@@ -181,7 +180,7 @@ export function ExplorePage() {
                   {hasMore && (
                     <div className="flex justify-center pt-1">
                       <Button variant="ghost" className="border border-border" onClick={showMore}>
-                        Show more ({remaining} left)
+                        Show More
                       </Button>
                     </div>
                   )}

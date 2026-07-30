@@ -5,7 +5,7 @@ import { priceLevel } from '@/utils/price'
 import { distanceMi, type Coords } from '@/utils/distance'
 
 // Explore browse state — search + filter/sort chips + "show more" pagination —
-// derived entirely client-side over the already-cached catalog (~54 rows in
+// derived entirely client-side over the already-cached catalog (~2k+ rows in
 // restaurantStore). The gateway list endpoint exposes no search/dietary/open-now
 // params, and "Open now" already lives client-side (utils/hours), so server
 // round-trips per keystroke would only add latency and duplicate logic.
