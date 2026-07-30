@@ -16,17 +16,21 @@ interface RestaurantExploreCardProps {
   /** Miles from the user's home location, when known (else distance is hidden). */
   distanceMi?: number
   onToggleLike: () => void
+  /** Open the restaurant's detail modal (fired on card click / Enter / Space). */
+  onOpen: () => void
 }
 
-// A browse card in the Explore grid: emoji banner over a soft deterministic tint,
-// a state overlay badge (Liked / Popular), name, agent-context helper line, a
+// A browse card in the Explore grid: a soft deterministic tint banner with a state
+// overlay badge (Liked / Popular), name, agent-context helper line, a
 // rating · distance · price meta row, the first dietary tag, and the star toggle.
+// Clicking the card (anywhere but the star) opens the detail modal.
 export function RestaurantExploreCard({
   restaurant: r,
   liked,
   pending,
   distanceMi,
   onToggleLike,
+  onOpen,
 }: RestaurantExploreCardProps) {
   const rating = r.avg_rating
   // "Popular" is derived from rating (there is no popularity/review field); only for
@@ -50,7 +54,20 @@ export function RestaurantExploreCard({
   if (price) meta.push(<span key="price">{price}</span>)
 
   return (
-    <Card padding="none" className="overflow-hidden">
+    <Card
+      padding="none"
+      role="button"
+      tabIndex={0}
+      aria-label={`View ${r.name} details`}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onOpen()
+        }
+      }}
+      className="overflow-hidden cursor-pointer transition-[transform,box-shadow] duration-150 ease-out hover:shadow-md motion-safe:hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+    >
       {/* Banner — deterministic tint placeholder, with the state badge overlaid. */}
       <div className={cn('relative h-28', restaurantTint(r.id))}>
         {liked ? (

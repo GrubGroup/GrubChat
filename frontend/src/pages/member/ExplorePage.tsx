@@ -7,6 +7,7 @@ import { MobileHeader } from '@/components/layout/MobileHeader'
 import { ExploreFilters } from '@/components/restaurant/ExploreFilters'
 import { LikedPlacesPanel } from '@/components/restaurant/LikedPlacesPanel'
 import { RestaurantExploreCard } from '@/components/restaurant/RestaurantExploreCard'
+import { RestaurantDetailModal } from '@/components/restaurant/RestaurantDetailModal'
 import { useExploreFilters } from '@/hooks/useExploreFilters'
 import { useProfileStore } from '@/stores/profileStore'
 import { useRestaurantStore } from '@/stores/restaurantStore'
@@ -53,8 +54,30 @@ export function ExplorePage() {
   // Snapshot "now" once (the Open-now cutoff). A mid-view tick isn't worth a re-render.
   const [now] = useState(() => new Date())
 
-  const { search, setSearch, active, toggle, clearFilters, reset, results, count, countLabel, canUseNearby, distances } =
-    useExploreFilters(all, { userCoords, now })
+  // The restaurant whose detail modal is shown, resolved against the catalog (the
+  // modal reads all its fields from the cached row — no extra fetch). `detailOpen`
+  // is tracked separately from the selection so the selection stays put through the
+  // modal's close animation (only `open` flips on close).
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const selected = selectedId != null ? (byId[selectedId] ?? null) : null
+
+  const {
+    search,
+    setSearch,
+    active,
+    toggle,
+    clearFilters,
+    reset,
+    visible,
+    hasMore,
+    remaining,
+    showMore,
+    count,
+    countLabel,
+    canUseNearby,
+    distances,
+  } = useExploreFilters(all, { userCoords, now })
 
   const searchBar = (
     <Input
@@ -127,29 +150,42 @@ export function ExplorePage() {
               {count === 0 ? (
                 <ExploreEmptyResults onClear={reset} />
               ) : (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {results.map((r, i) => (
-                    <motion.div
-                      key={r.id}
-                      initial={{ opacity: 0, y: reduce ? 0 : 12 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{
-                        duration: reduce ? 0.2 : 0.35,
-                        // Cap the stagger so a large grid doesn't ripple for seconds.
-                        delay: reduce ? 0 : Math.min(i, 8) * 0.05,
-                        ease: EASE,
-                      }}
-                    >
-                      <RestaurantExploreCard
-                        restaurant={r}
-                        liked={likedSet.has(r.id)}
-                        pending={likePending.has(r.id)}
-                        distanceMi={distances[r.id]}
-                        onToggleLike={() => void toggleLike(r.id)}
-                      />
-                    </motion.div>
-                  ))}
-                </div>
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {visible.map((r, i) => (
+                      <motion.div
+                        key={r.id}
+                        initial={{ opacity: 0, y: reduce ? 0 : 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{
+                          duration: reduce ? 0.2 : 0.35,
+                          // Cap the stagger so a large grid doesn't ripple for seconds.
+                          delay: reduce ? 0 : Math.min(i, 8) * 0.05,
+                          ease: EASE,
+                        }}
+                      >
+                        <RestaurantExploreCard
+                          restaurant={r}
+                          liked={likedSet.has(r.id)}
+                          pending={likePending.has(r.id)}
+                          distanceMi={distances[r.id]}
+                          onToggleLike={() => void toggleLike(r.id)}
+                          onOpen={() => {
+                            setSelectedId(r.id)
+                            setDetailOpen(true)
+                          }}
+                        />
+                      </motion.div>
+                    ))}
+                  </div>
+                  {hasMore && (
+                    <div className="flex justify-center pt-1">
+                      <Button variant="ghost" className="border border-border" onClick={showMore}>
+                        Show more ({remaining} left)
+                      </Button>
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}
@@ -157,6 +193,16 @@ export function ExplorePage() {
 
         <TabBarSpacer />
       </div>
+
+      <RestaurantDetailModal
+        restaurant={selected}
+        open={detailOpen}
+        now={now}
+        liked={selected ? likedSet.has(selected.id) : false}
+        pending={selected ? likePending.has(selected.id) : false}
+        onToggleLike={() => selected && void toggleLike(selected.id)}
+        onClose={() => setDetailOpen(false)}
+      />
 
       <BottomTabBar />
     </div>
