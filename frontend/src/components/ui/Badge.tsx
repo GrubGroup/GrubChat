@@ -13,9 +13,9 @@ export interface BadgeProps {
 const toneClasses: Record<BadgeTone, string> = {
   neutral: 'bg-surface-sunken text-text-muted',
   primary: 'bg-primary/10 text-primary-hover',
-  success: 'bg-success/10 text-success',
-  error: 'bg-error/10 text-error',
-  kraft: 'bg-secondary/15 text-secondary',
+  success: 'bg-success/10 text-success-text',
+  error: 'bg-error/10 text-error-text',
+  kraft: 'bg-secondary/15 text-secondary-text',
 }
 
 export function Badge({ tone = 'neutral', className, children }: BadgeProps) {

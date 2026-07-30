@@ -22,7 +22,7 @@ export function GroupsSidebar() {
           onClick={openModal}
           aria-label="New group"
           // tap-target grows the hit area to 44px; the 28px pill is unchanged.
-          className="tap-target flex h-7 w-7 items-center justify-center rounded-lg bg-surface-inverse text-white transition-opacity hover:opacity-90"
+          className="tap-target flex h-7 w-7 items-center justify-center rounded-lg bg-surface-inverse text-on-inverse transition-opacity hover:opacity-90"
         >
           <Icon name="plus" size={14} />
         </button>

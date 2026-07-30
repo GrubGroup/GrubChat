@@ -50,7 +50,7 @@ export function MobileActionSheet({ open, onClose, title, items }: MobileActionS
             <span
               className={cn(
                 'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-sunken',
-                item.disabled ? 'text-text-subtle' : 'text-primary',
+                item.disabled ? 'text-text-subtle' : 'text-primary-text',
               )}
             >
               <Icon name={item.icon} size={16} />

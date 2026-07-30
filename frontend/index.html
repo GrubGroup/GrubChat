@@ -8,7 +8,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <!-- Mobile browser chrome color. Kept in sync with the resolved theme by the
          anti-FOUC script below and the theme store (stores/themeStore.ts):
-         #000 true-black in dark, the light page base (#f5f3ee) otherwise. -->
+         the warm dark page base (#141413) in dark, the light page base (#f5f3ee) otherwise. -->
     <meta name="theme-color" content="#f5f3ee" />
     <!-- Anti-FOUC: resolve + apply the theme PRE-paint so a dark reload never
          flashes the light page base. Classic blocking inline script (NOT
@@ -20,16 +20,19 @@
       (function () {
         try {
           var stored = localStorage.getItem('gg:theme')
+          // Mirrors constants/theme.ts isKnownTheme(): anything that is not
+          // exactly 'light' or 'dark' means "follow the OS", which is what
+          // themeStore.readStored() coerces an unknown value to.
           var dark =
             stored === 'dark' ||
-            ((stored === 'system' || stored === null) &&
+            (stored !== 'light' &&
               window.matchMedia &&
               window.matchMedia('(prefers-color-scheme: dark)').matches)
           if (dark) {
             document.documentElement.classList.add('dark')
             document.documentElement.style.colorScheme = 'dark'
             var meta = document.querySelector('meta[name="theme-color"]')
-            if (meta) meta.setAttribute('content', '#000000')
+            if (meta) meta.setAttribute('content', '#141413')
           }
         } catch (e) {
           /* localStorage/matchMedia unavailable — fall through to light */

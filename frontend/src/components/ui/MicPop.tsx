@@ -4,11 +4,11 @@ import { cn } from '@/utils/cn'
 export interface MicPopProps {
   size?: number
   className?: string
-  // Resting mic color (default white). On dark/light buttons white is right; on
-  // an already-orange button pass the button's own text color.
+  // Resting mic color. Defaults to inheriting the parent button's own on-fill
+  // token, which is correct for every variant.
   restClass?: string
   // Color the whole glyph tints to on the parent button's hover (default orange
-  // `group-hover:text-primary`). On an orange button, override so it stays visible.
+  // `group-hover:text-primary-text`). On an orange button, override so it stays visible.
   hoverClass?: string
 }
 
@@ -28,8 +28,8 @@ export interface MicPopProps {
 export function MicPop({
   size = 18,
   className,
-  restClass = 'text-white',
-  hoverClass = 'group-hover:text-primary',
+  restClass = 'text-current',
+  hoverClass = 'group-hover:text-primary-text',
 }: MicPopProps) {
   // Unique, selector-safe clip id (useId embeds colons — strip them).
   const clipId = `mic-clip-${useId().replace(/:/g, '')}`

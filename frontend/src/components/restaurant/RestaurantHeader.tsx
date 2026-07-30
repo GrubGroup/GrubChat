@@ -16,11 +16,11 @@ export function RestaurantHeader({ restaurant, matchScorePct }: RestaurantHeader
           <div className="mt-1 flex items-center gap-2 text-body text-text-muted">
             {restaurant.price_avg != null && <span>~${restaurant.price_avg}pp</span>}
             {restaurant.avg_rating != null && (
-              <span className="flex items-center gap-0.5 text-primary">
+              <span className="flex items-center gap-0.5 text-primary-text">
                 <Icon name="star" size={13} filled /> {restaurant.avg_rating}
               </span>
             )}
-            {matchScorePct != null && <span className="text-primary">{matchScorePct}% match</span>}
+            {matchScorePct != null && <span className="text-primary-text">{matchScorePct}% match</span>}
           </div>
         </div>
       </div>

@@ -197,7 +197,7 @@ export function GroupDetailPanel({
             </span>
             <p className="font-display text-panel-title font-bold text-text">{detail?.name ?? 'Group'}</p>
             <p className="text-caption text-text-muted">
-              <span className="font-semibold text-primary">{members.length}</span>{' '}
+              <span className="font-semibold text-primary-text">{members.length}</span>{' '}
               {members.length === 1 ? 'member' : 'members'}
               {created && ` · Created ${created}`}
             </p>
@@ -219,10 +219,10 @@ export function GroupDetailPanel({
                 onClick={() => setSearchOpen(true)}
                 className="group mt-3 flex items-center gap-3 text-left"
               >
-                <span className="flex h-10 w-10 items-center justify-center rounded-pill border border-dashed border-border-strong text-text-muted transition-colors group-hover:border-primary/50 group-hover:text-primary">
+                <span className="flex h-10 w-10 items-center justify-center rounded-pill border border-dashed border-border-strong text-text-muted transition-colors group-hover:border-primary/50 group-hover:text-primary-text">
                   <Icon name="plus" size={16} />
                 </span>
-                <span className="text-body font-medium text-text transition-colors group-hover:text-primary">
+                <span className="text-body font-medium text-text transition-colors group-hover:text-primary-text">
                   Add people
                 </span>
               </button>
@@ -234,7 +234,7 @@ export function GroupDetailPanel({
                   value={query}
                   onChange={(e) => handleQueryChange(e.target.value)}
                   leftIcon={
-                    <span className="text-primary">
+                    <span className="text-primary-text">
                       <Icon name="search" size={14} />
                     </span>
                   }
@@ -274,7 +274,7 @@ export function GroupDetailPanel({
                             )}
                             <p className="truncate text-caption text-text-muted">@{u.username}</p>
                           </div>
-                          <span className="text-text-subtle transition-colors group-hover:text-primary">
+                          <span className="text-text-subtle transition-colors group-hover:text-primary-text">
                             <Icon name="plus" size={14} />
                           </span>
                         </button>
@@ -321,7 +321,7 @@ export function GroupDetailPanel({
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-body font-semibold text-text">{name}</p>
                           {isYou ? (
-                            <p className="text-caption font-semibold text-primary">You</p>
+                            <p className="text-caption font-semibold text-primary-text">You</p>
                           ) : (
                             <p className="text-caption text-text-muted">Member</p>
                           )}
@@ -342,7 +342,7 @@ export function GroupDetailPanel({
       onClick={() => (hostLocked ? setShowHostLock(true) : setConfirmingLeave(true))}
       className={cn(
         'flex w-full items-center justify-center gap-2 rounded-input bg-error/10 py-2.5',
-        'text-body font-semibold text-error hover:bg-error/15',
+        'text-body font-semibold text-error-text hover:bg-error/15',
       )}
     >
       <Icon name="logout" size={16} />

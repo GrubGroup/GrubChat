@@ -280,7 +280,7 @@ export function GroupChatPage() {
             <>
               {memberCount} members
               {sessionStartIndex !== null && !isComplete && (
-                <> · <span className="text-primary">session active</span></>
+                <> · <span className="text-primary-text">session active</span></>
               )}
             </>
           }
@@ -314,7 +314,7 @@ export function GroupChatPage() {
                 {/* "Session active" only while a live session is in progress — not
                     before one starts, and not once it's complete. */}
                 {sessionStartIndex !== null && !isComplete && sessionObj?.closed_at == null && (
-                  <> · <span className="text-primary">session active</span></>
+                  <> · <span className="text-primary-text">session active</span></>
                 )}
               </p>
             </div>

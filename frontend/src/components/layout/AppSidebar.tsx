@@ -147,7 +147,7 @@ function RailTab({ icon, label, to }: { icon: IconName; label: string; to: strin
           // matters on touch tablets at ≥md where this rail is still shown.
           'group tap-target relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
           isActive
-            ? 'bg-surface-inverse text-white'
+            ? 'bg-surface-inverse text-on-inverse'
             : 'text-text-muted hover:bg-surface-raised/70 hover:text-text',
         )
       }
