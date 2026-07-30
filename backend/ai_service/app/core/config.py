@@ -12,9 +12,10 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/grubgroup"
 
     # Which chat LLM provider get_llm_client builds. "salesforce" routes through the
-    # internal model gateway (Claude), "openrouter" through OpenRouter/DeepSeek.
-    # Defaults to openrouter so a checkout with no Salesforce creds/CA still runs;
-    # set LLM_PROVIDER=salesforce locally, leave unset (or =openrouter) on deploy.
+    # internal model gateway (Claude), "openrouter" through OpenRouter (Claude
+    # Sonnet 5 by default). Defaults to openrouter so a checkout with no Salesforce
+    # creds/CA still runs; set LLM_PROVIDER=salesforce locally, leave unset (or
+    # =openrouter) on deploy.
     llm_provider: str = "openrouter"  # env LLM_PROVIDER
 
     # Embeddings (active): served via OpenRouter's /embeddings API, 1024-dim.
@@ -31,7 +32,7 @@ class Settings(BaseSettings):
     embedding_model: str = "perplexity/pplx-embed-v1-0.6b"
     # OpenRouter chat model (env LLM_MODEL). Used when llm_provider == "openrouter".
     openrouter_llm_model: str = Field(
-        default="deepseek/deepseek-chat",
+        default="anthropic/claude-sonnet-5",
         validation_alias="LLM_MODEL",
     )
 
