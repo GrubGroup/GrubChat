@@ -87,7 +87,10 @@ export function TopPicksPage() {
 
   const picks = (recommendation?.items ?? [])
     .map((item) => {
-      const restaurant = byId[item.restaurant_id]
+      // Prefer the restaurant the gateway embeds on the item (works for any id,
+      // regardless of catalog size); fall back to the byId catalog map for
+      // old-shaped payloads during rollout.
+      const restaurant = item.restaurant ?? byId[item.restaurant_id]
       return restaurant
         ? { ...item, restaurant, voteCount: (votes[item.restaurant_id] ?? []).length }
         : null
