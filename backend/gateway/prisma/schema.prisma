@@ -35,17 +35,22 @@ enum MessageType {
 
 model User {
   // -- Fields (columns) --
-  id              Int      @id @default(autoincrement())
-  username        String   @unique
-  email           String   @unique
-  role            Role     @default(USER)
+  id              Int       @id @default(autoincrement())
+  username        String    @unique
+  email           String    @unique
+  role            Role      @default(USER)
   display_name    String?
   avatar_url      String?
   // -- Auth (Better Auth) --
-  emailVerified   Boolean  @default(false)
+  emailVerified   Boolean   @default(false)
   displayUsername String?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  // Soft-delete marker. NULL = active; a timestamp = the moment the account was
+  // deactivated ("deleted"). The row is kept (so past messages/events stay
+  // attributed) but email/username are scrubbed to free them for reuse, and the
+  // auth rows (Account, AuthSession) are deleted so login is impossible.
+  deactivated_at  DateTime?
 
   // -- Relations (virtual, no columns) --
   profile             Profile?
