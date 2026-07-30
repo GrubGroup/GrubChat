@@ -1,12 +1,16 @@
 import { create } from 'zustand'
 import type { LocationPref, Profile } from '@/types'
 import { fetchProfile, saveProfile } from '@/api/profileApi'
+import { likeRestaurant, unlikeRestaurant } from '@/api/restaurantsApi'
 
 interface ProfileState {
   profile: Profile | null
   preferredLocation?: LocationPref // in-flight picker value (see types/profile.ts)
   loading: boolean
   saving: boolean
+  // Restaurant ids with a like/unlike request in flight — lets the Explore star
+  // disable itself mid-request so a double-tap can't fire opposing calls.
+  likePending: Set<number>
   load: () => Promise<void>
   toggleDietary: (value: string) => void
   toggleCuisine: (value: string, list: 'preferred' | 'disliked') => void
@@ -17,7 +21,10 @@ interface ProfileState {
   setLocation: (address: string, coords?: { lat: number; lon: number }) => void
   // Preferred search radius (miles) around the default address.
   setRadius: (miles: number) => void
-  toggleLikedRestaurant: (id: number) => void
+  // Like or unlike a restaurant and PERSIST it (POST/DELETE /restaurants/:id/like).
+  // Optimistic: toggles locally at once, then reconciles from the server's returned
+  // list; rolls back on failure. Async so callers can await if they need to.
+  toggleLikedRestaurant: (id: number) => Promise<void>
   setPreferredLocation: (loc: LocationPref | undefined) => void
   // Persist the profile. Resolves true on success, false on failure (never
   // throws), so callers can gate navigation / show an error. `saving` is always
@@ -57,6 +64,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   preferredLocation: undefined,
   loading: false,
   saving: false,
+  likePending: new Set<number>(),
 
   load: async () => {
     set({ loading: true })
@@ -143,13 +151,39 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     set({ profile: { ...p, default_radius: miles } })
   },
 
-  toggleLikedRestaurant: (id) => {
+  toggleLikedRestaurant: async (id) => {
     const p = get().profile
-    if (!p) return
-    const liked = p.liked_restaurant_ids.includes(id)
+    // Ignore a repeat tap while this id's request is still in flight.
+    if (!p || get().likePending.has(id)) return
+    const wasLiked = p.liked_restaurant_ids.includes(id)
+    const optimistic = wasLiked
       ? p.liked_restaurant_ids.filter((r) => r !== id)
       : [...p.liked_restaurant_ids, id]
-    set({ profile: { ...p, liked_restaurant_ids: liked } })
+    // Optimistic write + mark this id in flight.
+    const pending = new Set(get().likePending)
+    pending.add(id)
+    set({ profile: { ...p, liked_restaurant_ids: optimistic }, likePending: pending })
+    try {
+      // The endpoint returns the authoritative liked list — reconcile from it so
+      // concurrent likes on other cards aren't clobbered by this response.
+      const server = wasLiked ? await unlikeRestaurant(id) : await likeRestaurant(id)
+      const cur = get().profile
+      if (cur) set({ profile: { ...cur, liked_restaurant_ids: server } })
+    } catch {
+      // Roll back this id to its pre-toggle membership so a failed request doesn't
+      // linger as an optimistic like; leave any other changes since then intact.
+      const cur = get().profile
+      if (cur) {
+        const reverted = wasLiked
+          ? Array.from(new Set([...cur.liked_restaurant_ids, id]))
+          : cur.liked_restaurant_ids.filter((r) => r !== id)
+        set({ profile: { ...cur, liked_restaurant_ids: reverted } })
+      }
+    } finally {
+      const next = new Set(get().likePending)
+      next.delete(id)
+      set({ likePending: next })
+    }
   },
 
   setPreferredLocation: (loc) => set({ preferredLocation: loc }),

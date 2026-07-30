@@ -44,7 +44,7 @@ export function BrandPanel({ onLogoClick }: BrandPanelProps = {}) {
   const logo = <Wordmark dark />
 
   return (
-    <div className="relative hidden w-[38%] shrink-0 flex-col justify-between overflow-hidden bg-surface-inverse p-10 text-white lg:flex">
+    <div className="relative hidden w-[38%] shrink-0 flex-col justify-between overflow-hidden bg-surface-inverse p-10 text-white dark:bg-surface lg:flex">
       {/* Depth layers — behind content, never intercept clicks/focus */}
       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
         <div className="absolute -right-16 top-24 h-72 w-72 rounded-pill bg-primary/20 blur-[120px]" />
@@ -145,7 +145,7 @@ export function BrandPanel({ onLogoClick }: BrandPanelProps = {}) {
                 <span
                   key={m.l}
                   className={cn(
-                    'flex h-7 w-7 items-center justify-center rounded-pill border-2 border-surface-inverse text-caption font-semibold',
+                    'flex h-7 w-7 items-center justify-center rounded-pill border-2 border-surface-inverse text-caption font-semibold dark:border-surface',
                     m.c,
                   )}
                 >
@@ -159,7 +159,7 @@ export function BrandPanel({ onLogoClick }: BrandPanelProps = {}) {
 
         {/* Bottom — footer */}
         <motion.p variants={fu} className="text-caption text-white/30">
-          © 2026 GrubGroup
+          © 2026 GrubChat
         </motion.p>
       </motion.div>
     </div>

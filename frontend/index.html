@@ -3,14 +3,46 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover lets the app paint under the notch/home indicator so
+         env(safe-area-inset-*) (see index.css --spacing-safe-*) can pad it back. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Mobile browser chrome color. Kept in sync with the resolved theme by the
+         anti-FOUC script below and the theme store (stores/themeStore.ts):
+         #000 true-black in dark, the light page base (#f5f3ee) otherwise. -->
+    <meta name="theme-color" content="#f5f3ee" />
+    <!-- Anti-FOUC: resolve + apply the theme PRE-paint so a dark reload never
+         flashes the light page base. Classic blocking inline script (NOT
+         module/async) so it runs before <body> paints. Mirrors the resolution in
+         stores/themeStore.ts (applyTheme); the store re-applies at hydration and
+         self-heals any divergence. Kept dependency-free and try/catch-guarded to
+         match readStored()'s privacy-mode tolerance. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('gg:theme')
+          var dark =
+            stored === 'dark' ||
+            ((stored === 'system' || stored === null) &&
+              window.matchMedia &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches)
+          if (dark) {
+            document.documentElement.classList.add('dark')
+            document.documentElement.style.colorScheme = 'dark'
+            var meta = document.querySelector('meta[name="theme-color"]')
+            if (meta) meta.setAttribute('content', '#000000')
+          }
+        } catch (e) {
+          /* localStorage/matchMedia unavailable — fall through to light */
+        }
+      })()
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <title>GrubGroup</title>
+    <title>GrubChat</title>
   </head>
   <body>
     <div id="root"></div>

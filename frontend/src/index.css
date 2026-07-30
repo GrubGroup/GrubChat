@@ -1,7 +1,15 @@
 @import 'tailwindcss';
 
 /*
- * GrubGroup design tokens — the SINGLE source of truth for all visual design.
+ * Class-based dark mode: any `dark:` utility follows the `.dark` class on <html>
+ * (set by the theme store / anti-FOUC script) instead of the OS media query. No
+ * `dark:` utilities exist yet — the theme swaps entirely via the Tier-2 token
+ * overrides in the `.dark { … }` block below — so this is future-proofing.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * GrubChat design tokens — the SINGLE source of truth for all visual design.
  *
  * Two tiers:
  *   Tier 1 — raw palette ("crayon box"). NEVER referenced by components.
@@ -11,12 +19,17 @@
  * To re-theme the whole app: edit Tier 2 aliases (and Tier 1 hexes) only.
  * To swap a font: change the @font-face/<link> name + the one --font-* line.
  * Components must never contain a hex, rgb(), or arbitrary value like bg-[#...].
+ *
+ * Dark mode: the `.dark { … }` block after @theme re-declares the Tier-2
+ * aliases with a true-black (#000) palette (Anthropic brand tones). Because
+ * every color utility compiles to `var(--color-*)`, redeclaring those custom
+ * properties under `.dark` re-resolves the whole app with no component edits.
  */
 
 @theme {
   /* ============================================================
    * TIER 1 — raw palette (never used directly by components)
-   * Hexes taken verbatim from the GrubGroup Figma wireframes.
+   * Hexes taken verbatim from the GrubChat Figma wireframes.
    * ============================================================ */
 
   /* Orange — brand scale (warm terracotta) */
@@ -115,6 +128,23 @@
   --text-display: 1.875rem; /* 30px — page/detail hero <h1> */
   --text-display--line-height: 1.15;
 
+  /* ------------------------------------------------------------------
+   * Touch-scale bumps — the SAME roles one step up, for the dense
+   * read-heavy surfaces on a phone (chat bubbles, group rows, event rows).
+   * The desktop scale is tuned for a ~60cm viewing distance in a 3-column
+   * layout; at arm's length on a 390px screen those same 12/14px roles read
+   * cramped. Applied via `md:` pairs (e.g. `text-body-touch md:text-body`),
+   * so ONLY mobile changes and the desktop layout is untouched.
+   * Line-heights are looser than their desktop twins too — the leading is
+   * most of what makes small type feel tight, not the size alone.
+   * ------------------------------------------------------------------ */
+  --text-caption-touch: 0.8125rem; /* 13px — was 12px: timestamps, previews */
+  --text-caption-touch--line-height: 1.45;
+  --text-body-touch: 0.9375rem; /* 15px — was 14px: chat bubbles, row body */
+  --text-body-touch--line-height: 1.55;
+  --text-item-title-touch: 1.0625rem; /* 17px — was 15px: group/event row title */
+  --text-item-title-touch--line-height: 1.35;
+
   /* Radius (semantic; wireframe uses generous 12-16px rounding) */
   --radius-input: 0.75rem;
   --radius-card: 1rem;
@@ -123,13 +153,90 @@
   /* Named spacing steps (extend Tailwind's numeric scale) */
   --spacing-gutter: 1.25rem;
   --spacing-section: 2rem;
+
+  /* iOS safe areas as spacing tokens, so mobile chrome can clear the notch and
+   * home indicator with `pb-safe-b` / `pt-safe-t` and components stay token-only
+   * (no arbitrary env() values inline). Needs viewport-fit=cover in index.html;
+   * resolves to 0px on every non-notched device and in desktop browsers. */
+  --spacing-safe-b: env(safe-area-inset-bottom, 0px);
+  --spacing-safe-t: env(safe-area-inset-top, 0px);
+}
+
+/* ============================================================================
+ * DARK MODE — true-black (#000) OLED theme on Anthropic's brand palette.
+ *
+ * The `.dark` class is toggled on <html> by the theme store (stores/themeStore)
+ * and the anti-FOUC script in index.html. This block re-declares ONLY the Tier-2
+ * semantic aliases with dark values; because every color utility compiles to a
+ * `var(--color-…)` reference, redeclaring these custom properties re-resolves
+ * the entire app (every bg / text / border / ring utility) with NO per-component
+ * edits. Tier-1 raw palette is intentionally left untouched (preserves the "edit
+ * semantics to re-theme" contract). Values are verified WCAG AA — see the plan.
+ *
+ * Bare `.dark` (not `:root.dark`): it has the same specificity (0,1,0) as the
+ * `:root` selector `@theme` emits, so it wins purely by SOURCE ORDER — hence it
+ * MUST come after the @theme block above.
+ * ==========================================================================*/
+.dark {
+  color-scheme: dark;
+
+  /* Brand + interactive — clay accent (Anthropic "book cloth"); hover BRIGHTENS
+   * on black rather than darkening; ink text reads on the clay fills. */
+  --color-primary: #cc785c;
+  --color-primary-hover: #d8977f;
+  --color-primary-soft: #8a4a38;
+  --color-on-primary: #1a1512;
+  --color-secondary: #cc785c;
+  --color-on-secondary: #1a1512;
+
+  /* Surfaces — pure-black page base + a monotonic NEUTRAL-GREY elevation ladder
+   * (Anthropic's dark scheme: true-black surfaces + grey, warmth carried ONLY by
+   * the cream text and clay accent — surfaces are deliberately un-tinted so they
+   * don't read brown). On a #000 page every surface must be LIGHTER than the page
+   * (you can't recess below black), so the light-mode "sunken is darker than the
+   * page" flips to a stepped stack: each rung is perceptibly lighter than the one
+   * it sits on, so the depth cues light mode gets from white-on-beige survive.
+   * Lightness order (dark→light): surface < sunken < panel < raised < inverse.
+   *   sunken  — recessed fields (inputs, chips, badges, skeletons) + the icon rail
+   *   panel   — side columns (groups/events panel, right detail panel)
+   *   raised  — cards, MODALS, dropdowns, chat main, SELECTED group rows, bubbles
+   *   inverse — rail ACTIVE tab, primary CTA fill, "me" bubble, avatars (top rung)
+   * Steps mirror the Anthropic dark reference's elevated-grey ladder. */
+  --color-surface: #000000;
+  --color-surface-sunken: #141414;
+  --color-surface-panel: #1e1e1e;
+  --color-surface-raised: #2a2a2a;
+  --color-surface-inverse: #373737;
+  --color-bubble-user: #373737;
+
+  /* Text — soft near-white primary (Anthropic keeps a faint warm cast on TEXT
+   * only, not on surfaces). Muted/subtle are NEUTRAL grey so secondary copy on
+   * the grey ladder doesn't read brown. */
+  --color-text: #f5f4f2;
+  --color-text-muted: #9a9a98;
+  --color-text-subtle: #8a8a88;
+  --color-on-inverse: #f5f4f2;
+
+  /* Lines — MUST flip to light-on-dark or every divider/border vanishes. */
+  --color-border: rgba(255, 255, 255, 0.12);
+  --color-border-strong: rgba(255, 255, 255, 0.18);
+
+  /* State — success/error/focus brightened so they clear 4.5:1 on true black. */
+  --color-focus-ring: #7cb8f5;
+  --color-success: #4ade80;
+  --color-error: #f87171;
+  /* Darker scrim — a near-black modal barely separates from the dark page. */
+  --color-overlay: rgba(0, 0, 0, 0.72);
 }
 
 /* Minimal global resets — layout/visuals belong in components via tokens. */
 html,
 body,
 #root {
-  min-height: 100vh;
+  /* dvh, not vh: on mobile Safari/Chrome the URL bar makes 100vh taller than the
+   * visible viewport, which pushes fixed bottom chrome (composer, tab bar) off
+   * screen. dvh tracks the *dynamic* viewport, so it stays reachable. */
+  min-height: 100dvh;
 }
 
 body {
@@ -253,4 +360,54 @@ body {
 @utility animate-bubble-pop {
   transform-origin: bottom;
   animation: bubble-pop 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/*
+ * Ambient rising bubbles — soft discs drift from below the viewport up past the
+ * top, fading in and out along the way. Used behind the 404 page content. Each
+ * bubble gets its own duration + a NEGATIVE animation-delay (set inline) so it
+ * starts already mid-flight: the field is full from first paint and the stream
+ * never breaks. The reduced-motion backstop above freezes it to a single frame.
+ */
+@keyframes bubble-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-115vh);
+  }
+}
+
+/*
+ * Touch-target expander. Several controls are intentionally small pills (Chip 34px,
+ * quick-reply 31px, VoiceComposer send 36px, RailButton 40px) — under the 44px
+ * minimum comfortable tap size. This grows the *hit area* with a centered
+ * transparent overlay and leaves the visual box untouched, so the design is
+ * unchanged while the control becomes reliably tappable.
+ *
+ * Caveat: the ::after is clipped by an `overflow-hidden` ancestor. Pad the parent
+ * row instead in those cases.
+ */
+@utility tap-target {
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    min-width: 44px;
+    min-height: 44px;
+    transform: translate(-50%, -50%);
+  }
 }

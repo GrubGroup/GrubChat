@@ -26,7 +26,7 @@ export function ProgressBar({
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
       {label && (
-        <div className="flex items-center justify-between text-sm text-text-muted">
+        <div className="flex items-center justify-between text-body text-text-muted">
           <span>{label}</span>
           <span>
             {value} / {total}

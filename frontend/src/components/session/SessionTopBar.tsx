@@ -20,6 +20,10 @@ export interface SessionTopBarProps {
 // "Your food agent" label (left) and the live countdown (center). When the timer
 // expires, the HOST client alone triggers generation (force_partial=true) — the
 // gateway broadcasts session:picks to everyone, so non-hosts do nothing here.
+//
+// Desktop only: below `md` this bar plus the w-60 aside would be two pieces of
+// chrome above a 390px conversation. MobileSessionStrip collapses both into one
+// tappable row instead.
 export function SessionTopBar({ groupId, label = 'Your food agent' }: SessionTopBarProps) {
   const session = useSessionStore(selectSession(groupId))
   const activeSessionId = useSessionStore(selectActiveSessionId(groupId))
@@ -35,7 +39,7 @@ export function SessionTopBar({ groupId, label = 'Your food agent' }: SessionTop
   return (
     <div
       className={cn(
-        'relative flex items-center justify-between border-b border-border bg-surface-panel px-5',
+        'relative hidden items-center justify-between border-b border-border bg-surface-panel px-5 md:flex',
         COLUMN_HEADER_H,
       )}
     >

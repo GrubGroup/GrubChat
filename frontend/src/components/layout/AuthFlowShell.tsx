@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useReducedMotion, type Variants } from 'framer
 import { BrandPanel } from './BrandPanel'
 import { AppSplash } from './AppSplash'
 import { EASE } from '@/lib/motion'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { cn } from '@/utils/cn'
 
 // ONE persistent shell for the whole entry flow: sign-in / sign-up AND the four
@@ -111,7 +112,10 @@ export function AuthFlowShell() {
 
   // Grander cross-slide: generous horizontal travel + fade + faint scale, so a
   // stage visibly glides off while the next glides in. `custom` carries direction.
-  const DIST = 260
+  // Shorter travel on a phone: 260px is most of a 390px viewport, so the incoming
+  // stage would start entirely off-screen and read as a jump rather than a glide.
+  const isMobile = useIsMobile()
+  const DIST = isMobile ? 120 : 260
   const slide: Variants = {
     enter: (dir: number) => ({ opacity: 0, x: reduce ? 0 : dir * DIST, scale: reduce ? 1 : 0.96 }),
     center: {
@@ -133,11 +137,27 @@ export function AuthFlowShell() {
   if (forwarding) return <AppSplash />
 
   return (
-    <div className="flex h-screen bg-surface-raised">
+    // min-h-dvh, not h-dvh: a tall onboarding step (the 6-group cuisine picker) is
+    // taller than a phone viewport, and a fixed height with `overflow-hidden` below
+    // CLIPPED it with no way to scroll — the final save was unreachable, so a new
+    // mobile user couldn't finish signup at all.
+    <div className="flex min-h-dvh bg-surface-raised">
       {/* Persistent left panel — rendered once, never remounts across the flow. */}
       <BrandPanel onLogoClick={() => navigate('/')} />
-      <div className="flex flex-1 items-center justify-center overflow-hidden p-8">
-        <div className={cn('flex w-full flex-col gap-5', narrow ? 'max-w-sm' : 'max-w-md')}>
+      {/* overflow-x-clip, not hidden: the cross-slide travels horizontally and would
+          otherwise cause transient horizontal scroll, but `overflow-hidden` on both
+          axes is what clipped tall steps. Vertical centering only from `sm` up,
+          where the content reliably fits the viewport. */}
+      <div
+        className={cn(
+          'flex min-w-0 flex-1 justify-center overflow-y-auto overflow-x-clip p-4 sm:items-center sm:p-8',
+          // Auth screens (no onboarding `step`) are short, so center them
+          // vertically on mobile too. Onboarding steps can exceed the viewport, so
+          // they stay top-aligned below `sm` and scroll (see min-h note above).
+          step == null && 'items-center',
+        )}
+      >
+        <div className={cn('flex w-full flex-col gap-5 py-4 sm:py-0', narrow ? 'max-w-sm' : 'max-w-md')}>
           {/* Progress ticks — only during onboarding; persist + driven by `step`. */}
           {step != null && (
             <div className="flex gap-2">
@@ -169,7 +189,7 @@ export function AuthFlowShell() {
                     <p className="text-overline font-semibold uppercase tracking-wide text-text-muted">
                       Step {step} of {TOTAL_STEPS}
                     </p>
-                    <h1 className="mt-1 font-display text-2xl font-bold text-text">{title}</h1>
+                    <h1 className="mt-1 font-display text-display font-bold text-text">{title}</h1>
                     <p className="mt-1 text-body text-text-muted">{subtitle}</p>
                   </div>
                 )}

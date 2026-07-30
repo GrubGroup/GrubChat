@@ -149,6 +149,13 @@ interface SessionState {
   receiveVote: (groupId: number, restaurantId: number, userId: number) => void
   chooseRestaurant: (groupId: number, restaurantId: number) => void
   close: (groupId: number) => void
+  // Apply a live session:host_changed broadcast: the previous host deleted their
+  // account, so the gateway handed the session off. Point session.host_user_id at
+  // the new host (so selectIsHost re-derives and the new host sees "Close session"
+  // without a refresh) and drop the departed host from the roster (they left the
+  // open session server-side). No-op when the sessionId doesn't match this group's
+  // live session (a stale echo during a group switch).
+  applyHostChange: (groupId: number, sessionId: number, newHostId: number) => void
 }
 
 export const useSessionStore = create<SessionState>((set, get) => {
@@ -336,6 +343,12 @@ export const useSessionStore = create<SessionState>((set, get) => {
           created_at: new Date().toISOString(),
           items,
         },
+        // Socket-delivered picks are ready to render, so drop the spinner HERE
+        // rather than waiting for the poll loop to come back around and notice.
+        // (Still deliberately not setting phase:'picks' — navigation stays
+        // user-driven; this only clears the results-fetch UI state.)
+        recommendationLoading: false,
+        recommendationError: false,
       }),
 
     loadRecommendation: async (groupId) => {
@@ -350,9 +363,31 @@ export const useSessionStore = create<SessionState>((set, get) => {
       // while. A live session:picks delivery (receivePicks) can populate this
       // group's recommendation meanwhile, which ends the poll early. Only after
       // we've exhausted our patience do we surface a retryable error.
-      const MAX_ATTEMPTS = 20
-      const RETRY_MS = 3000
-      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      //
+      // The wait between attempts is SLICED into short ticks rather than one long
+      // sleep: a socket delivery mid-wait must show picks immediately, and an
+      // uninterruptible `setTimeout(3000)` would keep the spinner up for the rest
+      // of the sleep even though renderable results were already in the store.
+      // Backoff starts short (generation is now ~2-5s, so the first retries should
+      // be eager) and widens toward MAX_WAIT_MS for the long tail of a slow run.
+      const TOTAL_PATIENCE_MS = 60_000
+      const FIRST_WAIT_MS = 300
+      const MAX_WAIT_MS = 3000
+      const TICK_MS = 100
+
+      // Resolves early (true) as soon as a socket delivery lands, so the caller can
+      // stop polling the instant renderable picks exist.
+      const waitForPicksOr = async (ms: number): Promise<boolean> => {
+        for (let waited = 0; waited < ms; waited += TICK_MS) {
+          await new Promise((resolve) => setTimeout(resolve, Math.min(TICK_MS, ms - waited)))
+          if (slice(groupId).recommendation) return true
+        }
+        return false
+      }
+
+      const startedAt = Date.now()
+      let wait = FIRST_WAIT_MS
+      while (Date.now() - startedAt < TOTAL_PATIENCE_MS) {
         // A socket delivery may already have filled this group's recommendation.
         if (slice(groupId).recommendation) {
           patch(groupId, { recommendationLoading: false, recommendationError: false })
@@ -370,9 +405,11 @@ export const useSessionStore = create<SessionState>((set, get) => {
         } catch {
           // Not ready yet (usually a 404 while generation runs). Wait, then retry —
           // keeping the loading state up so the UI never shows an error mid-flight.
-          if (attempt < MAX_ATTEMPTS - 1) {
-            await new Promise((resolve) => setTimeout(resolve, RETRY_MS))
+          if (await waitForPicksOr(wait)) {
+            patch(groupId, { recommendationLoading: false, recommendationError: false })
+            return
           }
+          wait = Math.min(wait * 2, MAX_WAIT_MS)
         }
       }
       // Gave up after repeated attempts — surface a retryable error state (the user
@@ -473,6 +510,27 @@ export const useSessionStore = create<SessionState>((set, get) => {
         phase: 'complete',
         session: prev.session ? { ...prev.session, closed_at: new Date().toISOString() } : null,
       })),
+
+    applyHostChange: (groupId, sessionId, newHostId) =>
+      patch(groupId, (prev) => {
+        // Ignore an echo for a session this group isn't currently running.
+        if (prev.session == null || prev.activeSessionId !== sessionId) return {}
+        const oldHostId = prev.session.host_user_id
+        const members = prev.members.filter((m) => m.user_id !== oldHostId)
+        const removed = members.length < prev.members.length
+        return {
+          session: { ...prev.session, host_user_id: newHostId },
+          // The departed host left the open session server-side; drop them from the
+          // roster so the progress total + avatars match, and their un-finishable
+          // slot doesn't stall the doneCount === total completion.
+          members,
+          // Keep the denominator honest: if we actually removed the old host, shed
+          // one from the server total too (but never below the visible roster).
+          ...(removed
+            ? { serverTotal: Math.max(members.length, prev.serverTotal - 1) }
+            : {}),
+        }
+      }),
   }
 })
 

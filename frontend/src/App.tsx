@@ -4,6 +4,7 @@ import { RequireAuth } from '@/components/layout/RequireAuth'
 import { PublicOnly } from '@/components/layout/PublicOnly'
 import { AuthFlowShell } from '@/components/layout/AuthFlowShell'
 import { LandingPage } from '@/pages/public/LandingPage'
+import { NotFoundPage } from '@/pages/public/NotFoundPage'
 import { AuthForm } from '@/pages/auth/AuthForm'
 import { DietaryStep } from '@/pages/member/onboarding/Onboarding1'
 import { CuisinesStep } from '@/pages/member/onboarding/OnboardingCuisines'
@@ -11,11 +12,13 @@ import { BudgetStep } from '@/pages/member/onboarding/Onboarding2'
 import { LocationStep } from '@/pages/member/onboarding/Onboarding3'
 import { GroupsIndex } from '@/pages/member/GroupsIndex'
 import { GroupChatPage } from '@/pages/member/GroupChatPage'
+import { ExplorePage } from '@/pages/member/ExplorePage'
 import { EventsPage } from '@/pages/member/EventsPage'
 import { AgentChatPage } from '@/pages/member/session/AgentChatPage'
 import { TopPicksPage } from '@/pages/member/session/TopPicksPage'
 import { ProfilePage } from '@/pages/member/ProfilePage'
 import { ProfileEditPage } from '@/pages/member/ProfileEditPage'
+import { SettingsPage } from '@/pages/member/SettingsPage'
 
 // The app's route tree. Three layout routes carry what used to be tangled together
 // in one component:
@@ -59,6 +62,8 @@ function App() {
             <Route path=":groupId/sessions/:sessionId/picks" element={<TopPicksPage />} />
           </Route>
 
+          <Route path="explore" element={<ExplorePage />} />
+
           <Route path="events">
             <Route index element={<EventsPage />} />
             <Route path=":eventId" element={<EventsPage />} />
@@ -68,10 +73,12 @@ function App() {
             <Route index element={<ProfilePage />} />
             <Route path="edit" element={<ProfileEditPage />} />
           </Route>
+
+          <Route path="settings" element={<SettingsPage />} />
         </Route>
 
-        {/* Unknown path — send them home rather than rendering a blank screen. */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* Unknown path — the branded 404 ("This table isn't set") with a way home. */}
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   )

@@ -5,6 +5,8 @@ import type { SVGProps } from 'react'
 // the `size` prop; color inherits `currentColor`.
 export type IconName =
   | 'mic'
+  | 'mic-off'
+  | 'square'
   | 'send'
   | 'plus'
   | 'check'
@@ -12,6 +14,10 @@ export type IconName =
   | 'x'
   | 'lock'
   | 'chevron-left'
+  | 'chevron-up'
+  | 'chevron-down'
+  | 'menu'
+  | 'dots'
   | 'arrow-left'
   | 'arrow-right'
   | 'utensils'
@@ -30,6 +36,10 @@ export type IconName =
   | 'heart'
   | 'settings'
   | 'user'
+  | 'speaker'
+  | 'sun'
+  | 'moon'
+  | 'monitor'
 
 const PATHS: Record<IconName, ReactSvgContent> = {
   mic: (
@@ -39,6 +49,22 @@ const PATHS: Record<IconName, ReactSvgContent> = {
       <path d="M12 18v4M8 22h8" />
     </>
   ),
+  // Slashed mic — the mute affordance. Drawn as an outline (no filled variant); a
+  // diagonal cut across the mic reads as "muted" regardless of fill.
+  'mic-off': (
+    <>
+      <path d="M2 2 22 22" />
+      <path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2" />
+      <path d="M5 10v2a7 7 0 0 0 12 5" />
+      <path d="M15 9.34V5a3 3 0 0 0-5.68-1.33" />
+      <path d="M9 9v3a3 3 0 0 0 5.12 2.12" />
+      <path d="M12 18v4M8 22h8" />
+    </>
+  ),
+  // Stop glyph — a rounded square filling most of the viewBox (Lucide's stop
+  // proportions) so it reads as a solid "stop recording" block, not a small dot.
+  // The closed rect fills cleanly, so no purpose-built FILLED_PATHS entry is needed.
+  square: <rect x="5" y="5" width="14" height="14" rx="3" />,
   send: (
     <>
       <path d="m22 2-7 20-4-9-9-4Z" />
@@ -56,6 +82,19 @@ const PATHS: Record<IconName, ReactSvgContent> = {
     </>
   ),
   'chevron-left': <path d="m15 18-6-6 6-6" />,
+  'chevron-up': <path d="m18 15-6-6-6 6" />,
+  'chevron-down': <path d="m6 9 6 6 6-6" />,
+  // Hamburger.
+  menu: <path d="M4 6h16M4 12h16M4 18h16" />,
+  // Horizontal ellipsis — the mobile overflow menu. Dots are filled discs (a
+  // 1px-radius stroked circle renders as a hairline ring, not a dot).
+  dots: (
+    <>
+      <circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none" />
+    </>
+  ),
   'arrow-left': (
     <>
       <path d="M19 12H5" />
@@ -152,12 +191,37 @@ const PATHS: Record<IconName, ReactSvgContent> = {
       <circle cx="12" cy="7" r="4" />
     </>
   ),
+  // Speaker emitting sound waves — the "voice / speaking" affordance for the AI
+  // voice setting. A speaker cone (box + triangular horn) plus two arced waves.
+  speaker: (
+    <>
+      <path d="M11 5 6 9H2v6h4l5 4Z" />
+      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+      <path d="M19 5a9 9 0 0 1 0 14" />
+    </>
+  ),
+  // Sun — the "Light" theme segment. A disc plus eight radiating rays.
+  sun: (
+    <>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+    </>
+  ),
+  // Crescent moon — the "Dark" theme segment.
+  moon: <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />,
+  // Desktop monitor — the "System" theme segment (follow OS setting).
+  monitor: (
+    <>
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <path d="M8 21h8M12 17v4" />
+    </>
+  ),
 }
 
 // A few icons only make sense as a clean SOLID glyph when `filled` (their stroke
 // paths have open arcs/ticks that auto-close into artifacts under fill). Provide
 // purpose-built filled variants for those; everything else just fills its stroke
-// path. Only the rail tab icons (users, calendar) need this today.
+// path. Needed by the tab/rail icons (users, calendar, user) and the mic.
 const FILLED_PATHS: Partial<Record<IconName, ReactSvgContent>> = {
   // Solid mic: filled capsule head + a solid "cradle" wedge (the u-shaped stand
   // ring, drawn as a closed shape so no open arc self-intersects) + a short
@@ -184,6 +248,30 @@ const FILLED_PATHS: Partial<Record<IconName, ReactSvgContent>> = {
     <>
       <path d="M8 2a1 1 0 0 0-1 1v1H6a3 3 0 0 0-3 3v1h18V7a3 3 0 0 0-3-3h-1V3a1 1 0 1 0-2 0v1H9V3a1 1 0 0 0-1-1Z" />
       <path d="M3 10v8a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-8H3Z" />
+    </>
+  ),
+  // Solid magnifying glass — the active Explore tab. The outline's lens is an open
+  // ring and its handle a zero-area line, both of which collapse under fill (a blob
+  // lens + a vanished handle), so provide a purpose-built glyph: a lens RING (outer
+  // + inner circle in one evenodd path so the center is a hole, not a blob) plus a
+  // solid rounded handle on the 45° diagonal. Mirrors the users/calendar treatment.
+  search: (
+    <>
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M11 3.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 1 0 0-15Zm0 3a4.5 4.5 0 1 0 0 9 4.5 4.5 0 1 0 0-9Z"
+      />
+      <rect x="17" y="14.7" width="3" height="7.6" rx="1.5" transform="rotate(-45 18.5 18.5)" />
+    </>
+  ),
+  // Solid single person — the active Profile tab. Head + a closed shoulders
+  // shape on the same y=21 baseline (the outline's open "M19 21v-2" arc would
+  // auto-close into a wedge under fill).
+  user: (
+    <>
+      <circle cx="12" cy="7" r="4.5" />
+      <path d="M9 13h6a5 5 0 0 1 5 5v2a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-2a5 5 0 0 1 5-5Z" />
     </>
   ),
 }

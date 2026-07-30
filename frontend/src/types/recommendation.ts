@@ -18,6 +18,10 @@ export interface RecommendationItem {
   name?: string | null
   hours?: string | null
   is_open?: boolean | null
+  // Full restaurant row embedded by the gateway (all delivery paths), so a pick
+  // renders without joining against the ≤100-row restaurant catalog store. The
+  // TopPicks join prefers this and falls back to restaurantStore.byId when absent.
+  restaurant?: Restaurant | null
 }
 
 export interface Recommendation {

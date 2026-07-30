@@ -1,12 +1,10 @@
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router'
-import { Avatar, Icon, Wordmark, type IconName } from '@/components/ui'
+import { Avatar, BrandMark, Icon, Wordmark, type IconName } from '@/components/ui'
 import { AccountMenu } from './AccountMenu'
 import { useAuthStore } from '@/stores/authStore'
-import { useGroupsStore } from '@/stores/groupsStore'
-import { useEventListStore } from '@/stores/eventListStore'
-import { signOut } from '@/lib/authClient'
+import { useSignOut } from '@/hooks/useSignOut'
 import { memberColor } from '@/constants/memberColors'
 import { cn } from '@/utils/cn'
 
@@ -15,7 +13,7 @@ import { cn } from '@/utils/cn'
 export const COLUMN_HEADER_H = 'h-[61px]'
 
 export interface AppSidebarProps {
-  /** Small uppercase eyebrow under the constant "GrubGroup" wordmark (e.g. "Groups", "Events"). */
+  /** Small uppercase eyebrow under the constant "GrubChat" wordmark (e.g. "Groups", "Events"). */
   eyebrow?: string
   /** Optional action rendered on the right of the panel header (e.g. add button). */
   headerAction?: ReactNode
@@ -23,7 +21,9 @@ export interface AppSidebarProps {
   children: ReactNode
   /** Show the current-user avatar + account menu on the rail. */
   showFooter?: boolean
-  /** Hide the whole column on small screens (used by the marketing empty state). */
+  /** Hide the whole column below `md`, where the mobile chrome (BottomTabBar /
+   * MobileDrawer / MobileHeader) navigates instead. On by default — pass `false`
+   * only if a screen genuinely needs the rail at phone width. */
   responsive?: boolean
   /** Panel width utility (default 'w-56'). The group-chat list passes a wider
    * value so its chats have more breathing room. */
@@ -39,27 +39,15 @@ export function AppSidebar({
   headerAction,
   children,
   showFooter = true,
-  responsive = false,
+  responsive = true,
   panelWidth = 'w-56',
 }: AppSidebarProps) {
   const user = useAuthStore((s) => s.user)
-  const logout = useAuthStore((s) => s.logout)
-  const resetGroups = useGroupsStore((s) => s.reset)
-  const resetEvents = useEventListStore((s) => s.reset)
   const navigate = useNavigate()
+  // Shared with ProfilePage's mobile sign-out (resets the group + event lists),
+  // so the two can't drift.
+  const handleSignOut = useSignOut()
   const [menuOpen, setMenuOpen] = useState(false)
-
-  // Clear the Better Auth session (cookie) + local state, then return to sign-in.
-  // Dropping the group list means the next account never sees the previous one's
-  // rooms before its own load() runs (the selected group now lives in the URL, and
-  // we're navigating away from it).
-  const handleSignOut = async () => {
-    await signOut()
-    logout()
-    resetGroups()
-    resetEvents()
-    navigate('/login')
-  }
 
   const displayName = user?.display_name ?? user?.username ?? 'You'
   // Deterministic initials color from the user id — the SAME source chat/session
@@ -76,14 +64,14 @@ export function AppSidebar({
     >
       {/* Icon rail */}
       <div className="flex w-16 flex-col items-center gap-1.5 border-r border-border bg-surface-sunken px-3 pb-4 pt-4">
-        {/* Brand badge */}
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface-inverse text-white">
-          <Icon name="utensils" size={16} />
-        </span>
+        {/* Brand badge — the chat-bubble mark stands in for the wordmark on the rail. */}
+        <BrandMark size={34} className="text-text" />
+
 
         <div className="mt-2 flex flex-col items-center gap-1.5">
           <RailTab icon="users" label="Groups" to="/groups" />
           <RailTab icon="calendar" label="Events" to="/events" />
+          <RailTab icon="search" label="Explore" to="/explore" />
         </div>
 
         {/* Spacer pushes the user avatar to the bottom */}
@@ -99,6 +87,7 @@ export function AppSidebar({
               avatarUrl={user?.avatar_url}
               colorClass={avatarColor}
               onViewProfile={() => navigate('/profile')}
+              onAccountSettings={() => navigate('/settings')}
               onSignOut={handleSignOut}
               // Opens beside the rail avatar (bottom-aligned to the right).
               positionClass="bottom-0 left-full ml-2 w-56"
@@ -155,7 +144,9 @@ function RailTab({ icon, label, to }: { icon: IconName; label: string; to: strin
       aria-label={label}
       className={({ isActive }) =>
         cn(
-          'group relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
+          // tap-target: the tile stays 40px; only the hit area reaches 44px, which
+          // matters on touch tablets at ≥md where this rail is still shown.
+          'group tap-target relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
           isActive
             ? 'bg-surface-inverse text-white'
             : 'text-text-muted hover:bg-surface-raised/70 hover:text-text',
