@@ -34,3 +34,20 @@ export async function updateMe(input: UpdateUserInput): Promise<User> {
     throw new UserUpdateError(message, status)
   }
 }
+
+// "Delete" the caller's account (soft delete server-side: identity is scrubbed,
+// sessions revoked, groups left, and any open session the caller hosts is handed
+// off to another member or auto-closed — so this always succeeds barring a server
+// error). Reuses UserUpdateError to keep one error shape across the /user
+// endpoints, surfacing the gateway's { error } message on failure.
+export async function deactivateAccount(): Promise<void> {
+  try {
+    await api.delete('/user')
+  } catch (err) {
+    const status = (err as { response?: { status?: number } })?.response?.status ?? 0
+    const message =
+      (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+      'Could not delete your account. Please try again.'
+    throw new UserUpdateError(message, status)
+  }
+}

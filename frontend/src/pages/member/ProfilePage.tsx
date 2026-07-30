@@ -287,7 +287,7 @@ export function ProfilePage() {
         >
           <div className="flex flex-col gap-5">
             <p className="text-body text-text-muted">
-              You'll be signed out of GrubGroup and returned to the login screen.
+              You'll be signed out of GrubChat and returned to the login screen.
               Your saved profile and groups stay put — just sign back in anytime.
             </p>
             <div className="flex justify-end gap-2">

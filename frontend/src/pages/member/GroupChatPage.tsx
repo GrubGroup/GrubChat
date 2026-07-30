@@ -167,6 +167,16 @@ export function GroupChatPage() {
   // kick off another session in the same chat.
   const sessionOngoing = sessionStartIndex !== null && !isComplete && sessionObj?.closed_at == null
 
+  // Was the session's host handed off (the original host deleted their account)?
+  // session.host_user_id is repointed on hand-off, so it can no longer name the
+  // ORIGINAL starter. The durable signal is the persisted "… is now the session
+  // host" SYSTEM line — it replays on reload via chat:history and arrives live via
+  // chat:message. When present, the "started a session" divider goes neutral rather
+  // than mis-attributing the start to the member who merely inherited the host role.
+  const hostHandedOff = messages.some(
+    (m) => m.type === 'system' && m.text.endsWith(' is now the session host'),
+  )
+
   // Header "X members" reflects the real group membership from GET /api/groups
   // (member_count); falls back to the session total when absent.
   const memberCount = group?.member_count ?? total
@@ -286,17 +296,20 @@ export function GroupChatPage() {
 
         {/* DESKTOP header (≥md) — hidden below md, where the MobileHeader takes over;
             same height as the sidebar/right-panel headers for seamless borders. */}
-        <div className={cn('hidden items-center justify-between border-b border-border px-5 md:flex', COLUMN_HEADER_H)}>
-          <div className="flex items-center gap-3">
+        <div className={cn('hidden items-center justify-between gap-3 border-b border-border px-5 md:flex', COLUMN_HEADER_H)}>
+          {/* min-w-0 lets this flex child shrink below its content width so the
+              name can truncate (instead of forcing the buttons to wrap) when the
+              Edit-group panel opens and narrows the chat column. */}
+          <div className="flex min-w-0 items-center gap-3">
             {/* Same rounded emoji badge as the group's sidebar row, so the header
                 matches the chat's list image — larger here, with the name + member
                 count stacked beside it. */}
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[13px] border border-border bg-surface-raised text-xl">
               {group?.emoji}
             </span>
-            <div className="flex flex-col">
-              <span className="font-display text-item-title font-bold text-text">{groupName}</span>
-              <p className="text-caption text-text-muted">
+            <div className="flex min-w-0 flex-col">
+              <span className="truncate font-display text-item-title font-bold text-text">{groupName}</span>
+              <p className="truncate text-caption text-text-muted">
                 {memberCount} members
                 {/* "Session active" only while a live session is in progress — not
                     before one starts, and not once it's complete. */}
@@ -306,7 +319,9 @@ export function GroupChatPage() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          {/* shrink-0 keeps the actions at their natural width; whitespace-nowrap on
+              each button stops its label wrapping to two lines when space is tight. */}
+          <div className="flex shrink-0 items-center gap-2">
             {/* Start session stays PRESENT the whole time — it's only DISABLED
                 while a session is actively running (started but not yet complete),
                 and re-enables once results land / the session closes so the group
@@ -315,13 +330,13 @@ export function GroupChatPage() {
               onClick={() => setHostModalOpen(true)}
               disabled={sessionOngoing}
               title={sessionOngoing ? 'A session is already in progress' : undefined}
-              className="flex items-center gap-1.5 rounded-input bg-surface-inverse px-3 py-1.5 text-caption font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-input border border-border-strong bg-surface-inverse px-3 py-1.5 text-caption font-medium text-on-inverse dark:bg-surface-sunken dark:text-text dark:hover:bg-surface-panel disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Icon name="sparkles" size={12} /> Start session
             </button>
             <button
               onClick={() => setEditing(true)}
-              className="flex items-center gap-1.5 rounded-input border border-border px-3 py-1.5 text-caption font-medium text-text hover:bg-surface-sunken"
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-input border border-border-strong bg-surface-sunken px-3 py-1.5 text-caption font-medium text-text hover:bg-surface-panel"
             >
               <Icon name="users" size={12} /> Edit group
             </button>
@@ -364,7 +379,9 @@ export function GroupChatPage() {
               >
                 <div className="flex items-center gap-3 py-1 text-caption text-text-muted">
                   <span className="h-px flex-1 bg-border" />
-                  {nameForMember(sessionObj?.host_user_id ?? 0, members)} started a session
+                  {hostHandedOff
+                    ? 'Session in progress'
+                    : `${nameForMember(sessionObj?.host_user_id ?? 0, members)} started a session`}
                   <span className="h-px flex-1 bg-border" />
                 </div>
                 <SessionCard

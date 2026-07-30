@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Icon, Wordmark } from '@/components/ui'
+import { BrandMark, Icon } from '@/components/ui'
 import { COLUMN_HEADER_H } from './AppSidebar'
 import { cn } from '@/utils/cn'
 
@@ -7,7 +7,7 @@ export interface MobileHeaderProps {
   /** Back chevron on the left (drill-downs and pushed screens — incl. a group
    * chat, which pops back up to the groups list). */
   onBack?: () => void
-  /** Show the GrubGroup wordmark ABOVE the title — the tab ROOTS only (Groups,
+  /** Show the GrubChat wordmark ABOVE the title — the tab ROOTS only (Groups,
    * Events), standing in for the hidden sidebar's panel header, which carries the
    * same wordmark-over-eyebrow stack at ≥md. Pushed screens omit it: their title
    * is the content, and the brand line would just eat vertical space. */
@@ -47,27 +47,17 @@ export function MobileHeader({
         className,
       )}
     >
-      {/* Brand line — its own row above the title, so the title/subtitle stack
-          below keeps the exact metrics it has on every other mobile header. No
-          bottom padding: the wordmark and the section heading are one unit, so the
-          title row's own top padding is the entire gap between them. */}
-      {brand && (
-        <div className="flex items-center px-4 pt-3">
-          <Wordmark size="sm" showTile={false} dark={inverse} />
-        </div>
-      )}
-
-      <div
-        className={cn(
-          'flex items-center gap-2 px-4',
-          // The fixed column height exists to line this border up with the
-          // desktop columns' — irrelevant once the brand row has already made the
-          // header taller, and it would squeeze the two stacked rows. `pt-0.5`
-          // keeps the heading tucked under the wordmark it belongs to, while the
-          // larger `pb` holds the header's own bottom breathing room.
-          brand ? 'pb-3 pt-0.5' : COLUMN_HEADER_H,
+      <div className={cn('flex items-center gap-2 px-4', COLUMN_HEADER_H)}>
+        {/* On a tab ROOT the brandmark sits to the LEFT of the section title
+            (replacing the old wordmark row above it). Inverse chat bars flip it
+            white via currentColor. */}
+        {brand && (
+          <BrandMark
+            size={30}
+            className={cn('shrink-0', inverse ? 'text-white' : 'text-text')}
+          />
         )}
-      >
+
         {onBack && (
           <button
             onClick={onBack}

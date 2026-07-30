@@ -1,7 +1,15 @@
 @import 'tailwindcss';
 
 /*
- * GrubGroup design tokens — the SINGLE source of truth for all visual design.
+ * Class-based dark mode: any `dark:` utility follows the `.dark` class on <html>
+ * (set by the theme store / anti-FOUC script) instead of the OS media query. No
+ * `dark:` utilities exist yet — the theme swaps entirely via the Tier-2 token
+ * overrides in the `.dark { … }` block below — so this is future-proofing.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * GrubChat design tokens — the SINGLE source of truth for all visual design.
  *
  * Two tiers:
  *   Tier 1 — raw palette ("crayon box"). NEVER referenced by components.
@@ -11,12 +19,17 @@
  * To re-theme the whole app: edit Tier 2 aliases (and Tier 1 hexes) only.
  * To swap a font: change the @font-face/<link> name + the one --font-* line.
  * Components must never contain a hex, rgb(), or arbitrary value like bg-[#...].
+ *
+ * Dark mode: the `.dark { … }` block after @theme re-declares the Tier-2
+ * aliases with a true-black (#000) palette (Anthropic brand tones). Because
+ * every color utility compiles to `var(--color-*)`, redeclaring those custom
+ * properties under `.dark` re-resolves the whole app with no component edits.
  */
 
 @theme {
   /* ============================================================
    * TIER 1 — raw palette (never used directly by components)
-   * Hexes taken verbatim from the GrubGroup Figma wireframes.
+   * Hexes taken verbatim from the GrubChat Figma wireframes.
    * ============================================================ */
 
   /* Orange — brand scale (warm terracotta) */
@@ -147,6 +160,73 @@
    * resolves to 0px on every non-notched device and in desktop browsers. */
   --spacing-safe-b: env(safe-area-inset-bottom, 0px);
   --spacing-safe-t: env(safe-area-inset-top, 0px);
+}
+
+/* ============================================================================
+ * DARK MODE — true-black (#000) OLED theme on Anthropic's brand palette.
+ *
+ * The `.dark` class is toggled on <html> by the theme store (stores/themeStore)
+ * and the anti-FOUC script in index.html. This block re-declares ONLY the Tier-2
+ * semantic aliases with dark values; because every color utility compiles to a
+ * `var(--color-…)` reference, redeclaring these custom properties re-resolves
+ * the entire app (every bg / text / border / ring utility) with NO per-component
+ * edits. Tier-1 raw palette is intentionally left untouched (preserves the "edit
+ * semantics to re-theme" contract). Values are verified WCAG AA — see the plan.
+ *
+ * Bare `.dark` (not `:root.dark`): it has the same specificity (0,1,0) as the
+ * `:root` selector `@theme` emits, so it wins purely by SOURCE ORDER — hence it
+ * MUST come after the @theme block above.
+ * ==========================================================================*/
+.dark {
+  color-scheme: dark;
+
+  /* Brand + interactive — clay accent (Anthropic "book cloth"); hover BRIGHTENS
+   * on black rather than darkening; ink text reads on the clay fills. */
+  --color-primary: #cc785c;
+  --color-primary-hover: #d8977f;
+  --color-primary-soft: #8a4a38;
+  --color-on-primary: #1a1512;
+  --color-secondary: #cc785c;
+  --color-on-secondary: #1a1512;
+
+  /* Surfaces — pure-black page base + a monotonic NEUTRAL-GREY elevation ladder
+   * (Anthropic's dark scheme: true-black surfaces + grey, warmth carried ONLY by
+   * the cream text and clay accent — surfaces are deliberately un-tinted so they
+   * don't read brown). On a #000 page every surface must be LIGHTER than the page
+   * (you can't recess below black), so the light-mode "sunken is darker than the
+   * page" flips to a stepped stack: each rung is perceptibly lighter than the one
+   * it sits on, so the depth cues light mode gets from white-on-beige survive.
+   * Lightness order (dark→light): surface < sunken < panel < raised < inverse.
+   *   sunken  — recessed fields (inputs, chips, badges, skeletons) + the icon rail
+   *   panel   — side columns (groups/events panel, right detail panel)
+   *   raised  — cards, MODALS, dropdowns, chat main, SELECTED group rows, bubbles
+   *   inverse — rail ACTIVE tab, primary CTA fill, "me" bubble, avatars (top rung)
+   * Steps mirror the Anthropic dark reference's elevated-grey ladder. */
+  --color-surface: #000000;
+  --color-surface-sunken: #141414;
+  --color-surface-panel: #1e1e1e;
+  --color-surface-raised: #2a2a2a;
+  --color-surface-inverse: #373737;
+  --color-bubble-user: #373737;
+
+  /* Text — soft near-white primary (Anthropic keeps a faint warm cast on TEXT
+   * only, not on surfaces). Muted/subtle are NEUTRAL grey so secondary copy on
+   * the grey ladder doesn't read brown. */
+  --color-text: #f5f4f2;
+  --color-text-muted: #9a9a98;
+  --color-text-subtle: #8a8a88;
+  --color-on-inverse: #f5f4f2;
+
+  /* Lines — MUST flip to light-on-dark or every divider/border vanishes. */
+  --color-border: rgba(255, 255, 255, 0.12);
+  --color-border-strong: rgba(255, 255, 255, 0.18);
+
+  /* State — success/error/focus brightened so they clear 4.5:1 on true black. */
+  --color-focus-ring: #7cb8f5;
+  --color-success: #4ade80;
+  --color-error: #f87171;
+  /* Darker scrim — a near-black modal barely separates from the dark page. */
+  --color-overlay: rgba(0, 0, 0, 0.72);
 }
 
 /* Minimal global resets — layout/visuals belong in components via tokens. */
@@ -280,6 +360,30 @@ body {
 @utility animate-bubble-pop {
   transform-origin: bottom;
   animation: bubble-pop 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/*
+ * Ambient rising bubbles — soft discs drift from below the viewport up past the
+ * top, fading in and out along the way. Used behind the 404 page content. Each
+ * bubble gets its own duration + a NEGATIVE animation-delay (set inline) so it
+ * starts already mid-flight: the field is full from first paint and the stream
+ * never breaks. The reduced-motion backstop above freezes it to a single frame.
+ */
+@keyframes bubble-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-115vh);
+  }
 }
 
 /*

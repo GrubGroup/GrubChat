@@ -149,6 +149,13 @@ interface SessionState {
   receiveVote: (groupId: number, restaurantId: number, userId: number) => void
   chooseRestaurant: (groupId: number, restaurantId: number) => void
   close: (groupId: number) => void
+  // Apply a live session:host_changed broadcast: the previous host deleted their
+  // account, so the gateway handed the session off. Point session.host_user_id at
+  // the new host (so selectIsHost re-derives and the new host sees "Close session"
+  // without a refresh) and drop the departed host from the roster (they left the
+  // open session server-side). No-op when the sessionId doesn't match this group's
+  // live session (a stale echo during a group switch).
+  applyHostChange: (groupId: number, sessionId: number, newHostId: number) => void
 }
 
 export const useSessionStore = create<SessionState>((set, get) => {
@@ -503,6 +510,27 @@ export const useSessionStore = create<SessionState>((set, get) => {
         phase: 'complete',
         session: prev.session ? { ...prev.session, closed_at: new Date().toISOString() } : null,
       })),
+
+    applyHostChange: (groupId, sessionId, newHostId) =>
+      patch(groupId, (prev) => {
+        // Ignore an echo for a session this group isn't currently running.
+        if (prev.session == null || prev.activeSessionId !== sessionId) return {}
+        const oldHostId = prev.session.host_user_id
+        const members = prev.members.filter((m) => m.user_id !== oldHostId)
+        const removed = members.length < prev.members.length
+        return {
+          session: { ...prev.session, host_user_id: newHostId },
+          // The departed host left the open session server-side; drop them from the
+          // roster so the progress total + avatars match, and their un-finishable
+          // slot doesn't stall the doneCount === total completion.
+          members,
+          // Keep the denominator honest: if we actually removed the old host, shed
+          // one from the server total too (but never below the visible roster).
+          ...(removed
+            ? { serverTotal: Math.max(members.length, prev.serverTotal - 1) }
+            : {}),
+        }
+      }),
   }
 })
 

@@ -1,6 +1,6 @@
 import { useReducedMotion, type Variants } from 'framer-motion'
 
-// Shared motion vocabulary for GrubGroup's marketing + brand surfaces (landing
+// Shared motion vocabulary for GrubChat's marketing + brand surfaces (landing
 // page, auth/onboarding brand panel). Extracted here so those surfaces share one
 // easing curve + entrance/float language instead of duplicating it.
 //

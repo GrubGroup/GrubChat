@@ -4,6 +4,7 @@ import { RequireAuth } from '@/components/layout/RequireAuth'
 import { PublicOnly } from '@/components/layout/PublicOnly'
 import { AuthFlowShell } from '@/components/layout/AuthFlowShell'
 import { LandingPage } from '@/pages/public/LandingPage'
+import { NotFoundPage } from '@/pages/public/NotFoundPage'
 import { AuthForm } from '@/pages/auth/AuthForm'
 import { DietaryStep } from '@/pages/member/onboarding/Onboarding1'
 import { CuisinesStep } from '@/pages/member/onboarding/OnboardingCuisines'
@@ -73,8 +74,8 @@ function App() {
           <Route path="settings" element={<SettingsPage />} />
         </Route>
 
-        {/* Unknown path — send them home rather than rendering a blank screen. */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* Unknown path — the branded 404 ("This table isn't set") with a way home. */}
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   )
