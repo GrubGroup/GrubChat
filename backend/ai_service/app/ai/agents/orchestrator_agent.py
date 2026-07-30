@@ -16,6 +16,7 @@ from app.ai.graph.state import (
 from app.ai.hours import is_open_at
 from app.ai.llm.client import chat_completion, strip_json_fence
 from app.ai.llm.prompts import build_group_rerank_messages
+from app.core.config import settings
 from app.ai.rag.embeddings import embed_text
 from app.ai.rag.retriever import similarity_search
 
@@ -361,7 +362,23 @@ async def orchestrate(state: PipelineState) -> PipelineState:
     # `_parse_ranked` strips code fences, so plain completion is the robust path.
     # max_tokens caps the ranked JSON array (~8 short items) so a chatty model
     # can't stall the pipeline with a long completion.
-    raw = await chat_completion(messages, temperature=0.2, max_tokens=900)
+    #
+    # DISABLE REASONING on OpenRouter. The default chat model is a REASONING model
+    # (claude-sonnet-5): on this large re-rank prompt it spends the entire
+    # max_tokens budget on hidden reasoning tokens and returns content=None
+    # (finish_reason="length"), so _parse_ranked gets nothing and every pick falls
+    # back to the "LLM re-rank unavailable" embedding+proximity ranking. Turning
+    # reasoning off makes it emit the ranked JSON directly. Only OpenRouter
+    # understands this knob; the Salesforce/Claude gateway is not a runaway-
+    # reasoning model, so scope it to the OpenRouter provider.
+    extra_body = (
+        {"reasoning": {"enabled": False}}
+        if settings.llm_provider.strip().lower() == "openrouter"
+        else None
+    )
+    raw = await chat_completion(
+        messages, temperature=0.2, max_tokens=900, extra_body=extra_body
+    )
 
     # valid_ids / tier_by_id come from the SAME sliced list the model saw, so an id
     # it couldn't have been given is rejected and every returned id has a tier.
