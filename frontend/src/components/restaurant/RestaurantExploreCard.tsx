@@ -66,7 +66,7 @@ export function RestaurantExploreCard({
           onOpen()
         }
       }}
-      className="overflow-hidden cursor-pointer transition-[transform,box-shadow] duration-150 ease-out hover:shadow-md motion-safe:hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+      className="overflow-hidden cursor-pointer transition-[translate,box-shadow] duration-150 ease-out hover:delay-150 hover:shadow-md motion-safe:hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
     >
       {/* Banner — deterministic tint placeholder, with the state badge overlaid. */}
       <div className={cn('relative h-28', restaurantTint(r.id))}>
