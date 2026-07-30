@@ -231,6 +231,21 @@ const FILLED_PATHS: Partial<Record<IconName, ReactSvgContent>> = {
       <path d="M3 10v8a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-8H3Z" />
     </>
   ),
+  // Solid magnifying glass — the active Explore tab. The outline's lens is an open
+  // ring and its handle a zero-area line, both of which collapse under fill (a blob
+  // lens + a vanished handle), so provide a purpose-built glyph: a lens RING (outer
+  // + inner circle in one evenodd path so the center is a hole, not a blob) plus a
+  // solid rounded handle on the 45° diagonal. Mirrors the users/calendar treatment.
+  search: (
+    <>
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M11 3.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 1 0 0-15Zm0 3a4.5 4.5 0 1 0 0 9 4.5 4.5 0 1 0 0-9Z"
+      />
+      <rect x="17" y="14.7" width="3" height="7.6" rx="1.5" transform="rotate(-45 18.5 18.5)" />
+    </>
+  ),
   // Solid single person — the active Profile tab. Head + a closed shoulders
   // shape on the same y=21 baseline (the outline's open "M19 21v-2" arc would
   // auto-close into a wedge under fill).
