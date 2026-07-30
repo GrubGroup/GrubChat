@@ -22,7 +22,12 @@ export function LikeStarButton({ liked, pending = false, onToggle, label, size =
       aria-label={label}
       aria-pressed={liked}
       disabled={pending}
-      onClick={onToggle}
+      onClick={(e) => {
+        // Don't let a like bubble to a clickable parent (the Explore card opens a
+        // detail modal on click); harmless where there is no parent handler.
+        e.stopPropagation()
+        onToggle()
+      }}
       className={cn(
         'tap-target flex h-9 w-9 shrink-0 items-center justify-center rounded-pill transition-colors duration-150 ease-out',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
