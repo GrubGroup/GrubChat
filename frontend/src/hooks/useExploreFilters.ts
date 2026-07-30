@@ -4,15 +4,18 @@ import { isOpenAt } from '@/utils/hours'
 import { priceLevel } from '@/utils/price'
 import { distanceMi, type Coords } from '@/utils/distance'
 
-// Explore browse state — search + filter/sort chips — derived entirely client-side
-// over the already-cached catalog (~54 rows in restaurantStore). The gateway list
-// endpoint exposes no search/dietary/open-now params, and "Open now" already lives
-// client-side (utils/hours), so server round-trips per keystroke would only add
-// latency and duplicate logic.
+// Explore browse state — search + filter/sort chips + "show more" pagination —
+// derived entirely client-side over the already-cached catalog (~54 rows in
+// restaurantStore). The gateway list endpoint exposes no search/dietary/open-now
+// params, and "Open now" already lives client-side (utils/hours), so server
+// round-trips per keystroke would only add latency and duplicate logic.
 //
 // "All" === an empty active set. Sort chips are mutually exclusive with EACH OTHER
 // (a list has one order) but coexist with the additive AND filters.
 const SORT_KEYS = new Set(['nearby', 'top-rated'])
+
+// How many cards to reveal per page (initial + each "Show more").
+const PAGE_SIZE = 12
 
 export interface UseExploreFiltersOptions {
   // The user's saved home location, when set (Profile.default_lat/lon). Absent →
@@ -30,6 +33,11 @@ export interface UseExploreFiltersResult {
   clearFilters: () => void
   reset: () => void
   results: Restaurant[]
+  // The currently-revealed slice of `results` (pagination). Render this in the grid.
+  visible: Restaurant[]
+  hasMore: boolean
+  remaining: number
+  showMore: () => void
   count: number
   total: number
   countLabel: string
@@ -43,10 +51,19 @@ export function useExploreFilters(
   all: Restaurant[],
   { userCoords, now }: UseExploreFiltersOptions,
 ): UseExploreFiltersResult {
-  const [search, setSearch] = useState('')
+  const [search, setSearchState] = useState('')
   const [active, setActive] = useState<Set<string>>(() => new Set())
+  // How many results are revealed. Reset to the first page whenever the query or
+  // filters change (done here, in the handlers, to avoid a setState-in-effect).
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+
+  const setSearch = useCallback((s: string) => {
+    setSearchState(s)
+    setVisibleCount(PAGE_SIZE)
+  }, [])
 
   const toggle = useCallback((key: string) => {
+    setVisibleCount(PAGE_SIZE)
     setActive((prev) => {
       const next = new Set(prev)
       if (next.has(key)) {
@@ -60,11 +77,17 @@ export function useExploreFilters(
     })
   }, [])
 
-  const clearFilters = useCallback(() => setActive(new Set()), [])
+  const clearFilters = useCallback(() => {
+    setActive(new Set())
+    setVisibleCount(PAGE_SIZE)
+  }, [])
   const reset = useCallback(() => {
     setActive(new Set())
-    setSearch('')
+    setSearchState('')
+    setVisibleCount(PAGE_SIZE)
   }, [])
+
+  const showMore = useCallback(() => setVisibleCount((c) => c + PAGE_SIZE), [])
 
   const distances = useMemo(() => {
     const out: Record<number, number> = {}
@@ -109,6 +132,9 @@ export function useExploreFilters(
   }, [all, active, search, now, userCoords, distances])
 
   const count = results.length
+  const visible = useMemo(() => results.slice(0, visibleCount), [results, visibleCount])
+  const hasMore = count > visibleCount
+  const remaining = Math.max(0, count - visibleCount)
   const countLabel = `${userCoords ? 'NEAR YOU · ' : ''}${count} ${count === 1 ? 'PLACE' : 'PLACES'}`
 
   return {
@@ -119,6 +145,10 @@ export function useExploreFilters(
     clearFilters,
     reset,
     results,
+    visible,
+    hasMore,
+    remaining,
+    showMore,
     count,
     total: all.length,
     countLabel,
