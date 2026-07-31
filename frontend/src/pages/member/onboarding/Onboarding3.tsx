@@ -76,24 +76,33 @@ export function LocationStep() {
   }
 
   const handleDone = async () => {
-    // Persist the address + coordinates onto the profile before saving. Coords
-    // come from a picked suggestion or the blur geocode; if neither ran (e.g.
-    // Done clicked before the blur timer resolved), geocode once here so a typed
-    // address still lands with lat/lon rather than a bare label. Also lock in the
-    // selected radius. save() upserts the whole profile via the gateway.
+    // The location must resolve to a real place before finishing onboarding
+    // (parity with the session's start gate). Use a picked / blur-resolved coord
+    // when we have one; otherwise geocode the typed address now. Abort with an
+    // error when it's empty or can't be verified — don't advance on a bad address.
     setError(null)
+    const addr = value.trim()
     let finalCoords = coords
-    if (!finalCoords && value.trim()) {
+    if (!finalCoords && addr) {
+      setGeoStatus('checking')
       try {
-        const res = await geocodeAddress(value.trim())
+        const res = await geocodeAddress(addr)
         if (res.ok && res.lat != null && res.lon != null) {
           finalCoords = { lat: res.lat, lon: res.lon }
+          setGeoStatus('ok')
         }
       } catch {
-        // Network/geocode failure — save the label only; lat/lon stay null.
+        // fall through to the invalid-location guard below
       }
     }
-    setLocation(value, finalCoords ?? undefined)
+    if (!addr || !finalCoords) {
+      if (addr) setGeoStatus('notfound')
+      setError('Enter a valid location to continue.')
+      return
+    }
+    // Persist the resolved address + coordinates and the selected radius, then
+    // save. save() upserts the whole profile via the gateway.
+    setLocation(addr, finalCoords)
     setRadius(radius)
     // Only advance once the save actually succeeded — otherwise surface an error
     // instead of silently trapping the user on this step.
@@ -210,7 +219,12 @@ export function LocationStep() {
         >
           Back
         </Button>
-        <Button variant="primary" fullWidth onClick={handleDone} isLoading={saving}>
+        <Button
+          variant="primary"
+          fullWidth
+          onClick={handleDone}
+          isLoading={saving || geoStatus === 'checking'}
+        >
           Done — let's eat
         </Button>
       </div>

@@ -119,6 +119,30 @@ export function ProfileEditPage() {
     }
   }
 
+  // Require a resolvable location before saving (parity with the session's start
+  // gate). True when the current address already has coordinates (a picked
+  // suggestion, a prior blur-geocode, or a saved profile); otherwise geocode it
+  // once now and return whether it resolved. Empty counts as invalid.
+  const ensureLocationValid = async (): Promise<boolean> => {
+    const cur = useProfileStore.getState().profile
+    const addr = (cur?.default_address ?? '').trim()
+    if (!addr) return false
+    if (cur?.default_lat != null && cur?.default_lon != null) return true
+    setGeoStatus('checking')
+    try {
+      const res = await geocodeAddress(addr)
+      if (res.ok && res.lat != null && res.lon != null) {
+        setLocation(addr, { lat: res.lat, lon: res.lon })
+        setGeoStatus('ok')
+        return true
+      }
+    } catch {
+      // fall through to the notfound result below
+    }
+    setGeoStatus('notfound')
+    return false
+  }
+
   const dietary = profile?.dietary_restrictions ?? []
   const preferred = profile?.preferred_cuisines ?? []
   const disliked = profile?.disliked_cuisines ?? []
@@ -128,6 +152,14 @@ export function ProfileEditPage() {
   const handleSave = async () => {
     setFormError(null)
     setUsernameError(null)
+
+    // Location must resolve to a real place before we save anything (parity with
+    // the session's start gate). ensureLocationValid geocodes a typed-but-
+    // unresolved address; abort with an error when it's empty or can't be verified.
+    if (!(await ensureLocationValid())) {
+      setFormError('Enter a valid default address before saving.')
+      return
+    }
 
     // 1) Persist identity (User) first so a username conflict aborts before we
     //    save preferences — the user stays on the form with the error shown.
@@ -365,7 +397,7 @@ export function ProfileEditPage() {
               fullWidth
               className="sm:w-auto"
               onClick={handleSave}
-              isLoading={saving || savingUser}
+              isLoading={saving || savingUser || geoStatus === 'checking'}
             >
               Save changes
             </Button>
