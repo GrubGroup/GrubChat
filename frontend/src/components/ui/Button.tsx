@@ -2,7 +2,7 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { cn } from '@/utils/cn'
 import { Spinner } from './Spinner'
 
-type ButtonVariant = 'primary' | 'accent' | 'secondary' | 'ghost' | 'danger'
+type ButtonVariant = 'primary' | 'accent' | 'secondary' | 'ghost' | 'danger' | 'danger-subtle'
 type ButtonSize = 'sm' | 'md' | 'lg'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -16,18 +16,28 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 // Visual decisions live here, not scattered in JSX. Semantic tokens only.
 // The wireframe uses DARK cocoa for primary CTAs; orange is an accent.
+// The hairline border is invisible on light mode (near-black button on light
+// page) but delineates the raised near-black CTA against the #000 page in dark
+// mode — the macOS-dark-button idiom. text-on-inverse (ivory in dark, white in
+// light) keeps it token-pure instead of a raw text-white.
 const variantClasses: Record<ButtonVariant, string> = {
-  primary: 'bg-surface-inverse text-white hover:opacity-90',
+  primary: 'border border-border-strong bg-surface-inverse text-on-inverse hover:opacity-90',
   accent: 'bg-primary text-on-primary hover:bg-primary-hover',
   secondary: 'bg-primary text-on-primary hover:bg-primary-hover',
   ghost: 'bg-transparent text-text hover:bg-surface-sunken',
   danger: 'bg-error text-on-primary hover:opacity-90',
+  // Light-red fill + darker red text — mirrors the "disliked" preference pill.
+  // Destructive without shouting (sign out, etc.).
+  'danger-subtle': 'bg-error/12 text-error hover:bg-error/20',
 }
 
+// Heights stay bespoke (touch targets); the LABEL sizes come off the type scale so
+// a button's text matches the copy around it. md was `text-base` (16px) — the one
+// off-scale size in the app, which read a step larger than every adjacent label.
 const sizeClasses: Record<ButtonSize, string> = {
-  sm: 'h-9 px-3 text-sm gap-1.5',
-  md: 'h-11 px-4 text-base gap-2',
-  lg: 'h-13 px-6 text-lg gap-2.5',
+  sm: 'h-9 px-3 text-caption gap-1.5',
+  md: 'h-11 px-4 text-body gap-2',
+  lg: 'h-13 px-6 text-item-title gap-2.5',
 }
 
 export function Button({

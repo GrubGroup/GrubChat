@@ -28,7 +28,7 @@ export function CuisineTriStatePicker({ liked, disliked, onCycle }: CuisineTriSt
   return (
     <div className="flex flex-col gap-4">
       {/* Legend */}
-      <p className="text-xs text-text-muted">
+      <p className="text-caption text-text-muted">
         Tap once to <span className="font-medium text-success">like</span>, twice to{' '}
         <span className="font-medium text-error">avoid</span>, again to clear.
       </p>
@@ -48,7 +48,9 @@ export function CuisineTriStatePicker({ liked, disliked, onCycle }: CuisineTriSt
                   aria-label={`${opt.label}: ${state}`}
                   onClick={() => onCycle(opt.value, nextState(state))}
                   className={cn(
-                    'inline-flex items-center gap-1.5 rounded-pill border px-3.5 py-1.5 text-sm font-medium',
+                    // tap-target matches Chip: the pill stays ~34px, the hit area
+                    // reaches 44px. This grid is the densest tap zone in the app.
+                    'tap-target inline-flex items-center gap-1.5 rounded-pill border px-3.5 py-1.5 text-body font-medium',
                     'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
                     state === 'like' &&
                       'border-success bg-success/12 text-success',

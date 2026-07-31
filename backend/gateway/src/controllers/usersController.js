@@ -22,6 +22,9 @@ const searchUsers = async (req, res, next) => {
       where: {
         username: { contains: q, mode: 'insensitive' },
         id: { not: req.user.id },
+        // Exclude soft-deleted accounts so a scrubbed `deleted_*` handle can't
+        // surface in the member-picker.
+        deactivated_at: null,
       },
       select: { id: true, username: true, display_name: true, avatar_url: true },
       orderBy: { username: 'asc' },

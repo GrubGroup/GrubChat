@@ -26,3 +26,5 @@ class User(SQLModel, table=True):
     avatar_url: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
+    # Soft-delete marker (NULL = active). Mirrors Prisma User.deactivated_at.
+    deactivated_at: datetime | None = None

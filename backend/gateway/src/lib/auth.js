@@ -95,6 +95,12 @@ const auth = betterAuth({
     additionalFields: {
       role: { type: 'string', input: false, required: false },
     },
+    // Let users change their email from Account settings. Our email/password
+    // accounts are never email-verified (no verification flow is configured), so
+    // Better Auth applies the change immediately without a confirmation email.
+    // Google accounts (verified email, no password) can't reach this — the
+    // settings UI greys the control out for them.
+    changeEmail: { enabled: true },
   },
 
   // Rename the auth-session model so it never clobbers the domain `Session`.

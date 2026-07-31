@@ -18,7 +18,9 @@ export function Chip({ label, selected = false, onToggle, disabled = false, clas
       disabled={disabled}
       onClick={onToggle}
       className={cn(
-        'inline-flex items-center rounded-pill border px-3.5 py-1.5 text-sm font-medium',
+        // tap-target grows the HIT area to 44px on touch devices; the pill stays
+        // visually 34px tall, per the mobile spec ("do not enlarge the pill").
+        'tap-target inline-flex items-center rounded-pill border px-3.5 py-1.5 text-body font-medium',
         'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
         'disabled:cursor-not-allowed disabled:opacity-50',
         selected

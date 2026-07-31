@@ -25,6 +25,7 @@ from typing import Any
 
 from app.ai.llm.client import chat_completion, strip_json_fence
 from app.ai.llm.prompts import build_preference_turn_messages
+from app.core.config import settings
 from app.ai.taxonomy import (
     expand_cuisine_terms,
     expand_group_terms_only,
@@ -94,11 +95,13 @@ def _clean_tags(value: Any) -> list[str] | None:
     """Coerce a value into a deduped list of lowercase single-concept tags, or None.
 
     Returns None when the model omitted the field (so we carry the prior value
-    through); returns [] when the model explicitly cleared it. Normalizes to the
-    catalog's lowercase underscore tag style via ``taxonomy.normalize_tag`` (e.g.
-    "gluten free" / "gluten-free" -> "gluten_free"), so tags line up with the
-    retriever's superset-filter vocabulary. Expansion of broad group / style
-    terms happens later in ``_reconcile`` — this stays a pure normalizer.
+    through); returns [] when the model explicitly cleared it. Normalizes via
+    ``taxonomy.normalize_tag`` to the lowercase underscore LOOKUP form (e.g.
+    "gluten free" / "Gluten-Free" -> "gluten_free"). For cuisines that is also
+    the stored form; for DIETARY terms it is only the lookup key —
+    ``_merge_dietary_field`` maps it onto the hyphenated tag the ``dietary_tags``
+    column stores. Expansion of broad group / style terms happens later in
+    ``_reconcile`` — this stays a pure normalizer.
     """
     if not isinstance(value, list):
         return None
@@ -167,8 +170,10 @@ def _merge_dietary_field(
 
     Dietary needs are never "grouped" the way cuisines are, so this uses the
     controlled-vocabulary synonym map (veggie -> vegetarian, no_gluten ->
-    gluten_free) instead of cuisine expansion. Same replace-then-remove shape as
-    the cuisine merge.
+    gluten-free) instead of cuisine expansion. Note the output is HYPHENATED for
+    multi-word tags, matching the ``dietary_tags`` column — this is the one hard
+    filter, so a separator mismatch here empties the result set entirely. Same
+    replace-then-remove shape as the cuisine merge.
     """
     if parsed_list is not None:
         base = normalize_dietary_terms(parsed_list)
@@ -363,6 +368,19 @@ def _fallback_reply(signals: ExtractedSignals, missing: list[str]) -> str:
     return f"{confirm} That's everything I need — thanks!"
 
 
+# Output-token cap for the analyze call. The turn's response is small — a
+# delta-shaped signals JSON in fast mode, plus a one-line reply in full mode — so
+# it never needs the model's full output ceiling. Beyond keeping latency low
+# (output-token-bound, ~13 ms/token), this is LOAD-BEARING on OpenRouter: its
+# credit precheck rejects a request with HTTP 402 unless the balance can afford
+# the requested max_tokens, and an UNCAPPED call implicitly asks for the model's
+# full ceiling (65535 for gemini-2.5-flash) — which a low-credit account can't
+# cover, 402-ing every extraction turn before generation. `_FAST` covers the
+# delta-only response; `_FULL` leaves headroom for the model-written reply.
+_ANALYZE_MAX_TOKENS_FAST = 512
+_ANALYZE_MAX_TOKENS_FULL = 1024
+
+
 async def analyze_turn(
     message: str,
     *,
@@ -371,6 +389,7 @@ async def analyze_turn(
     conversation_history: list[ConversationTurn] | None = None,
     is_host: bool = False,
     host_location_label: str | None = None,
+    low_latency: bool | None = None,
 ) -> TurnResult:
     """Parse one conversational turn into reconciled signals + an agent reply.
 
@@ -387,9 +406,19 @@ async def analyze_turn(
     frame the optional per-member location question relative to it ("the host set
     X — want somewhere closer to you?"). On any LLM/parse failure it degrades to
     the prior signals + a safe deterministic reply (TurnResult.degraded == True).
+
+    LOW-LATENCY MODE (`low_latency`, defaulting to settings.analyze_low_latency)
+    routes the call to the fast extraction provider/model and asks for a
+    delta-shaped response with NO agent_reply, then composes the reply
+    server-side from the reconciled signals + missing_signals. This is what makes
+    the turn fit a real-time voice budget: latency here is output-token-bound
+    (~13 ms/token measured), and it cuts ~3.8 s p50 to ~0.9 s at equal extraction
+    quality. Because the reply is then always server-authored, an absent
+    agent_reply is EXPECTED in this mode and must not be treated as degradation.
     """
     prior = current_signals or ExtractedSignals()
     history = [t.model_dump() for t in (conversation_history or [])]
+    fast = settings.analyze_low_latency if low_latency is None else low_latency
 
     messages = build_preference_turn_messages(
         message,
@@ -398,12 +427,27 @@ async def analyze_turn(
         current_signals=prior.model_dump(),
         is_host=is_host,
         host_location_label=host_location_label,
+        low_latency=fast,
     )
 
     # NOTE: do NOT pass response_format={"type": "json_object"} — the active
     # Salesforce/Claude gateway ignores it and returns an empty "{}". The prompt
     # demands strict JSON and we strip fences below (same pattern as the re-rank).
-    raw = await chat_completion(messages, temperature=0.2) or ""
+    # In low-latency mode the provider/model pair is overridden together: a model
+    # name is only valid for its own provider, and the measured speedup came from
+    # the pair (the same model was ~3x slower through the other gateway).
+    if fast:
+        raw = await chat_completion(
+            messages,
+            temperature=0.2,
+            provider=settings.active_extraction_provider,
+            model=settings.active_extraction_model,
+            max_tokens=_ANALYZE_MAX_TOKENS_FAST,
+        ) or ""
+    else:
+        raw = await chat_completion(
+            messages, temperature=0.2, max_tokens=_ANALYZE_MAX_TOKENS_FULL
+        ) or ""
 
     try:
         parsed = json.loads(strip_json_fence(raw))
@@ -427,11 +471,19 @@ async def analyze_turn(
     signals = _reconcile(prior, raw_signals)
     missing = _clean_missing(parsed.get("missing_signals"), signals, is_host=is_host)
 
-    reply = parsed.get("agent_reply")
-    if not (isinstance(reply, str) and reply.strip()):
+    if fast:
+        # Low-latency mode asked the model NOT to write a reply, so the server
+        # authors the whole line. _fallback_reply already produces exactly the
+        # confirm-then-ask shape the prompt otherwise requests, and it walks the
+        # canonical ask-order — which also makes the spoken wording deterministic
+        # (what the voice/TTS path needs) rather than a model paraphrase.
         reply = _fallback_reply(signals, missing)
     else:
-        reply = reply.strip()
+        reply = parsed.get("agent_reply")
+        if not (isinstance(reply, str) and reply.strip()):
+            reply = _fallback_reply(signals, missing)
+        else:
+            reply = reply.strip()
 
     return TurnResult(
         signals=signals,

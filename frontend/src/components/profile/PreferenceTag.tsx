@@ -28,7 +28,7 @@ export function PreferenceTag({ tone, children, dot = true }: PreferenceTagProps
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-pill px-3 py-1.5 text-sm font-medium',
+        'inline-flex items-center gap-1.5 rounded-pill px-3 py-1.5 text-body font-medium',
         c.pill,
       )}
     >

@@ -1,130 +1,69 @@
-# GrubGroup
+# SITE Capstone Project
 
-A voice-first, group restaurant-recommendation web app. A group of friends each talks (voice or text) to their own AI preference agent; a master orchestrator agent reconciles everyone's dietary needs, budget, and location in real time, finds restaurants that satisfy the whole group via pgvector RAG, and produces a shared top-5 that the host confirms into a group Event.
+SITE Course Year: **2026**
 
-**SITE Capstone Project 2026** — Salesforce Cohort
+Cohort: **Salesforce**
 
-**Team:** Della Lee, Daniel Lam, Audrey Dequito, Miguel Cuevas
+Team Member Names: **Della Lee, Daniel Lam, Audrey Dequito, Miguel Cuevas**
 
-**Mentors:** Jennifer Jin, Allan George Thomas, Areeta Wong, Ashish Khanchandani, Raghav Abboy, Rajiv Kochumman
+Mentors Names: **Jennifer Jin, Allan George Thomas, Areeta Wong, Ashish Khanchandani, Raghav Abboy, Rajiv Kochumman**
 
----
+Project Code Repository Links
 
-## Repo shape
+- [Frontend Repo Link](https://github.com/GrubGroup/GrubGroup/tree/main/frontend)
+- [Backend Repo Link](https://github.com/GrubGroup/GrubGroup/tree/main/backend)
 
-This is a monorepo with three areas:
+## Project Overview
+
+A consumer-facing, "voice-first" web app where a group of friends each talk to their own AI agent about what they want to eat. A master AI orchestrator agent collects everyone's dietary preferences, budget, and location in real-time, finds restaurants that satisfy the whole group, lets each person browse and order from a shared menu, and connects everything into one group cart. This is all driven by a conversational, voice-enabled interface. Think Uber Eats but a group chat based on preference based on profile information.
 
 - **`frontend/`** — React 19 + TypeScript + Vite 8 SPA. Routed with react-router v8 (`/groups/:groupId`, `/groups/:groupId/sessions/:sessionId`, `/events/:eventId`, …); zustand for client state. Auth via Better Auth client (cookie session). Managed with **Bun**.
 - **`backend/gateway/`** — Node.js + Express 4 + Socket.IO 4. Frontend-facing service: runs Better Auth (cookie sessions, email/password + Google OAuth), Socket.IO live group chat and session sync, Prisma (owns DB schema + migrations + pgvector extension), proxies AI requests to `ai_service`. Managed with **Bun**.
 - **`backend/ai_service/`** — Python 3.14 + FastAPI + SQLModel + asyncpg. The AI/data brain: LangGraph multi-agent pipeline (per-member preference agent → group orchestrator), RAG (Qwen embeddings via OpenRouter + pgvector similarity search), LLM chat. Read-side SQLModel mirror of the Prisma schema; also writes `Recommendation`/`RecommendationItem` + `Qa` rows. Managed with **uv**.
 
-## Tech stack
+Deployment Website: **Add Link to Deployed Project**
 
-| Layer     | Tech                                                                                                         | Package manager |
-| --------- | ------------------------------------------------------------------------------------------------------------ | --------------- |
-| Frontend  | React 19 · TypeScript · Vite 8 · TailwindCSS 4 (v4 via `@tailwindcss/vite`) · zustand                        | **Bun**         |
-| Gateway   | Node.js · Express 4 · Socket.IO 4 · Better Auth · Prisma (plain JS ESM)                                      | **Bun**         |
-| AI/Data   | FastAPI · SQLModel · asyncpg · LangChain/LangGraph (Python 3.14)                                             | **uv**          |
-| Database  | PostgreSQL + pgvector (schema owned by Prisma in `gateway/`)                                                 | —               |
-| Auth      | Better Auth (cookie sessions, email/password + Google OAuth)                                                 | —               |
-| LLM / RAG | OpenRouter → Claude/DeepSeek (default) or Salesforce gateway → Claude (chat); Qwen embeddings via OpenRouter | —               |
-| Voice     | Browser speech-to-text input (`react-speech-recognition` in frontend); server STT/TTS relay scaffolded but unwired — the next planned feature | —               |
-| Deploy    | Render.com · GitHub Actions · Docker (ai_service)                                                            | —               |
+### Open-source libraries used
 
-## Getting started
+**Frontend** (`frontend/`)
 
-### Prerequisites
+- [React](https://react.dev/) + [React DOM](https://react.dev/) — UI library
+- [TypeScript](https://www.typescriptlang.org/) — typed JavaScript
+- [Vite](https://vite.dev/) + [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react) — build tool / dev server
+- [Tailwind CSS](https://tailwindcss.com/) + [@tailwindcss/vite](https://tailwindcss.com/docs/installation/using-vite) — styling
+- [Zustand](https://github.com/pmndrs/zustand) — state management + screen navigation
+- [Framer Motion](https://motion.dev/) — animations
+- [Axios](https://axios-http.com/) — HTTP client to the gateway
+- [Socket.IO Client](https://socket.io/) — real-time client
+- [Better Auth](https://www.better-auth.com/) — auth client (cookie sessions)
+- [react-speech-recognition](https://github.com/JamesBrill/react-speech-recognition) — browser voice input
+- [use-places-autocomplete](https://github.com/wellyshen/use-places-autocomplete) — location autocomplete
+- [ESLint](https://eslint.org/) · [typescript-eslint](https://typescript-eslint.io/) · [Prettier](https://prettier.io/) — linting / formatting
 
-- [Bun](https://bun.sh) (JavaScript/TypeScript package manager)
-- [uv](https://docs.astral.sh/uv/) (Python package manager)
-- PostgreSQL with [pgvector](https://github.com/pgvector/pgvector) extension
+**Gateway** (`backend/gateway/`)
 
-### Installation and running
+- [Express](https://expressjs.com/) — HTTP framework
+- [Socket.IO](https://socket.io/) — real-time WebSocket server
+- [Better Auth](https://www.better-auth.com/) — cookie-session auth (email/password + Google OAuth)
+- [Prisma](https://www.prisma.io/) + [@prisma/client](https://www.prisma.io/docs/orm/prisma-client) — ORM, schema, and migrations
+- [Axios](https://axios-http.com/) — HTTP client to the AI service
+- [cors](https://github.com/expressjs/cors) — CORS middleware
+- [dotenv](https://github.com/motdotla/dotenv) — environment config
+- Runtime + package manager: [Bun](https://bun.sh/)
 
-All three services plus PostgreSQL must run together. The frontend talks exclusively to the gateway (REST + Socket.IO); the gateway proxies AI requests to `ai_service` via HTTP. One shared PostgreSQL database; Prisma (in gateway) owns all DDL/migrations.
+**AI service** (`backend/ai_service/`)
 
-**1. Database setup**
+- [FastAPI](https://fastapi.tiangolo.com/) — async web framework
+- [SQLModel](https://sqlmodel.tiangolo.com/) + [SQLAlchemy](https://www.sqlalchemy.org/) — ORM / data layer
+- [asyncpg](https://github.com/MagicStack/asyncpg) + [psycopg2](https://www.psycopg.org/) — PostgreSQL drivers
+- [pgvector (Python)](https://github.com/pgvector/pgvector-python) — vector similarity for RAG
+- [LangChain](https://www.langchain.com/) · [LangGraph](https://www.langchain.com/langgraph) · [langchain-openai](https://github.com/langchain-ai/langchain) · [langchain-community](https://github.com/langchain-ai/langchain) — multi-agent pipeline
+- [OpenAI Python SDK](https://github.com/openai/openai-python) — LLM + embeddings client (OpenRouter / Salesforce gateway)
+- [httpx](https://www.python-httpx.org/) — async HTTP client
+- [Pydantic Settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) + [python-dotenv](https://github.com/theskumar/python-dotenv) — config
+- [greenlet](https://github.com/python-greenlet/greenlet) — async SQLAlchemy runtime dependency
+- Runtime + package manager: [uv](https://docs.astral.sh/uv/)
 
-Ensure PostgreSQL is running with the pgvector extension enabled. Set `DATABASE_URL` in both backend services' `.env` files to point to the same database (driver-prefix split: gateway uses `postgresql://`, ai_service uses `postgresql+asyncpg://`).
+**Database**
 
-**2. Gateway** (port 4000)
-
-```bash
-cd backend/gateway
-bun install
-cp .env.example .env      # fill in DATABASE_URL, BETTER_AUTH_SECRET, JWT_SECRET
-bun run dev               # bun --watch server.js
-```
-
-Runs Prisma migrations on startup via the postinstall hook.
-
-**3. AI Service** (port 8000)
-
-```bash
-cd backend/ai_service
-uv sync
-cp .env.example .env      # fill in DATABASE_URL (asyncpg driver), JWT_SECRET (must match gateway), API keys
-uv run uvicorn app.main:app --reload
-```
-
-Seed mock restaurants:
-
-```bash
-uv run python -m scripts.seed_restaurants
-```
-
-**4. Frontend** (port 5173)
-
-```bash
-cd frontend
-bun install
-cp .env.example .env      # optional: VITE_GATEWAY_URL (default http://localhost:4000)
-bun run dev               # Vite dev server
-```
-
-Visit [http://localhost:5173](http://localhost:5173).
-
-**Note:** `CORS_ORIGIN` in the gateway's `.env` must match the Vite dev server origin (default `http://localhost:5173`).
-
-## Architecture
-
-```
-   Browser                Node service               Python service            Database
-┌────────────┐   REST /   ┌──────────────┐   HTTP    ┌───────────────┐        ┌──────────┐
-│  frontend  │◀─socket.io▶│   gateway    │◀─────────▶│   ai_service  │◀──────▶│ Postgres │
-│  (React)   │            │ (Express +   │ X-Internal│  (FastAPI +   │        │ +pgvector│
-│            │            │  Socket.IO)  │ -Secret   │  LangGraph)   │        │          │
-└────────────┘            └──────────────┘           └───────────────┘        └──────────┘
-```
-
-- Frontend → gateway only. The browser never calls `ai_service` directly.
-- Better Auth owns browser-edge authentication (cookie sessions); the gateway→ai_service hop uses a shared secret (`X-Internal-Secret`, value from `JWT_SECRET` env var, must be identical in both services).
-- One shared PostgreSQL database, accessed directly by both backend services (Prisma in gateway for DDL/writes; SQLModel + asyncpg in ai_service for reads + recommendation writes).
-- Real-time group chat and session state sync happen over Socket.IO in the gateway.
-
-## Documentation
-
-- [CLAUDE.md](CLAUDE.md) — project memory bank: what GrubGroup is, repo shape, tech stack, architecture rules, domain entities, team ownership, project status
-- [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) — full folder tree and "where do I put…?" guide
-- [backend/CLAUDE.md](backend/CLAUDE.md) — backend working rules and commands (gateway + ai_service)
-- [frontend/CLAUDE.md](frontend/CLAUDE.md) — frontend working rules and commands
-- [planning/](planning/) — product plan, proposal, user stories, UI design
-
-## Team ownership
-
-- **Daniel** — FastAPI AI service, LangGraph pipeline, LLM integration
-- **Miguel** — SQLModel data layer, DB schema, seeding
-- **Audrey** — Frontend design, auth system (Better Auth in the gateway)
-- **Della** — Real-time WebSocket layer, deployment pipeline
-
-## Package managers (hard rule)
-
-- **Bun** for all JavaScript/TypeScript (both `frontend/` and `backend/gateway/`)
-- **uv** for all Python (`backend/ai_service/`)
-- Do not use npm, yarn, pnpm, pip, or venv directly
-
----
-
-## License
-
-This project is part of the SITE 2026 capstone program.
+- [PostgreSQL](https://www.postgresql.org/) + [pgvector](https://github.com/pgvector/pgvector) — relational store + vector search

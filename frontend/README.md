@@ -6,19 +6,19 @@ This frontend talks exclusively to the **gateway** service (REST + Socket.IO) an
 
 ## Stack
 
-| Library                    | Purpose                                                      |
-| -------------------------- | ------------------------------------------------------------ |
-| React 19                   | Component-based UI                                            |
-| TypeScript                 | Type-safe codebase                                            |
-| Vite 8                     | Dev server + build tool                                       |
-| TailwindCSS 4              | Utility-first styling via `@tailwindcss/vite` plugin (v4 config-less: tokens in `@theme` blocks in CSS, no `tailwind.config.js`) |
-| react-router 8             | Routing — the URL is the source of truth for the active group, session, and event |
-| zustand                    | Client-side state stores                                     |
-| better-auth                | Auth client (`useSession`, `signIn`/`signUp`/`signOut`), email/password + Google OAuth |
-| axios                      | HTTP calls to the gateway (`withCredentials: true` for cookie sessions) |
-| socket.io-client           | Live group chat and session sync via the gateway             |
-| react-speech-recognition   | Browser speech-to-text (voice input UI)                      |
-| framer-motion              | Animation and transitions                                    |
+| Library                  | Purpose                                                                                                                          |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| React 19                 | Component-based UI                                                                                                               |
+| TypeScript               | Type-safe codebase                                                                                                               |
+| Vite 8                   | Dev server + build tool                                                                                                          |
+| TailwindCSS 4            | Utility-first styling via `@tailwindcss/vite` plugin (v4 config-less: tokens in `@theme` blocks in CSS, no `tailwind.config.js`) |
+| react-router 8           | Routing — `<BrowserRouter>` + a `<Routes>` tree; import from `react-router` (not `react-router-dom`, removed in v8)              |
+| zustand                  | Client-side data/session state stores (**not** navigation — the URL owns that)                                                   |
+| better-auth              | Auth client (`useSession`, `signIn`/`signUp`/`signOut`), email/password + Google OAuth                                           |
+| axios                    | HTTP calls to the gateway (`withCredentials: true` for cookie sessions)                                                          |
+| socket.io-client         | Live group chat, session sync, and the binary voice relay via the gateway                                                        |
+| react-speech-recognition | Browser speech-to-text (group-chat dictation)                                                                                    |
+| framer-motion            | Animation and transitions                                                                                                        |
 
 Managed with **Bun** (ESM: `"type": "module"`).
 
@@ -39,19 +39,7 @@ bun run preview  # Preview the production build
 - **Strict TypeScript** — `noUnusedLocals`, `noUnusedParameters`, `verbatimModuleSyntax`, `erasableSyntaxOnly`, `noFallthroughCasesInSwitch`. Keep imports type-only where required (`import type { … }`).
 - **Live-gateway only** — There is no mock layer (the old `VITE_USE_MOCK` switch and `api/mock/` were removed). The app always runs against the live gateway. Auth is mandatory: the `RequireAuth` layout route guards every non-public route on the Better Auth session.
 - **Gateway origin** — `VITE_GATEWAY_URL` (default `http://localhost:4000`) points at the gateway. The Vite dev server proxy forwards `/api` requests to the gateway; `CORS_ORIGIN` in the gateway's `.env` must match the Vite dev origin (`:5173`).
-- **Auth flow** — `lib/authClient.ts` points at the gateway. `signIn`/`signUp`/Google OAuth hit the gateway's `/api/auth/*`, which sets an httpOnly session cookie (first-party via the Vite dev proxy). The app reads the session with `useSession()` and mirrors it into `authStore`; axios uses `withCredentials: true` so the cookie rides along on every request. No client-side JWT.
-
-## Running
-
-The frontend must run alongside the **gateway** (port 4000) and **ai_service** (port 8000), plus PostgreSQL. See the root [README.md](../README.md) for full setup.
-
-```bash
-cd frontend
-bun install
-bun run dev
-```
-
-Visit [http://localhost:5173](http://localhost:5173).
+- **Auth flow** — `lib/authClient.ts` points at the gateway. `signIn`/`signUp`/Google OAuth hit the gateway's `/api/auth/`*, which sets an httpOnly session cookie (first-party via the Vite dev proxy). The app reads the session with `useSession()` and mirrors it into `authStore`; axios uses `withCredentials: true` so the cookie rides along on every request. No client-side JWT.
 
 ## Routes
 
@@ -112,34 +100,24 @@ src/
 ├── pages/            # Full screens (one per route)
 │   ├── auth/         # AuthForm (Better Auth sign-in/up + Google)
 │   ├── public/       # LandingPage
-│   └── member/       # EmptyGroupsPage, GroupChatPage, EventsPage, ProfilePage, ProfileEditPage
+│   └── member/       # GroupsIndex (→ GroupsPage list/zero-state), GroupChatPage, EventsPage, ProfilePage, ProfileEditPage
 │       ├── onboarding/     # Onboarding1-3 + OnboardingCuisines
 │       └── session/        # AgentChatPage, TopPicksPage
 ├── components/       # Reusable UI pieces
 │   ├── ui/           # Design-system primitives (Button, Input, Card, Modal, …) + index.ts
-│   ├── layout/       # RootLayout, RequireAuth, PublicOnly, AuthFlowShell (route layouts) + AppSidebar, BrandPanel, AppSplash, AccountMenu
-│   ├── session/      # HostSessionModal, SessionTopBar, SessionTimer, SessionPicksBlock, SessionCard, ChatStream, …
-│   ├── restaurant/   # RankedRestaurantCard, MenuList, VoteControl, …
-│   ├── profile/      # CuisineTriStatePicker, PreferenceTag, Dietary, Cuisine, Budget, Location, LikedRestaurants
-│   ├── event/        # EventDrawer, EventItemRow, EventSummary
-│   └── voice/        # VoiceComposer (react-speech-recognition)
-├── hooks/            # useGroupId, useSessionId, useBindSession (routing) + useSocket, useSessionCountdown, useVoiceInput, usePlacesInput, useMediaQuery, useNewItemIds, useScrollToBottom
+│   ├── layout/       # Route layouts (RootLayout, RequireAuth, PublicOnly, AuthFlowShell) + AppSidebar,
+│   │                 #   BrandPanel, AppSplash, AccountMenu + mobile chrome (BottomTabBar, MobileHeader, MobileActionSheet)
+│   ├── session/      # HostSessionModal, SessionTopBar, SessionTimer, GroupMessageRow, ChatStream, SessionCard,
+│   │                 #   GroupList, GroupDetailPanel, MobileSessionStrip, …
+│   ├── restaurant/   # RankedRestaurantCard (ephemeral voting), MenuList (placeholder), RestaurantHeader, TagRow, MenuItemRow
+│   ├── profile/      # CuisineTriStatePicker, PreferenceTag
+│   └── voice/        # VoiceComposer — one composer, two paths (Web Speech dictation + hands-free server loop)
+├── hooks/            # Routing (useGroupId, useSessionId, useBindSession); sync (useSocket, useGroupSync,
+│                     #   useSessionSync, useSessionCountdown); voice (useVoiceInput, useVoiceSession);
+│                     #   usePlacesInput, useMediaQuery, useIsMobile, useScrollLock, useDismissOnBack, useCreateGroup, useSignOut, …
 ├── stores/           # 9 zustand stores: auth, session, groupChat, chat, event, eventList, profile, groups, restaurant
 ├── lib/              # axios, socket, authClient (Better Auth), env, motion
-├── types/            # Shared TypeScript types (user, profile, session, recommendation, analyze, group, restaurant, …)
-├── utils/            # cn.ts, hours.ts (TS mirror of ai_service app/ai/hours.py)
-└── constants/        # dietary.ts, memberColors.ts, agentChat.ts
+├── types/            # Shared TypeScript types (user, profile, session, recommendation, analyze, group, restaurant, voice, …)
+├── utils/            # cn.ts, hours.ts (TS mirror of ai_service app/ai/hours.py), slug.ts (name-42 route slugs), …
+└── constants/        # dietary.ts, memberColors.ts, agentChat.ts, mobileNav.ts
 ```
-
-See [../PROJECT_STRUCTURE.md](../PROJECT_STRUCTURE.md) §4 for the full folder tree and working rules in [CLAUDE.md](CLAUDE.md).
-
-## Documentation
-
-- [CLAUDE.md](CLAUDE.md) — frontend working rules: stack, commands, conventions, status
-- [../PROJECT_STRUCTURE.md](../PROJECT_STRUCTURE.md) — full folder tree
-- [../CLAUDE.md](../CLAUDE.md) — project memory bank (cross-service contracts, architecture rules)
-- [../backend/CLAUDE.md](../backend/CLAUDE.md) — backend working rules
-
----
-
-This is a **full build-out**, not a Vite starter. Build new features into the existing layout.

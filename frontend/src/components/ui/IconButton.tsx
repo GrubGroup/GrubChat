@@ -12,8 +12,11 @@ export interface IconButtonProps
   size?: IconButtonSize
 }
 
+// primary: hairline border delineates the raised near-black CTA against the
+// #000 page in dark mode (negligible on light); text-on-inverse over raw white
+// keeps it token-pure. Matches Button.tsx.
 const variantClasses: Record<IconButtonVariant, string> = {
-  primary: 'bg-surface-inverse text-white hover:opacity-90',
+  primary: 'border border-border-strong bg-surface-inverse text-on-inverse hover:opacity-90',
   accent: 'bg-primary text-on-primary hover:bg-primary-hover',
   secondary: 'bg-primary text-on-primary hover:bg-primary-hover',
   ghost: 'bg-transparent text-text-muted hover:bg-surface-sunken',

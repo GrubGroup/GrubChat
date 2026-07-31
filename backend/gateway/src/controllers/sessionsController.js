@@ -12,6 +12,54 @@ const toPositiveInt = (value) => {
   return Number.isInteger(n) && n > 0 ? n : null;
 };
 
+// The Restaurant columns the Top Picks UI renders, matching the frontend
+// `Restaurant` type 1:1 (note: the column is `long`, not `lon`). Used to embed a
+// full restaurant object on each recommendation item so the client can render a
+// pick WITHOUT joining against its restaurant catalog store — that store is
+// capped at 100 rows by /restaurants, so a pick whose id exceeds the catalog page
+// (ids now reach ~2100) would otherwise miss the byId map and be dropped, showing
+// "No matching spots found" despite valid picks in the DB.
+const RESTAURANT_CARD_SELECT = {
+  id: true,
+  name: true,
+  description: true,
+  cuisine_tags: true,
+  dietary_tags: true,
+  price_avg: true,
+  address: true,
+  lat: true,
+  long: true,
+  hours: true,
+  avg_rating: true,
+  created_at: true,
+  updated_at: true,
+};
+
+/**
+ * Attach the full restaurant row to each recommendation item, looked up by id in
+ * a single indexed `WHERE id IN (...)` query (≤8 primary keys — O(picks), not
+ * O(catalog), so it scales regardless of catalog size). Best-effort: on any DB
+ * error the items are returned un-hydrated so a hiccup never drops a broadcast or
+ * response — the frontend's `item.restaurant ?? byId[...]` fallback still applies.
+ */
+const hydrateRecommendationItems = async (items) => {
+  if (!Array.isArray(items) || items.length === 0) return items ?? [];
+  try {
+    const ids = [
+      ...new Set(items.map((i) => i.restaurant_id).filter((n) => Number.isInteger(n))),
+    ];
+    const rows = await prisma.restaurant.findMany({
+      where: { id: { in: ids } },
+      select: RESTAURANT_CARD_SELECT,
+    });
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    return items.map((i) => ({ ...i, restaurant: byId.get(i.restaurant_id) ?? null }));
+  } catch (err) {
+    console.error('recommendation item hydration failed', err);
+    return items;
+  }
+};
+
 /** Broadcast a payload to a group's Socket.IO room (best-effort, never throws). */
 const broadcastToGroup = (req, groupId, event, payload) => {
   if (groupId == null) return;
@@ -32,11 +80,12 @@ const broadcastToGroup = (req, groupId, event, payload) => {
  */
 const broadcastPicks = async (io, groupId, sessionId, recommendation) => {
   if (groupId == null || !io) return;
+  const items = await hydrateRecommendationItems(recommendation.items ?? []);
   const payload = {
     groupId,
     sessionId,
     recommendationId: recommendation.id,
-    items: recommendation.items ?? [],
+    items,
   };
   try {
     io.to(`group:${groupId}`).emit('session:picks', payload);
@@ -177,6 +226,11 @@ const getRecommendations = async (req, res, next) => {
       console.error('top-picks broadcast failed', deliveryErr);
     }
 
+    // Hydrate the HTTP body too: sessionStore.forceFinish / generate adopt this
+    // returned recommendation DIRECTLY (not via the session:picks socket echo), so
+    // without this the force-finish path would drop every pick until the socket
+    // races in. broadcastPicks hydrated its own payload independently above.
+    recommendation.items = await hydrateRecommendationItems(recommendation.items ?? []);
     return res.status(200).json(recommendation);
   } catch (err) {
     if (err.response) {
@@ -672,7 +726,7 @@ const getLatestRecommendation = async (req, res, next) => {
             restaurant_id: true,
             match_score: true,
             justification: true,
-            restaurant: { select: { name: true } },
+            restaurant: { select: RESTAURANT_CARD_SELECT },
           },
         },
       },
@@ -681,9 +735,13 @@ const getLatestRecommendation = async (req, res, next) => {
       return res.status(404).json({ error: 'No recommendation found.' });
     }
 
+    // Embed the full restaurant on each item (so a cold reload renders picks
+    // without the capped catalog join) while keeping top-level `name` for
+    // back-compat with callers that read it directly.
     const items = recommendation.items.map(({ restaurant, ...item }) => ({
       ...item,
       name: restaurant?.name ?? null,
+      restaurant: restaurant ?? null,
     }));
     return res.status(200).json({ ...recommendation, items });
   } catch (err) {

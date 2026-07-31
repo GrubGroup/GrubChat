@@ -1,4 +1,4 @@
-"""Qwen embeddings via OpenRouter for restaurants/menus."""
+"""Text embeddings via OpenRouter for restaurants/menus (settings.embedding_model)."""
 
 from functools import lru_cache
 
@@ -19,11 +19,10 @@ def _client() -> AsyncOpenAI:
 
 
 async def embed_text(text: str) -> list[float]:
-    """Embed `text` into exactly 1024 floats via OpenRouter (Qwen3-embedding).
+    """Embed `text` into exactly 1024 floats via OpenRouter (settings.embedding_model).
 
-    Requests `dimensions=1024` (Qwen3 supports Matryoshka truncation) and hard-
-    asserts the returned length so a mismatch fails here rather than at the
-    Postgres vector(1024) insert.
+    Requests `dimensions=1024` and hard-asserts the returned length so a mismatch
+    fails here rather than at the Postgres vector(1024) insert.
     """
     response = await _client().embeddings.create(
         model=settings.embedding_model,

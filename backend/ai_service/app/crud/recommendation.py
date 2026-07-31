@@ -16,7 +16,9 @@ async def create_recommendation(
     recommendation = Recommendation(session_id=session_id)
     db.add(recommendation)
     await db.commit()
-    await db.refresh(recommendation)
+    # No refresh: asyncpg returns the autoincrement `id` from the INSERT itself and
+    # `created_at` is a Python-side default_factory, so both are already populated —
+    # verified against the live DB. The refresh was one wasted round trip (~85ms).
     return recommendation
 
 
@@ -39,8 +41,10 @@ async def add_items(
         return []
     db.add_all(rows)
     await db.commit()
-    for row in rows:
-        await db.refresh(row)
+    # No post-commit refresh: `expire_on_commit=False` (db/session.py) leaves the
+    # in-memory rows valid, and no caller reads these back (recommendation_service
+    # discards the return value). Refreshing cost one SELECT per row — ~620ms for 8
+    # items, ~2.9s on the 40-item LLM-fallback branch — all of it discarded.
     return rows
 
 
