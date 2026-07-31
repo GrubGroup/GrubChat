@@ -162,7 +162,7 @@ export function VoiceComposer({
                 'disabled:cursor-not-allowed disabled:opacity-50',
                 listening
                   ? 'bg-primary text-on-primary'
-                  : 'bg-surface-inverse text-white hover:opacity-90',
+                  : 'bg-surface-inverse text-on-inverse hover:opacity-90',
               )}
             >
               {/* Radiating ring while listening — feels active without the whole
@@ -193,8 +193,8 @@ export function VoiceComposer({
                 'flex h-9 w-9 shrink-0 items-center justify-center rounded-pill transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
                 v.muted
-                  ? 'bg-primary/15 text-primary'
-                  : 'bg-surface-sunken text-text-muted hover:bg-surface-inverse hover:text-white',
+                  ? 'bg-primary/15 text-primary-text'
+                  : 'bg-surface-sunken text-text-muted hover:bg-surface-inverse hover:text-on-inverse',
               )}
             >
               {/* Action-semantics like the stop button: the glyph shows what a tap
@@ -299,7 +299,7 @@ export function VoiceComposer({
               // tap-target: the pill stays 36px (design system) while the hit area
               // grows to 44px — the annotation is explicit about not resizing it.
               'tap-target flex h-9 w-9 shrink-0 items-center justify-center rounded-pill bg-surface-sunken text-text-muted transition-colors',
-              'hover:bg-surface-inverse hover:text-white',
+              'hover:bg-surface-inverse hover:text-on-inverse',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
               'disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-surface-sunken disabled:hover:text-text-muted',
             )}
@@ -312,7 +312,7 @@ export function VoiceComposer({
             mic-permission denied). Only in controller mode; group chat has no such
             field. Non-blocking — the text composer stays usable underneath. */}
         {voiceLoop && v.error && (
-          <p className="mt-2 text-center text-caption text-error">{v.error}</p>
+          <p className="mt-2 text-center text-caption text-error-text">{v.error}</p>
         )}
 
         {/* Web Speech path: the browser silently disables recognition if the user
@@ -320,7 +320,7 @@ export function VoiceComposer({
             Surface it so they know to re-enable mic access. `micAvailable` starts
             true and only flips false after a denial. */}
         {!voiceLoop && supported && v.micAvailable === false && (
-          <p className="mt-2 text-center text-caption text-error">
+          <p className="mt-2 text-center text-caption text-error-text">
             Microphone access is blocked — enable it in your browser to use voice input.
           </p>
         )}

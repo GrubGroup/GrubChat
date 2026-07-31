@@ -51,8 +51,8 @@ function applyTheme(theme: Theme): void {
   root.classList.toggle('dark', dark)
   root.style.colorScheme = dark ? 'dark' : 'light'
   const meta = document.querySelector('meta[name="theme-color"]')
-  // #000 true-black in dark; the light page base (#f5f3ee) otherwise.
-  if (meta) meta.setAttribute('content', dark ? '#000000' : '#f5f3ee')
+  // The warm dark page base (#141413) in dark; the light page base otherwise.
+  if (meta) meta.setAttribute('content', dark ? '#141413' : '#f5f3ee')
 }
 
 interface ThemeState {

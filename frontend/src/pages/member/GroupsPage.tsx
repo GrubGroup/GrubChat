@@ -58,7 +58,7 @@ function MemberDot({ userId, name }: { userId: number; name: string }) {
   }
   return (
     <span
-      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-pill text-[10px] font-semibold text-white ${bg[colorClass]}`}
+      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-pill text-[10px] font-semibold text-on-member ${bg[colorClass]}`}
     >
       {name[0]}
     </span>
@@ -88,7 +88,7 @@ export function GroupsPage() {
       onClick={openModal}
       aria-label="New group"
       // tap-target grows the hit area to 44px; the 28px pill is unchanged.
-      className="tap-target flex h-7 w-7 items-center justify-center rounded-lg bg-surface-inverse text-white transition-opacity active:opacity-90"
+      className="tap-target flex h-7 w-7 items-center justify-center rounded-lg bg-surface-inverse text-on-inverse transition-opacity active:opacity-90"
     >
       <Icon name="plus" size={14} />
     </button>
@@ -219,13 +219,13 @@ export function GroupsPage() {
                 <div className="p-3">
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-caption font-semibold text-text">{p.name}</p>
-                    <p className="text-caption font-bold text-primary">{p.score}%</p>
+                    <p className="text-caption font-bold text-primary-text">{p.score}%</p>
                   </div>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {p.tags.map((t) => (
                       <span
                         key={t}
-                        className="flex items-center gap-1 rounded-pill bg-success/10 px-2 py-0.5 text-caption font-medium text-success"
+                        className="flex items-center gap-1 rounded-pill bg-success/10 px-2 py-0.5 text-caption font-medium text-success-text"
                       >
                         <Icon name="check" size={10} /> {t}
                       </span>

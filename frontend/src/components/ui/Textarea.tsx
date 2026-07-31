@@ -25,7 +25,7 @@ export function Textarea({ label, error, hint, className, id, rows = 3, ...props
         aria-invalid={error ? true : undefined}
         className={cn(
           'w-full rounded-input border bg-surface-sunken px-3 py-2 text-text',
-          'placeholder:text-text-muted/60',
+          'placeholder:text-text-muted/75',
           'focus:outline-none focus:ring-2 focus:ring-focus-ring',
           'disabled:cursor-not-allowed disabled:opacity-50',
           error ? 'border-error' : 'border-border',
@@ -34,7 +34,7 @@ export function Textarea({ label, error, hint, className, id, rows = 3, ...props
         {...props}
       />
       {error ? (
-        <p className="text-body text-error">{error}</p>
+        <p className="text-body text-error-text">{error}</p>
       ) : hint ? (
         <p className="text-body text-text-muted">{hint}</p>
       ) : null}

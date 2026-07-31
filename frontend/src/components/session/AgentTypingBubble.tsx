@@ -26,7 +26,7 @@ export function AgentTypingBubble({ visible }: AgentTypingBubbleProps) {
           role="status"
         >
           <div className="flex items-center gap-2">
-            <span className="flex h-5 w-5 items-center justify-center rounded-pill bg-surface-inverse text-[10px] text-white">
+            <span className="flex h-5 w-5 items-center justify-center rounded-pill bg-surface-inverse text-[10px] text-on-inverse">
               🍽
             </span>
             <span className="text-overline font-semibold uppercase tracking-wide text-text-muted">

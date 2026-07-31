@@ -19,7 +19,8 @@ export interface MobileHeaderProps {
   subtitle?: ReactNode
   /** Right-aligned controls — avatar stack, overflow ⋯, an action button. */
   actions?: ReactNode
-  /** Dark cocoa bar, for the private agent chat. */
+  /** Paints the bar on the dedicated agent-session header surface — the
+   * inverted top rung on paper, the DARKEST rung on ink. Private agent chat only. */
   inverse?: boolean
   className?: string
 }
@@ -43,18 +44,18 @@ export function MobileHeader({
     <header
       className={cn(
         'shrink-0 border-b pt-safe-t',
-        inverse ? 'border-white/10 bg-surface-inverse' : 'border-border bg-surface-raised',
+        inverse ? 'border-on-header/10 bg-surface-header' : 'border-border bg-surface-raised',
         className,
       )}
     >
       <div className={cn('flex items-center gap-2 px-4', COLUMN_HEADER_H)}>
         {/* On a tab ROOT the brandmark sits to the LEFT of the section title
-            (replacing the old wordmark row above it). Inverse chat bars flip it
-            white via currentColor. */}
+            (replacing the old wordmark row above it). The agent bar flips it to the
+            header ink via currentColor. */}
         {brand && (
           <BrandMark
             size={30}
-            className={cn('shrink-0', inverse ? 'text-white' : 'text-text')}
+            className={cn('shrink-0', inverse ? 'text-on-header' : 'text-text')}
           />
         )}
 
@@ -66,7 +67,7 @@ export function MobileHeader({
             // the negative margin keeps the glyph optically aligned to the title.
             className={cn(
               '-ml-2.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-pill',
-              inverse ? 'text-white/80 hover:bg-white/10' : 'text-text-muted hover:bg-surface-sunken',
+              inverse ? 'text-on-header/80 hover:bg-on-header/10' : 'text-text-muted hover:bg-surface-sunken',
             )}
           >
             <Icon name="chevron-left" size={20} />
@@ -78,7 +79,7 @@ export function MobileHeader({
             <p
               className={cn(
                 'flex items-center gap-1.5 truncate text-overline uppercase tracking-wide',
-                inverse ? 'text-white/50' : 'text-text-muted',
+                inverse ? 'text-on-header/50' : 'text-text-muted',
               )}
             >
               {overline}
@@ -94,7 +95,7 @@ export function MobileHeader({
               brand
                 ? 'font-display text-display font-bold tracking-tight'
                 : 'text-item-title font-semibold',
-              inverse ? 'text-white' : 'text-text',
+              inverse ? 'text-on-header' : 'text-text',
             )}
           >
             {title}
@@ -103,7 +104,7 @@ export function MobileHeader({
             <p
               className={cn(
                 'truncate text-caption font-medium',
-                inverse ? 'text-white/50' : 'text-text-muted',
+                inverse ? 'text-on-header/50' : 'text-text-muted',
               )}
             >
               {subtitle}

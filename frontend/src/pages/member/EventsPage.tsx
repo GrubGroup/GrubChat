@@ -220,20 +220,20 @@ export function EventsPage() {
               title={active.restaurant_name}
               subtitle={active.group_name ?? undefined}
             />
-            <div className="flex h-56 shrink-0 flex-col justify-end gap-1 bg-surface-inverse p-4 text-white md:p-6">
+            <div className="flex h-56 shrink-0 flex-col justify-end gap-1 bg-surface-inverse p-4 text-on-inverse md:p-6">
               {/* The time was absolutely positioned top-right, where it collided
                   with the text-display title at 390px. In flow above the address
                   it reads as part of the same block at every width. */}
               {active.time_slot && (
-                <span className="text-caption text-white/70">{active.time_slot}</span>
+                <span className="text-caption text-on-inverse/70">{active.time_slot}</span>
               )}
-              <p className="text-caption text-white/70">
+              <p className="text-caption text-on-inverse/70">
                 📍 {active.address ?? active.group_name ?? 'Location TBD'}
               </p>
               <h1 className="font-display text-section-title font-bold md:text-display">
                 {active.restaurant_name}
               </h1>
-              {active.occasion && <p className="text-body text-white/80">{active.occasion}</p>}
+              {active.occasion && <p className="text-body text-on-inverse/80">{active.occasion}</p>}
             </div>
 
             <div className="flex flex-col gap-5 p-4 md:p-6">

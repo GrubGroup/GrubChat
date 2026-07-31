@@ -44,12 +44,12 @@ export function BrandPanel({ onLogoClick }: BrandPanelProps = {}) {
   const logo = <Wordmark dark />
 
   return (
-    <div className="relative hidden w-[38%] shrink-0 flex-col justify-between overflow-hidden bg-surface-inverse p-10 text-white dark:bg-surface lg:flex">
+    <div className="relative hidden w-[38%] shrink-0 flex-col justify-between overflow-hidden bg-surface-inverse p-10 text-on-inverse dark:bg-surface lg:flex">
       {/* Depth layers — behind content, never intercept clicks/focus */}
       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
         <div className="absolute -right-16 top-24 h-72 w-72 rounded-pill bg-primary/20 blur-[120px]" />
         <div className="absolute -bottom-10 -left-10 h-56 w-56 rounded-pill bg-member-purple/15 blur-[110px]" />
-        <div className="absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-white/[0.04] to-transparent" />
+        <div className="absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-on-inverse/[0.04] to-transparent" />
       </div>
 
       {/* Staggered entrance over the three vertical bands */}
@@ -66,7 +66,7 @@ export function BrandPanel({ onLogoClick }: BrandPanelProps = {}) {
               type="button"
               onClick={onLogoClick}
               aria-label="Go to home"
-              className="flex items-center gap-2.5 rounded-lg transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+              className="flex items-center gap-2.5 rounded-lg transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-on-inverse/50"
             >
               {logo}
             </button>
@@ -80,11 +80,11 @@ export function BrandPanel({ onLogoClick }: BrandPanelProps = {}) {
           <motion.div variants={fu} className="relative mx-auto h-[240px] w-full max-w-[300px]">
             {/* Dish chips (back, tilted left) */}
             <FloatCard float={float(0)} rotate={-4} className="left-0 top-3 w-[58%]">
-              <div className="flex gap-2 rounded-2xl border border-white/10 bg-white/[0.06] p-3 shadow-[0_18px_44px_rgba(26,18,8,0.4)] backdrop-blur-sm">
+              <div className="flex gap-2 rounded-2xl border border-on-inverse/10 bg-on-inverse/[0.06] p-3 shadow-[0_18px_44px_var(--shadow-tint-deep)] backdrop-blur-sm">
                 {['🍱', '🍕', '🍷'].map((e) => (
                   <span
                     key={e}
-                    className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-xl"
+                    className="flex h-10 w-10 items-center justify-center rounded-xl bg-on-inverse/10 text-xl"
                   >
                     {e}
                   </span>
@@ -94,11 +94,11 @@ export function BrandPanel({ onLogoClick }: BrandPanelProps = {}) {
 
             {/* AI consensus bubble (top-right, tilted right) */}
             <FloatCard float={float(1.2, 6)} rotate={2} className="right-0 top-0 w-[64%]">
-              <div className="flex items-start gap-2.5 rounded-2xl border border-primary/25 bg-white/[0.06] p-3 shadow-[0_20px_50px_rgba(26,18,8,0.45)] backdrop-blur-sm">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+              <div className="flex items-start gap-2.5 rounded-2xl border border-primary/25 bg-on-inverse/[0.06] p-3 shadow-[0_20px_50px_var(--shadow-tint-deep)] backdrop-blur-sm">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary-text">
                   <Icon name="sparkles" size={15} />
                 </span>
-                <p className="text-caption leading-snug text-white">
+                <p className="text-caption leading-snug text-on-inverse">
                   Found 3 spots you&apos;ll all love.
                 </p>
               </div>
@@ -106,9 +106,9 @@ export function BrandPanel({ onLogoClick }: BrandPanelProps = {}) {
 
             {/* Restaurant match (focal, front, biggest shadow) */}
             <FloatCard float={float(0.6, 12)} rotate={4} className="bottom-0 left-1/2 w-[68%] -translate-x-1/2">
-              <div className="overflow-hidden rounded-[16px] bg-surface-raised text-text shadow-[0_30px_70px_rgba(26,18,8,0.5)]">
+              <div className="overflow-hidden rounded-[16px] bg-surface-raised text-text shadow-[0_30px_70px_var(--shadow-tint-deep)]">
                 <div className="relative h-16 bg-gradient-to-br from-member-terracotta to-primary">
-                  <span className="absolute left-2.5 top-2.5 rounded-pill bg-surface-raised px-2 py-0.5 text-caption font-bold text-primary">
+                  <span className="absolute left-2.5 top-2.5 rounded-pill bg-surface-raised px-2 py-0.5 text-caption font-bold text-primary-text">
                     98% match
                   </span>
                 </div>
@@ -135,7 +135,7 @@ export function BrandPanel({ onLogoClick }: BrandPanelProps = {}) {
             everyone agrees on.
           </motion.h1>
 
-          <motion.p variants={fu} className="max-w-xs text-body text-white/60">
+          <motion.p variants={fu} className="max-w-xs text-body text-on-inverse/60">
             Every person talks to their own AI agent. One result that works for the whole group.
           </motion.p>
 
@@ -153,12 +153,12 @@ export function BrandPanel({ onLogoClick }: BrandPanelProps = {}) {
                 </span>
               ))}
             </div>
-            <span className="text-caption text-white/50">Joined by thousands of groups</span>
+            <span className="text-caption text-on-inverse/60">Joined by thousands of groups</span>
           </motion.div>
         </div>
 
         {/* Bottom — footer */}
-        <motion.p variants={fu} className="text-caption text-white/30">
+        <motion.p variants={fu} className="text-caption text-on-inverse/60">
           © 2026 GrubChat
         </motion.p>
       </motion.div>

@@ -16,7 +16,7 @@ export function ChatMessage({ message, isNew = false }: ChatMessageProps) {
   } else if (message.role === 'user') {
     content = (
       <div className="flex justify-end">
-        <div className="max-w-[80%] rounded-2xl rounded-tr-lg bg-bubble-user px-4 py-3 text-body-touch text-white md:px-3.5 md:py-2.5 md:text-body">
+        <div className="max-w-[80%] rounded-2xl rounded-tr-lg bg-bubble-user px-4 py-3 text-body-touch text-on-inverse md:px-3.5 md:py-2.5 md:text-body">
           {message.text}
         </div>
       </div>
@@ -26,7 +26,7 @@ export function ChatMessage({ message, isNew = false }: ChatMessageProps) {
     content = (
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-2">
-          <span className="flex h-5 w-5 items-center justify-center rounded-pill bg-surface-inverse text-[10px] text-white">
+          <span className="flex h-5 w-5 items-center justify-center rounded-pill bg-surface-inverse text-[10px] text-on-inverse">
             🍽
           </span>
           <span className="text-overline font-semibold uppercase tracking-wide text-text-muted">

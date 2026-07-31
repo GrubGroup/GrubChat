@@ -58,7 +58,7 @@ function TagPills({ tags }: { tags: string[] }) {
         <button
           onClick={() => setExpanded((v) => !v)}
           // tap-target: the pill stays its small size, the hit area reaches 44px.
-          className="tap-target rounded-pill px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-surface-sunken"
+          className="tap-target rounded-pill px-2 py-0.5 text-[11px] font-medium text-primary-text hover:bg-surface-sunken"
         >
           {expanded ? 'show less' : `+${overflow} more`}
         </button>
@@ -186,7 +186,7 @@ export function NotedSoFarPanel({ groupId }: NotedSoFarPanelProps) {
               }
             >
               <span className="flex items-center gap-2">
-                <span className={done ? 'text-success' : 'text-text-subtle'}>
+                <span className={done ? 'text-success-text' : 'text-text-subtle'}>
                   <Icon name={done ? 'check' : 'circle'} size={14} />
                 </span>
                 <span className="font-medium">{row.label}</span>
