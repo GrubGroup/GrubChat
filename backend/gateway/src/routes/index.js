@@ -1,5 +1,5 @@
 // Route aggregator: mounts health, restaurants, sessions, profile, groups,
-// and events under /api.
+// events, and voice under /api.
 //
 // Auth endpoints are NOT here — Better Auth owns /api/auth/* directly in app.js.
 import { Router } from 'express';
@@ -10,6 +10,7 @@ import userRouter from './userRoutes.js';
 import groupsRouter from './groupsRoutes.js';
 import usersRouter from './usersRoutes.js';
 import eventsRouter from './eventsRoutes.js';
+import voiceRouter from './voiceRoutes.js';
 import { getAuthMethods } from '../controllers/authMethodsController.js';
 import { validateGeocode } from '../controllers/sessionsController.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
@@ -35,5 +36,6 @@ router.use('/user', userRouter);
 router.use('/groups', groupsRouter);
 router.use('/users', usersRouter);
 router.use('/events', eventsRouter);
+router.use('/voice', voiceRouter);
 
 export default router;
