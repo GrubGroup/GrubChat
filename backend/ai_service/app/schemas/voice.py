@@ -85,6 +85,12 @@ class TurnResultFrame(BaseModel):
     agent_reply: str
     is_complete: bool = False
     degraded: bool = False
+    # DISPLAY-ONLY expansion of the cuisine lists for the "Noted so far" panel,
+    # mirroring AnalyzeResponse. extracted_signals stays COMPACT (the stored/echoed
+    # form the latency fix relies on) and the spoken line stays short; these carry
+    # the expanded members (asian -> chinese, japanese, ...) the panel renders.
+    display_preferred_cuisines: list[str] = Field(default_factory=list)
+    display_disliked_cuisines: list[str] = Field(default_factory=list)
 
 
 class SpeechEndFrame(BaseModel):

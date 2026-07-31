@@ -39,7 +39,7 @@ export function SessionTimer({ startedAt, minutes, onExpire }: SessionTimerProps
       className={cn(
         'inline-flex items-center gap-1.5 rounded-pill px-3 py-1 text-body font-semibold tabular-nums',
         expired
-          ? 'bg-error/10 text-error'
+          ? 'bg-error/10 text-error-text'
           : urgent
             ? 'bg-primary/10 text-primary-hover'
             : 'bg-surface-sunken text-text-muted',

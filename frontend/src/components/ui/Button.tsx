@@ -17,18 +17,21 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 // Visual decisions live here, not scattered in JSX. Semantic tokens only.
 // The wireframe uses DARK cocoa for primary CTAs; orange is an accent.
 // The hairline border is invisible on light mode (near-black button on light
-// page) but delineates the raised near-black CTA against the #000 page in dark
-// mode — the macOS-dark-button idiom. text-on-inverse (ivory in dark, white in
-// light) keeps it token-pure instead of a raw text-white.
+// page) but delineates the raised near-black CTA against the warm ink page in dark
+// mode — the macOS-dark-button idiom. The fill sits only 1.80:1 above the page,
+// so this hairline carries the edge: it measures 3.18:1 there and is the one
+// boundary in the app that meets WCAG 1.4.11. See --color-border-strong.
+// text-on-inverse (ivory in dark, white in light) keeps it token-pure instead
+// of a raw text-white.
 const variantClasses: Record<ButtonVariant, string> = {
   primary: 'border border-border-strong bg-surface-inverse text-on-inverse hover:opacity-90',
   accent: 'bg-primary text-on-primary hover:bg-primary-hover',
   secondary: 'bg-primary text-on-primary hover:bg-primary-hover',
   ghost: 'bg-transparent text-text hover:bg-surface-sunken',
-  danger: 'bg-error text-on-primary hover:opacity-90',
+  danger: 'bg-error text-on-error hover:opacity-90',
   // Light-red fill + darker red text — mirrors the "disliked" preference pill.
   // Destructive without shouting (sign out, etc.).
-  'danger-subtle': 'bg-error/12 text-error hover:bg-error/20',
+  'danger-subtle': 'bg-error/12 text-error-text hover:bg-error/20',
 }
 
 // Heights stay bespoke (touch targets); the LABEL sizes come off the type scale so

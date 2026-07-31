@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
-import { motion, useReducedMotion } from 'framer-motion'
+import { motion, useReducedMotion, type Variants } from 'framer-motion'
 import { Avatar, Badge, Button, Icon, Modal } from '@/components/ui'
 import { BottomTabBar, TabBarSpacer } from '@/components/layout/BottomTabBar'
 import { EASE } from '@/lib/motion'
@@ -12,6 +12,25 @@ import { useAuthStore } from '@/stores/authStore'
 import { memberColor } from '@/constants/memberColors'
 import { useProfileStore } from '@/stores/profileStore'
 import { useRestaurantStore } from '@/stores/restaurantStore'
+
+// Web-only staggered reveal for the profile blocks: as the page pushes in from
+// the rail, each block cascades in after the last. Applied only when `animate` is
+// on (desktop, motion allowed); on mobile / reduced-motion the blocks render
+// statically. Mirrors the section stagger used on the settings page.
+//
+// `hidden` doubles as the EXIT: clicking Back animates the container back to
+// `hidden`, so the same blocks cascade out — in reverse order (`staggerDirection`
+// -1) so it reads as the entrance played backwards. `when: 'afterChildren'` makes
+// the container's onAnimationComplete wait for every block, which is what triggers
+// the actual navigation (see the container below).
+const blocksContainer = {
+  hidden: { transition: { staggerChildren: 0.05, staggerDirection: -1, when: 'afterChildren' } },
+  show: { transition: { staggerChildren: 0.06, delayChildren: 0.08 } },
+}
+const blockItem: Variants = {
+  hidden: { opacity: 0, y: 12, transition: { duration: 0.25, ease: EASE } },
+  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: EASE } },
+}
 
 // Read-only profile view. Composes the domain User (header identity) with the
 // Profile (dining preferences). Mirrors the "[Orange] Profile" wireframe.
@@ -37,6 +56,9 @@ export function ProfilePage() {
   // gated behind a confirm modal, mirroring the "Leave group?" flow.
   const [confirmingSignOut, setConfirmingSignOut] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
+  // Web-only exit: clicking Back fades/drops the page out (mirroring the entrance)
+  // before we actually navigate, so the push in and the pop out feel symmetric.
+  const [leaving, setLeaving] = useState(false)
 
   const confirmSignOut = async () => {
     setSigningOut(true)
@@ -68,12 +90,23 @@ export function ProfilePage() {
   // from many screens, so there's no single origin. A 'default' location key means
   // this was the entry point (a deep link or a fresh reload) and there's nothing to
   // go back to, so fall through to the app's home instead of leaving the site.
-  const goBack = () =>
+  const doNavigateBack = () =>
     location.key === 'default' ? navigate('/groups') : navigate(-1)
+
+  // On desktop, run the exit animation first and navigate when it finishes (see
+  // onAnimationComplete below). On mobile / reduced-motion there's no entrance, so
+  // Back should navigate instantly — animating the exit alone would feel lopsided.
+  const goBack = () => {
+    if (animate) setLeaving(true)
+    else doNavigateBack()
+  }
 
   return (
     <motion.div
       className="h-dvh overflow-y-auto bg-surface-raised"
+      // Root stays fully opaque throughout — its `bg-surface-raised` is the page
+      // backdrop. Fading it out on exit revealed the (dark) app backdrop behind,
+      // since the previous route isn't mounted yet. Only the content cascades out.
       initial={animate ? { opacity: 0, y: 8 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={animate ? { duration: 0.3, ease: EASE } : { duration: 0 }}
@@ -112,10 +145,23 @@ export function ProfilePage() {
           </Button>
         </div>
 
-        <div className="flex flex-col gap-8 px-4 py-6 sm:px-8">
+        <motion.div
+          className="flex flex-col gap-8 px-4 py-6 sm:px-8"
+          variants={animate ? blocksContainer : undefined}
+          initial={animate ? 'hidden' : false}
+          animate={animate ? (leaving ? 'hidden' : 'show') : false}
+          onAnimationComplete={(def) => {
+            // Fires for both directions; only the exit cascade ('hidden' while
+            // leaving) should navigate.
+            if (leaving && def === 'hidden') doNavigateBack()
+          }}
+        >
           {/* Identity row — stacks below `sm`: the avatar + name + email and the
               "Preferences saved" confirmation can't share one 390px row. */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <motion.div
+            variants={animate ? blockItem : undefined}
+            className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+          >
             <div className="flex min-w-0 items-center gap-4">
               <Avatar
                 name={displayName}
@@ -145,7 +191,7 @@ export function ProfilePage() {
             <span className="flex shrink-0 items-center gap-1.5 text-body font-medium text-text-muted">
               <Icon name="check" size={14} /> Preferences saved
             </span>
-          </div>
+          </motion.div>
 
           {/* Account settings — MOBILE ONLY. At ≥md this is reached from the
               sidebar rail's AccountMenu, but that rail is hidden below `md`, so
@@ -164,7 +210,7 @@ export function ProfilePage() {
           </div>
 
           {/* Dietary needs */}
-          <Section label="Dietary needs">
+          <Section label="Dietary needs" variants={animate ? blockItem : undefined}>
             {allergyValues.length + dietValues.length === 0 ? (
               <Empty>No dietary needs set.</Empty>
             ) : (
@@ -184,7 +230,10 @@ export function ProfilePage() {
           </Section>
 
           {/* Budget + location card */}
-          <div className="overflow-hidden rounded-card border border-border">
+          <motion.div
+            variants={animate ? blockItem : undefined}
+            className="overflow-hidden rounded-card border border-border"
+          >
             <InfoRow
               icon="wallet"
               title="Typical budget"
@@ -202,10 +251,10 @@ export function ProfilePage() {
                   : 'Not set'
               }
             />
-          </div>
+          </motion.div>
 
           {/* Preferred cuisines */}
-          <Section label="Preferred cuisines">
+          <Section label="Preferred cuisines" variants={animate ? blockItem : undefined}>
             {preferred.length === 0 ? (
               <Empty>No preferred cuisines yet.</Empty>
             ) : (
@@ -220,7 +269,7 @@ export function ProfilePage() {
           </Section>
 
           {/* Disliked cuisines */}
-          <Section label="Disliked cuisines">
+          <Section label="Disliked cuisines" variants={animate ? blockItem : undefined}>
             {disliked.length === 0 ? (
               <Empty>Nothing to avoid.</Empty>
             ) : (
@@ -235,7 +284,7 @@ export function ProfilePage() {
           </Section>
 
           {/* Liked restaurants */}
-          <Section label="Liked restaurants">
+          <Section label="Liked restaurants" variants={animate ? blockItem : undefined}>
             {liked.length === 0 ? (
               <Empty>No favorites yet.</Empty>
             ) : (
@@ -254,7 +303,7 @@ export function ProfilePage() {
                           {r.price_avg != null ? ` · ~$${r.price_avg}` : ''}
                         </p>
                       </div>
-                      <Icon name="heart" size={18} filled className="text-primary" />
+                      <Icon name="heart" size={18} filled className="text-primary-text" />
                     </div>
                   </div>
                 ))}
@@ -276,7 +325,7 @@ export function ProfilePage() {
               Sign out
             </Button>
           </div>
-        </div>
+        </motion.div>
 
         {/* Sign-out confirmation — mirrors the "Leave group?" modal. */}
         <Modal
@@ -314,14 +363,24 @@ export function ProfilePage() {
   )
 }
 
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
+function Section({
+  label,
+  children,
+  variants,
+}: {
+  label: string
+  children: React.ReactNode
+  // Set by the page for the web-only staggered reveal; omitted on mobile /
+  // reduced-motion so the section renders statically.
+  variants?: Variants
+}) {
   return (
-    <section className="flex flex-col gap-3">
+    <motion.section className="flex flex-col gap-3" variants={variants}>
       <h3 className="text-overline font-semibold uppercase tracking-wide text-text-subtle">
         {label}
       </h3>
       {children}
-    </section>
+    </motion.section>
   )
 }
 
@@ -336,7 +395,7 @@ function InfoRow({
 }) {
   return (
     <div className="flex items-center gap-3 px-4 py-4">
-      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-sunken text-primary">
+      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-sunken text-primary-text">
         <Icon name={icon} size={16} />
       </span>
       <div>

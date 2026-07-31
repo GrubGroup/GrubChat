@@ -45,7 +45,7 @@ function MemberDot({
   return (
     <span
       className={cn(
-        'flex shrink-0 items-center justify-center rounded-pill font-semibold text-white ring-2',
+        'flex shrink-0 items-center justify-center rounded-pill font-semibold text-on-member ring-2',
         MEMBER_BG[i % MEMBER_BG.length],
         ring,
       )}
@@ -114,7 +114,7 @@ function Nav({ toSignIn, toSignUp }: { toSignIn: () => void; toSignUp: () => voi
         <div className="flex items-center gap-4">
           <button
             onClick={toSignIn}
-            className="text-[15px] font-semibold text-text transition-colors hover:text-primary"
+            className="text-[15px] font-semibold text-text transition-colors hover:text-primary-text"
           >
             Sign in
           </button>
@@ -162,7 +162,7 @@ function Hero({
             className="inline-flex items-center gap-2 rounded-pill border border-primary/30 bg-surface-panel px-3 py-1.5"
           >
             <span className="h-1.5 w-1.5 rounded-pill bg-primary" />
-            <span className="text-[12px] font-semibold tracking-wide text-primary">
+            <span className="text-[12px] font-semibold tracking-wide text-primary-text">
               VOICE-FIRST GROUP DINING
             </span>
           </motion.span>
@@ -171,7 +171,7 @@ function Hero({
             variants={fadeUp}
             className="mt-6 font-display text-[44px] font-extrabold leading-[1.02] tracking-tight sm:text-[64px]"
           >
-            The restaurant <span className="text-primary">everyone</span> agrees on.
+            The restaurant <span className="text-primary-text">everyone</span> agrees on.
           </motion.h1>
 
           <motion.p
@@ -280,7 +280,7 @@ function HeroCluster({ float, reduce }: { float: (d: number, dist?: number) => o
         rotate={-4}
         className="left-2 top-4 w-[62%] sm:left-4"
       >
-        <div className="rounded-[20px] border border-surface-sunken bg-surface-raised p-4 shadow-[0_24px_60px_rgba(26,18,8,0.12)]">
+        <div className="rounded-[20px] border border-surface-sunken bg-surface-raised p-4 shadow-[0_24px_60px_var(--shadow-tint-soft)]">
           <div className="mb-3 flex items-center gap-2">
             <div className="flex -space-x-1.5">
               {['MA', 'PR', 'TO'].map((n, i) => (
@@ -296,7 +296,7 @@ function HeroCluster({ float, reduce }: { float: (d: number, dist?: number) => o
           </div>
           <div className="mt-3 flex items-center gap-2 rounded-pill bg-surface-sunken py-1.5 pl-3 pr-1.5">
             <span className="flex-1 text-[12px] text-text-muted">Message the group…</span>
-            <span className="flex h-7 w-7 items-center justify-center rounded-pill bg-primary text-white">
+            <span className="flex h-7 w-7 items-center justify-center rounded-pill bg-primary text-on-primary">
               <Icon name="mic" size={13} />
             </span>
           </div>
@@ -310,8 +310,8 @@ function HeroCluster({ float, reduce }: { float: (d: number, dist?: number) => o
         rotate={2}
         className="right-1 top-0 w-[58%]"
       >
-        <div className="flex items-start gap-2.5 rounded-2xl border border-primary/25 bg-surface-raised p-3.5 shadow-[0_20px_50px_rgba(26,18,8,0.12)]">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+        <div className="flex items-start gap-2.5 rounded-2xl border border-primary/25 bg-surface-raised p-3.5 shadow-[0_20px_50px_var(--shadow-tint-soft)]">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary-text">
             <Icon name="sparkles" size={15} />
           </span>
           <p className="text-[12.5px] leading-snug">
@@ -327,9 +327,9 @@ function HeroCluster({ float, reduce }: { float: (d: number, dist?: number) => o
         rotate={4}
         className="bottom-2 right-0 w-[56%]"
       >
-        <div className="overflow-hidden rounded-[18px] bg-surface-raised shadow-[0_36px_80px_rgba(26,18,8,0.18)]">
+        <div className="overflow-hidden rounded-[18px] bg-surface-raised shadow-[0_36px_80px_var(--shadow-tint-strong)]">
           <div className="relative h-28 bg-gradient-to-br from-member-terracotta to-primary">
-            <span className="absolute left-3 top-3 rounded-pill bg-surface-raised px-2.5 py-1 text-[11px] font-bold text-primary">
+            <span className="absolute left-3 top-3 rounded-pill bg-surface-raised px-2.5 py-1 text-[11px] font-bold text-primary-text">
               98% match
             </span>
           </div>
@@ -337,7 +337,7 @@ function HeroCluster({ float, reduce }: { float: (d: number, dist?: number) => o
             <div className="flex items-center justify-between">
               <span className="text-[16px] font-bold">Verde Cocina</span>
               <span className="flex items-center gap-1 text-[13px] font-semibold">
-                <Icon name="star" size={13} className="text-primary" filled />
+                <Icon name="star" size={13} className="text-primary-text" filled />
                 4.8
               </span>
             </div>
@@ -359,7 +359,7 @@ function HeroCluster({ float, reduce }: { float: (d: number, dist?: number) => o
         rotate={-3}
         className="bottom-6 left-0 w-[46%]"
       >
-        <div className="rounded-2xl bg-surface-raised p-3.5 shadow-[0_24px_56px_rgba(26,18,8,0.14)]">
+        <div className="rounded-2xl bg-surface-raised p-3.5 shadow-[0_24px_56px_var(--shadow-tint-medium)]">
           <div className="flex items-center gap-2">
             <Icon name="wallet" size={15} />
             <span className="text-[12.5px] font-bold">Group cart · 4</span>
@@ -384,7 +384,7 @@ function ChatBubble({ children, me = false }: { children: ReactNode; me?: boolea
       <span
         className={cn(
           'max-w-[85%] rounded-2xl px-3 py-2 text-[12.5px] leading-snug',
-          me ? 'bg-surface-inverse text-white' : 'bg-surface-sunken text-text',
+          me ? 'bg-surface-inverse text-on-inverse' : 'bg-surface-sunken text-text',
         )}
       >
         {children}
@@ -423,7 +423,7 @@ function SocialBand() {
           {stats.map(([n, l], i) => (
             <div key={l} className="flex items-center gap-2">
               {i > 0 && <span className="mr-4 hidden h-5 w-px bg-border sm:block" />}
-              <span className="text-[15px] font-extrabold text-primary">{n}</span>
+              <span className="text-[15px] font-extrabold text-primary-text">{n}</span>
               <span className="text-[13px] font-medium text-text-muted">{l}</span>
             </div>
           ))}
@@ -487,10 +487,10 @@ function HowItWorksStatic() {
             whileInView="show"
             viewport={viewport}
             variants={fadeUp}
-            whileHover={reduce ? undefined : { y: -8, boxShadow: '0 24px 48px rgba(26,18,8,0.12)' }}
+            whileHover={reduce ? undefined : { y: -8 }}
             transition={{ type: 'spring', stiffness: 300, damping: 24 }}
             className={cn(
-              'group relative rounded-card bg-surface p-8 shadow-sm',
+              'group relative rounded-card bg-surface p-8 shadow-sm transition-shadow hover:shadow-[0_24px_48px_var(--shadow-tint-soft)]',
               // editorial stagger: middle card sits lower on desktop
               i === 1 && 'sm:mt-8',
             )}
@@ -499,7 +499,7 @@ function HowItWorksStatic() {
             <span className="pointer-events-none absolute -top-14 left-4 font-display text-[120px] font-extrabold leading-none text-text/[0.05] dark:text-text/[0.28]">
               {s.n}
             </span>
-            <span className="relative flex h-13 w-13 items-center justify-center rounded-2xl bg-primary-soft/25 text-primary">
+            <span className="relative flex h-13 w-13 items-center justify-center rounded-2xl bg-primary-soft/25 text-primary-text">
               <Icon name={s.icon} size={24} />
             </span>
             <p className="mt-4 text-[11px] font-semibold tracking-[0.1em] text-text-muted">{s.eyebrow}</p>
@@ -583,10 +583,10 @@ function HowItWorksPinned() {
                     style={{ opacity: motions[i].numOpacity, y: motions[i].numY }}
                     className="absolute inset-0 flex flex-col items-center justify-center"
                   >
-                    <span className="text-[12px] font-semibold tracking-[0.15em] text-primary">
+                    <span className="text-[12px] font-semibold tracking-[0.15em] text-primary-text">
                       {s.eyebrow}
                     </span>
-                    <span className="font-display text-[160px] font-extrabold leading-none text-primary lg:text-[240px]">
+                    <span className="font-display text-[160px] font-extrabold leading-none text-primary-text lg:text-[240px]">
                       {String(i + 1)}
                     </span>
                   </motion.div>
@@ -606,9 +606,9 @@ function HowItWorksPinned() {
                       y: motions[i].cardY,
                       scale: motions[i].cardScale,
                     }}
-                    className="absolute inset-0 flex flex-col justify-center rounded-[20px] border border-surface-sunken bg-surface-raised p-7 shadow-[0_36px_80px_rgba(26,18,8,0.18)] dark:border-border dark:bg-surface lg:p-8"
+                    className="absolute inset-0 flex flex-col justify-center rounded-[20px] border border-surface-sunken bg-surface-raised p-7 shadow-[0_36px_80px_var(--shadow-tint-strong)] dark:border-border dark:bg-surface lg:p-8"
                   >
-                    <span className="flex h-13 w-13 items-center justify-center rounded-2xl bg-primary-soft/25 text-primary">
+                    <span className="flex h-13 w-13 items-center justify-center rounded-2xl bg-primary-soft/25 text-primary-text">
                       <Icon name={s.icon} size={24} />
                     </span>
                     <p className="mt-4 text-[11px] font-semibold tracking-[0.1em] text-text-muted">
@@ -646,7 +646,7 @@ function HowItWorksPinned() {
               <span className="pointer-events-none absolute -top-14 left-4 font-display text-[120px] font-extrabold leading-none text-text/[0.05] dark:text-text/[0.28]">
                 {s.n}
               </span>
-              <span className="relative flex h-13 w-13 items-center justify-center rounded-2xl bg-primary-soft/25 text-primary">
+              <span className="relative flex h-13 w-13 items-center justify-center rounded-2xl bg-primary-soft/25 text-primary-text">
                 <Icon name={s.icon} size={24} />
               </span>
               <p className="mt-4 text-[11px] font-semibold tracking-[0.1em] text-text-muted">
@@ -688,7 +688,7 @@ function FeatureShowcase() {
             whileInView="show"
             viewport={viewport}
             variants={fadeUp}
-            className="relative overflow-hidden rounded-[20px] bg-surface-inverse p-8 text-white shadow-lg"
+            className="relative overflow-hidden rounded-[20px] bg-surface-inverse p-8 text-on-inverse shadow-lg"
           >
             <div className="absolute right-8 top-16 h-56 w-56 rounded-pill bg-primary/25 blur-[100px]" />
             <h3 className="relative font-display text-[24px] font-bold leading-tight">
@@ -699,18 +699,18 @@ function FeatureShowcase() {
                 {prefs.map((p) => (
                   <span
                     key={p.label}
-                    className="flex w-fit items-center gap-2 rounded-pill bg-white/10 py-1.5 pl-1.5 pr-3.5"
+                    className="flex w-fit items-center gap-2 rounded-pill bg-on-inverse/10 py-1.5 pl-1.5 pr-3.5"
                   >
                     <MemberDot i={p.i} size={22} ring="ring-transparent" />
                     <span className="text-[13px] font-medium">{p.label}</span>
                   </span>
                 ))}
               </div>
-              <Icon name="arrow-right" size={26} className="hidden text-primary sm:block" />
+              <Icon name="arrow-right" size={26} className="hidden text-primary-text sm:block" />
               <div className="overflow-hidden rounded-2xl bg-surface-raised text-text shadow-xl sm:ml-2 sm:w-64">
                 <div className="h-20 bg-gradient-to-br from-member-terracotta to-primary" />
                 <div className="p-3.5">
-                  <span className="rounded-pill bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">
+                  <span className="rounded-pill bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary-text">
                     96% match
                   </span>
                   <p className="mt-2 text-[15px] font-bold">Casa Verde</p>
@@ -718,7 +718,7 @@ function FeatureShowcase() {
                 </div>
               </div>
             </div>
-            <p className="relative mt-6 max-w-md text-[14px] leading-relaxed text-white/60">
+            <p className="relative mt-6 max-w-md text-[14px] leading-relaxed text-on-inverse/60">
               Everyone's needs, reconciled automatically — vegan, halal, budget, a two-mile radius.
             </p>
           </motion.div>
@@ -738,7 +738,7 @@ function FeatureShowcase() {
                   <div key={name}>
                     <div className="flex justify-between text-[12px]">
                       <span className="font-semibold">{name}</span>
-                      <span className={cn('font-bold', lead ? 'text-primary' : 'text-text-muted')}>{pct}%</span>
+                      <span className={cn('font-bold', lead ? 'text-primary-text' : 'text-text-muted')}>{pct}%</span>
                     </div>
                     <div className="mt-1 h-1.5 overflow-hidden rounded-pill bg-surface-sunken">
                       <div className="h-full rounded-pill bg-primary" style={{ width: `${pct}%` }} />
@@ -759,7 +759,7 @@ function FeatureShowcase() {
           className="mt-6 flex flex-col items-start gap-5 rounded-card bg-surface-panel p-6 shadow-inner sm:flex-row sm:items-center sm:justify-between"
         >
           <div className="flex items-center gap-4">
-            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-surface-inverse text-white">
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-surface-inverse text-on-inverse">
               <Icon name="user" size={22} />
             </span>
             <div>
@@ -769,7 +769,7 @@ function FeatureShowcase() {
           </div>
           <div className="flex flex-wrap gap-2">
             {['Vegan', 'No shellfish', '$$', '≤ 2 mi'].map((c) => (
-              <span key={c} className="rounded-pill bg-surface-inverse px-3 py-2 text-[13px] font-medium text-white">
+              <span key={c} className="rounded-pill bg-surface-inverse px-3 py-2 text-[13px] font-medium text-on-inverse">
                 {c}
               </span>
             ))}
@@ -802,11 +802,11 @@ function FeatureCard({
       whileInView="show"
       viewport={viewport}
       variants={fadeUp}
-      whileHover={reduce ? undefined : { y: -6, boxShadow: '0 20px 40px rgba(26,18,8,0.12)' }}
+      whileHover={reduce ? undefined : { y: -6 }}
       transition={{ type: 'spring', stiffness: 300, damping: 24 }}
-      className="rounded-card bg-surface-raised p-6 shadow-sm"
+      className="rounded-card bg-surface-raised p-6 shadow-sm transition-shadow hover:shadow-[0_20px_40px_var(--shadow-tint-soft)]"
     >
-      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary-soft/25 text-primary">
+      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary-soft/25 text-primary-text">
         <Icon name={icon} size={22} />
       </span>
       <h3 className="mt-4 font-display text-[19px] font-bold">{title}</h3>
@@ -823,7 +823,7 @@ function ProductInUse() {
   const cards = ['Verde Cocina', 'Casa Verde', "Nonna's", 'Sakura', 'Olive & Ash', 'Fuego']
   const pcts = ['98%', '94%', '91%', '88%', '85%', '82%']
   return (
-    <section id="discover" className="scroll-mt-[72px] relative overflow-hidden bg-surface-inverse px-6 py-20 text-white lg:px-8 lg:py-24">
+    <section id="discover" className="scroll-mt-[72px] relative overflow-hidden bg-surface-inverse px-6 py-20 text-on-inverse lg:px-8 lg:py-24">
       <div className="absolute left-1/2 top-40 h-96 w-[42rem] -translate-x-1/2 rounded-pill bg-primary/15 blur-[160px]" />
       <div className="relative mx-auto max-w-[1100px]">
         <SectionHeader eyebrow="SEE IT IN MOTION" title="Watch a group land on dinner." dark />
@@ -844,14 +844,14 @@ function ProductInUse() {
             {cards.map((name, i) => (
               <div key={name} className="overflow-hidden rounded-xl bg-surface">
                 <div className={cn('relative h-20', ['bg-member-terracotta', 'bg-primary', 'bg-member-amber', 'bg-member-pink', 'bg-member-green', 'bg-member-blue'][i])}>
-                  <span className="absolute left-2 top-2 rounded-pill bg-surface-raised px-1.5 py-0.5 text-[10px] font-bold text-primary">
+                  <span className="absolute left-2 top-2 rounded-pill bg-surface-raised px-1.5 py-0.5 text-[10px] font-bold text-primary-text">
                     {pcts[i]}
                   </span>
                 </div>
                 <div className="p-2.5 text-text">
                   <p className="text-[12px] font-bold">{name}</p>
                   <p className="flex items-center gap-1 text-[11px] text-text-muted">
-                    <Icon name="star" size={10} className="text-primary" filled /> 4.8 · $$
+                    <Icon name="star" size={10} className="text-primary-text" filled /> 4.8 · $$
                   </p>
                 </div>
               </div>
@@ -882,7 +882,7 @@ function EmotionalBenefit() {
           </p>
           <button
             onClick={() => scrollToId('how-it-works')}
-            className="mt-6 inline-flex items-center gap-2 text-[16px] font-semibold text-text transition-colors hover:text-primary"
+            className="mt-6 inline-flex items-center gap-2 text-[16px] font-semibold text-text transition-colors hover:text-primary-text"
           >
             See how it works <Icon name="arrow-right" size={18} />
           </button>
@@ -896,11 +896,11 @@ function EmotionalBenefit() {
         >
           <div className="flex -space-x-3">
             {[0, 1, 3, 4, 5].map((i) => (
-              <MemberDot key={i} i={i} initials={['MA', 'PR', 'TO', 'DE', 'CA'][[0, 1, 3, 4, 5].indexOf(i)]} size={56} ring="ring-white" />
+              <MemberDot key={i} i={i} initials={['MA', 'PR', 'TO', 'DE', 'CA'][[0, 1, 3, 4, 5].indexOf(i)]} size={56} ring="ring-on-inverse" />
             ))}
           </div>
           <div className="absolute -bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-2xl bg-surface-raised px-4 py-3 shadow-lg">
-            <span className="flex h-7 w-7 items-center justify-center rounded-pill bg-success/15 text-success">
+            <span className="flex h-7 w-7 items-center justify-center rounded-pill bg-success/15 text-success-text">
               <Icon name="check" size={16} />
             </span>
             <span className="text-[15px] font-bold">Planned in 30 seconds</span>
@@ -922,13 +922,13 @@ function FinalCta({ toSignUp }: { toSignUp: () => void }) {
         whileInView="show"
         viewport={viewport}
         variants={fadeUp}
-        className="relative mx-auto flex max-w-[1000px] flex-col items-center overflow-hidden rounded-[28px] bg-surface-inverse px-8 py-16 text-center text-white shadow-xl"
+        className="relative mx-auto flex max-w-[1000px] flex-col items-center overflow-hidden rounded-[28px] bg-surface-inverse px-8 py-16 text-center text-on-inverse shadow-xl"
       >
         <div className="absolute left-1/2 top-8 h-64 w-96 -translate-x-1/2 rounded-pill bg-primary/22 blur-[120px]" />
         <h2 className="relative font-display text-[36px] font-extrabold leading-tight sm:text-[42px]">
-          The restaurant <span className="text-primary">everyone</span> agrees on.
+          The restaurant <span className="text-primary-text">everyone</span> agrees on.
         </h2>
-        <p className="relative mt-4 max-w-lg text-[17px] text-white/60">
+        <p className="relative mt-4 max-w-lg text-[17px] text-on-inverse/60">
           Start a session, invite your group, and let the agents do the rest.
         </p>
         <Button
@@ -940,7 +940,7 @@ function FinalCta({ toSignUp }: { toSignUp: () => void }) {
         >
           Start a session
         </Button>
-        <p className="relative mt-4 text-[13px] font-medium text-white/40">
+        <p className="relative mt-4 text-[13px] font-medium text-on-inverse/60">
           Free to start · Guest mode, no account needed.
         </p>
       </motion.div>
@@ -958,13 +958,13 @@ function Footer() {
     { title: 'Legal', links: ['Privacy', 'Terms'] },
   ]
   return (
-    <footer className="bg-surface-inverse px-6 pb-10 pt-16 text-white lg:px-8">
+    <footer className="bg-surface-inverse px-6 pb-10 pt-16 text-on-inverse lg:px-8">
       <div className="mx-auto max-w-[1200px]">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.5fr_repeat(4,1fr)]">
           <div>
             <Wordmark dark />
-            <p className="mt-4 max-w-xs text-[15px] text-white/60">The restaurant everyone agrees on.</p>
-            <p className="mt-3 text-[14px] text-white/40">hello@grubgroup.app</p>
+            <p className="mt-4 max-w-xs text-[15px] text-on-inverse/60">The restaurant everyone agrees on.</p>
+            <p className="mt-3 text-[14px] text-on-inverse/60">hello@grubgroup.app</p>
           </div>
           {cols.map((c) => (
             <div key={c.title}>
@@ -972,15 +972,15 @@ function Footer() {
               <ul className="mt-3 flex flex-col gap-3">
                 {c.links.map((l) => (
                   <li key={l}>
-                    <button className="text-[14px] text-white/50 transition-colors hover:text-white">{l}</button>
+                    <button className="text-[14px] text-on-inverse/60 transition-colors hover:text-on-inverse">{l}</button>
                   </li>
                 ))}
               </ul>
             </div>
           ))}
         </div>
-        <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-white/[0.06] pt-6 sm:flex-row">
-          <span className="text-[13px] text-white/40">© 2026 GrubChat</span>
+        <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-on-inverse/[0.06] pt-6 sm:flex-row">
+          <span className="text-[13px] text-on-inverse/60">© 2026 GrubChat</span>
           <div className="flex gap-2">
             {[0, 1, 2, 3, 4, 5].map((i) => (
               <span key={i} className={cn('h-2.5 w-2.5 rounded-pill', MEMBER_BG[i])} />
@@ -1013,8 +1013,8 @@ function SectionHeader({
       variants={fadeUp}
       className={cn('flex flex-col gap-3', align === 'center' ? 'items-center text-center' : 'items-start text-left')}
     >
-      <span className="text-[12px] font-semibold tracking-[0.15em] text-primary">{eyebrow}</span>
-      <h2 className={cn('font-display text-[32px] font-extrabold sm:text-[38px]', dark ? 'text-white' : 'text-text')}>
+      <span className="text-[12px] font-semibold tracking-[0.15em] text-primary-text">{eyebrow}</span>
+      <h2 className={cn('font-display text-[32px] font-extrabold sm:text-[38px]', dark ? 'text-on-inverse' : 'text-text')}>
         {title}
       </h2>
     </motion.div>

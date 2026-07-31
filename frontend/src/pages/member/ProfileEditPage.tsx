@@ -30,12 +30,13 @@ export function ProfileEditPage() {
   const user = useAuthStore((s) => s.user)
   const patchUser = useAuthStore((s) => s.patchUser)
 
-  // Back/Cancel return to the profile view. Pop history (navigate(-1)) rather than
-  // pushing /profile — a push leaves a dangling /profile/edit entry that ProfilePage's
-  // own Back then returns to, trapping the user in a profile ↔ edit loop that never
-  // reaches /groups. A 'default' key means the editor was the entry point (deep link /
-  // refresh) with nothing to pop, so fall back to the profile view.
-  const goBack = () => (location.key === 'default' ? navigate('/profile') : navigate(-1))
+  // Leaving the editor (Back, Cancel, and Save) returns to the profile view by popping
+  // history (navigate(-1)) rather than pushing /profile — a push leaves a dangling
+  // /profile/edit entry that the profile view's own Back then returns to, trapping the
+  // user in a profile ↔ edit loop that never reaches /groups. A 'default' key means the
+  // editor was the entry point (deep link / refresh) with nothing to pop, so replace it
+  // with the profile view (replace, not push, so Back still can't land back on the editor).
+  const goBack = () => (location.key === 'default' ? navigate('/profile', { replace: true }) : navigate(-1))
 
   const profile = useProfileStore((s) => s.profile)
   const load = useProfileStore((s) => s.load)
@@ -107,7 +108,7 @@ export function ProfileEditPage() {
       setFormError('Could not save your preferences. Please try again.')
       return
     }
-    navigate('/profile')
+    goBack()
   }
 
   const displayNameLabel = displayName || user?.username || 'You'
@@ -256,7 +257,7 @@ export function ProfileEditPage() {
             />
           </Field>
 
-          {formError && <p className="text-body text-error">{formError}</p>}
+          {formError && <p className="text-body text-error-text">{formError}</p>}
 
           {/* Actions — reversed and stacked below `sm` so Save is the wide button
               closest to the thumb, with Cancel beneath it. */}

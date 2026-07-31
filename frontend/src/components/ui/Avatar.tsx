@@ -54,8 +54,8 @@ export function Avatar({ name, src, size = 'md', status, colorClass, className }
     <span
       className={cn(
         'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-pill',
-        'font-semibold text-white',
-        colorClass ? colorClasses[colorClass] : 'bg-secondary',
+        'font-semibold text-on-member',
+        colorClass ? colorClasses[colorClass] : 'bg-member-terracotta',
         sizeClasses[size],
         status && statusRing[status],
         className,

@@ -51,7 +51,7 @@ export function NotFoundPage() {
       <div className="relative flex flex-col items-center">
         <img src={unsetTable} alt="" className="h-[120px] w-[140px]" />
 
-        <p className="mt-5 font-display text-[96px] font-extrabold leading-none text-primary">404</p>
+        <p className="mt-5 font-display text-[96px] font-extrabold leading-none text-primary-text">404</p>
 
         <h1 className="mt-2 font-display text-display font-bold text-text">
           This table isn&rsquo;t set

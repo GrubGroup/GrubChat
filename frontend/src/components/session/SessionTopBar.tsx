@@ -44,7 +44,7 @@ export function SessionTopBar({ groupId, label = 'Your food agent' }: SessionTop
       )}
     >
       <div className="flex items-center gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-pill bg-surface-inverse text-[11px] text-white">
+        <span className="flex h-6 w-6 items-center justify-center rounded-pill bg-surface-inverse text-[11px] text-on-inverse">
           🍽
         </span>
         <span className="flex items-center gap-1.5 text-body font-semibold text-text">

@@ -80,7 +80,7 @@ export function GroupMessageRow({ message, currentUserId, isNew = false, members
         <span className="shrink-0 text-caption-touch text-text-muted md:text-caption">{time}</span>
         {/* break-words: an unbroken run (a pasted URL) would otherwise blow past
             the bubble and give the whole page horizontal scroll at 390px. */}
-        <div className="max-w-[70%] break-words rounded-2xl rounded-tr-md bg-surface-inverse px-4 py-2.5 text-body-touch text-white md:px-3.5 md:py-2 md:text-body">
+        <div className="max-w-[70%] break-words rounded-2xl rounded-tr-md bg-surface-inverse px-4 py-2.5 text-body-touch text-on-inverse md:px-3.5 md:py-2 md:text-body">
           {message.text}
         </div>
       </div>

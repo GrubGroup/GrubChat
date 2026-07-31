@@ -226,7 +226,7 @@ export function AgentChatPage({ done = false }: AgentChatPageProps) {
   if (binding !== 'bound') {
     return (
       <div className="flex h-screen items-center justify-center bg-surface">
-        <Spinner size="lg" className="text-primary" />
+        <Spinner size="lg" className="text-primary-text" />
       </div>
     )
   }
@@ -240,7 +240,7 @@ export function AgentChatPage({ done = false }: AgentChatPageProps) {
         <GroupsSidebar />
 
         {/* Center: chat (always visible) */}
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col bg-chat-canvas">
           {/* MOBILE dark header (<md) — the same identity + back affordance, using
               the shared header so its 44px chevron and notch padding come free. */}
           <MobileHeader
@@ -257,19 +257,22 @@ export function AgentChatPage({ done = false }: AgentChatPageProps) {
 
           {/* DESKTOP dark chat header (≥md) — matches column header height */}
           <div
-            className={cn('hidden items-center gap-3 bg-surface-inverse px-4 md:flex', COLUMN_HEADER_H)}
+            className={cn(
+              'hidden items-center gap-3 border-b border-on-header/10 bg-surface-header px-4 md:flex',
+              COLUMN_HEADER_H,
+            )}
           >
             <button
               onClick={() => navigate(`/groups/${groupSlug}`)}
-              className="flex h-8 w-8 items-center justify-center rounded-pill text-white/80 hover:bg-white/10"
+              className="flex h-8 w-8 items-center justify-center rounded-pill text-on-header/80 hover:bg-on-header/10"
             >
               <Icon name="chevron-left" size={18} />
             </button>
             <div>
-              <p className="flex items-center gap-1.5 text-overline uppercase tracking-wide text-white/50">
+              <p className="flex items-center gap-1.5 text-overline uppercase tracking-wide text-on-header/50">
                 <Icon name="lock" size={10} /> Private · only you can see this
               </p>
-              <p className="text-body font-semibold text-white">Your food agent</p>
+              <p className="text-body font-semibold text-on-header">Your food agent</p>
             </div>
           </div>
 
@@ -312,7 +315,7 @@ export function AgentChatPage({ done = false }: AgentChatPageProps) {
                   the user to finish while making clear they can still make changes. */}
               {allSet && (
                 <div className="mx-4 mt-2 flex items-start gap-2 rounded-input border border-success/40 bg-success/10 px-3 py-2 text-caption text-text">
-                  <span className="mt-0.5 text-success">
+                  <span className="mt-0.5 text-success-text">
                     <Icon name="check" size={14} />
                   </span>
                   <span>
