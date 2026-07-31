@@ -1,25 +1,28 @@
 # Reflection #3
 
-Pod Members: **Add Pod Members Names**
+Pod Members: **Della Lee, Daniel Lam, Audrey Dequito, Miguel Cuevas**
 
 ## Reflection Questions
 
-* Name at least one successful thing this week.
 
- Add response here
+* Name at least one thing that went well this sprint.
+We worked on fixing all the bugs we came across (avatar image mismatch, session force finish not working, routing issues). We also were able to add more features such as voice model (speach to text/ text to speach) and resturant explore page. We also added mobile responsiveness. AI latency for AI recommendation has also been fixed, previously it took 30 seconds to recommend a resturant, but now it takes around 5 seconds. We also did a rebrand from GrubGroup to GrubChat as well as adding the logo for the website. 
 
-* What were some challenges you and/or your group faced this week?
+* What challenges did your team face?
+Some of the challenges we faced were coming across a lot of minor bugs that we needed to fix.
 
- Add response here
 
-* Did you finish all of your tasks in your sprint plan for this week? If you did not finish all of the planned tasks, how would you prioritize the remaining tasks on your list?  (i.e over planned, did not know how to implement certain features, miscommunication from the team, had to pivot from original plans, etc.)
+* Did you finish all of your planned tasks? If not, what contributed to that?
+We finished most of our planned task. There were some minor bugs we still need to finish today, but most of the major task we planned (adding voice feature and resturant explore feature) were able to get done. 
 
- Add response here
 
-* Did the resources provided to you help prepare you in planning and executing your capstone project sprint this week? Be specific, what resources did you find particularly helpful or which tasks did you need more support on?
+* What did the spec audit during the bug bash surface? Were there significant gaps between documented and actual behavior, and how did you address them? Is the Spec Reconciliation — Bug Bash section committed to your repo?
+During bug bash, we were able to find bugs (edit profile page routing issue, etc). There wasn't a significant gap between the documented and actual behavior as we keep an up to date documentation and spec while we are working thorugh our features. 
+Yes, bug bash section is commited to our repo. 
 
- Add response here
+* Going into Sprint 4, is your master spec accurate? What sections still need updating?
+The master spec is accurate and up to date. 
 
-* Which features and user stories would you consider “at risk”? How will you change your plan if those items remain “at risk”?
 
- Add response here
+* Which features and user stories are "at risk"? How will you change your plan for the final sprint?
+Some of our stretch features won't get implemented. For example, the entire admin milestone and the restaurant owner view. We expected going in that a few stretch features wouldn't make it due to time constraints, so this isn't a surprise. Our core feature is implemented end to end, along with some stretch features (voice, restaurant explore), so dropping these is fine.
