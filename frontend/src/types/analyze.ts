@@ -55,6 +55,14 @@ export interface AnalyzeResponse {
   // on the wire so an older gateway/ai_service without the field degrades to the
   // missingSignals-empty inference in the store.
   is_complete?: boolean
+  // DISPLAY-ONLY expansion of the cuisine lists for the "Noted so far" panel.
+  // `extracted_signals` stays COMPACT (a broad answer is the group key "asian",
+  // which keeps the analyze turn fast and the spoken reply short); these carry the
+  // concrete members that key covers (asian -> chinese, japanese, ...) — exactly
+  // what the orchestrator ranks on — so the panel can show them. Optional so an
+  // older backend without them degrades to rendering the compact list.
+  display_preferred_cuisines?: string[]
+  display_disliked_cuisines?: string[]
 }
 
 // Request body for POST /api/sessions — the host pre-session modal answers.

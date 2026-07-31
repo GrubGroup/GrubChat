@@ -135,3 +135,14 @@ class AnalyzeResponse(BaseModel):
     qa_updated: bool
     agent_reply: str
     missing_signals: list[str] = Field(default_factory=list)
+    # DISPLAY-ONLY expansion of the cuisine lists, for the "Noted so far" panel.
+    # `extracted_signals` stays COMPACT — a broad answer is stored/echoed as its
+    # group key ("asian"), which keeps the analyze turn's output small (the voice
+    # latency fix) and the spoken reply short. But the UI wants to SHOW the diner
+    # the concrete cuisines a group covers (asian -> chinese, japanese, ...), which
+    # is also exactly what the orchestrator ranks on. So we expand here with the
+    # SAME expand_cuisine_terms the orchestrator uses (single source of truth, no
+    # frontend taxonomy copy) and ship it alongside. Ambiguous free-text answers
+    # ("noodles", "greasy food") have no group and pass through unchanged.
+    display_preferred_cuisines: list[str] = Field(default_factory=list)
+    display_disliked_cuisines: list[str] = Field(default_factory=list)
