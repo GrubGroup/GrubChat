@@ -303,7 +303,7 @@ export function ProfilePage() {
                           {r.price_avg != null ? ` · ~$${r.price_avg}` : ''}
                         </p>
                       </div>
-                      <Icon name="heart" size={18} filled className="text-primary" />
+                      <Icon name="heart" size={18} filled className="text-primary-text" />
                     </div>
                   </div>
                 ))}
@@ -395,7 +395,7 @@ function InfoRow({
 }) {
   return (
     <div className="flex items-center gap-3 px-4 py-4">
-      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-sunken text-primary">
+      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-sunken text-primary-text">
         <Icon name={icon} size={16} />
       </span>
       <div>

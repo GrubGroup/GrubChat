@@ -27,6 +27,7 @@ from app.ai.llm.client import chat_completion, strip_json_fence
 from app.ai.llm.prompts import build_preference_turn_messages
 from app.core.config import settings
 from app.ai.taxonomy import (
+    compact_cuisine_terms,
     expand_cuisine_terms,
     expand_group_terms_only,
     normalize_dietary_terms,
@@ -128,34 +129,47 @@ def _merge_cuisine_field(
     parsed_list: list[str] | None,
     removals: list[str],
 ) -> list[str]:
-    """Merge one cuisine list: expand group/style terms, then apply removals.
+    """Merge one cuisine list: store COMPACT group/style keys, apply removals.
+
+    Cuisine signals are stored **compact** — a broad answer is kept as its group
+    key ("asian"), NOT the 20 member cuisines it covers. Expansion into concrete,
+    retrieval-matchable tags happens later, at READ time, in
+    ``orchestrator_agent._reconcile`` (``expand_cuisine_terms``), which is
+    idempotent — so a legacy row that was stored expanded still yields the same
+    weights. Keeping the stored form compact is a LATENCY fix: the analyze prompt
+    asks the model to echo the FULL updated list each turn (the REPLACE contract
+    that makes corrections work), and latency here is output-token-bound
+    (~13 ms/token). Echoing 21 tags for "asian" every turn made each later
+    question progressively slower; echoing just "asian" keeps every turn flat.
 
     Handles the four USER-INTENT shapes the prompt promises (answer / correct /
     add / remove) with one rule set:
 
       * ANSWER / ADD / CORRECT: when the model returns a list, it is the FULL
         intended set (the prompt asks for the complete corrected list), so it
-        REPLACES the prior list. We expand broad terms ("asian" -> its member
-        cuisines, "bbq" -> barbecue/bbq/grill) so the stored tags actually match
-        restaurants. A correction therefore drops the stale tag simply because
-        the model left it out of the returned list.
+        REPLACES the prior list — normalized only, NOT expanded. A correction
+        drops the stale tag simply because the model left it out of the returned
+        list. (A "like the group except one member" turn is expressed naturally
+        as the group key in preferred + the member in disliked, which
+        ``_reconcile`` at read time nets to zero for that member.)
       * REMOVE: the model also reports dropped values in a removed_* list. When
         it returned a replacement list, the removal is applied LITERALLY as a
-        backstop (the model already excluded it; we just enforce it) — this is
-        safe even when a kept cuisine overlaps a removed group. When the model
-        OMITTED the list (a pure "drop X" turn), we carry the prior list and
-        expand the removal at the GROUP level only (expand_group_terms_only), so
-        dropping a whole group ("no asian") removes every member, while dropping
-        a STYLE ("no seafood") stays literal and never deletes a standalone tag
-        that merely shares that style's alias (e.g. a separately-liked "sushi").
+        backstop (the model already excluded it; we just enforce it). When the
+        model OMITTED the list (a pure "drop X" turn), we carry the prior list
+        and expand the removal at the GROUP level only (expand_group_terms_only),
+        so dropping a whole group ("no asian") also clears any legacy row that had
+        been stored as expanded members, while dropping a STYLE ("no seafood")
+        stays literal and never deletes a standalone tag that merely shares that
+        style's alias (e.g. a separately-liked "sushi").
     """
     if parsed_list is not None:
-        base = expand_cuisine_terms(parsed_list)
+        base = _dedupe_lower(parsed_list)  # compact: normalize, do NOT expand
         drop = set(_dedupe_lower(removals))  # literal backstop, no expansion
     else:
         base = list(prior)
-        # Group-only expansion: whole cuisine groups cascade; styles/specifics
-        # remove only themselves (see expand_group_terms_only).
+        # Group-only expansion: whole cuisine groups cascade (so a whole-group
+        # removal also clears any legacy expanded row); styles/specifics remove
+        # only themselves (see expand_group_terms_only).
         drop = set(expand_group_terms_only(removals))
 
     return [tag for tag in base if tag not in drop]
@@ -191,6 +205,40 @@ def _dedupe_lower(tags: Any) -> list[str]:
         if tag and tag not in out:
             out.append(tag)
     return out
+
+
+def _drop_conflicts(losing: list[str], added_expanded: set[str]) -> list[str]:
+    """Remove cuisines from ``losing`` that conflict — after taxonomy expansion —
+    with the set the user just added to the OPPOSITE side (the side they just
+    spoke to wins).
+
+    Because cuisines are now stored COMPACT (group keys, not their members), a
+    conflict can hide inside a group key: disliking "asian" then liking "chinese"
+    doesn't overlap literally, but does once "asian" expands to its members. When
+    a compact entry partially conflicts, it is materialized to just its
+    NON-conflicting members — the umbrella/group key itself is dropped so the
+    orchestrator's read-time ``expand_cuisine_terms`` can't re-introduce the
+    conflicting member. A non-conflicting entry stays compact (preserving the
+    latency win). Without this, the orchestrator's +/-QA weights for the
+    conflicting cuisine cancel to 0.0, silently neutralizing the fresh preference.
+
+    This generalizes the old literal ``t not in added`` purge, which only worked
+    back when signals were stored pre-expanded.
+    """
+    if not added_expanded:
+        return losing
+    result: list[str] = []
+    for tag in losing:
+        expanded = expand_cuisine_terms([tag])
+        if added_expanded.isdisjoint(expanded):
+            result.append(tag)  # no conflict — keep it compact
+        else:
+            # Partial/exact conflict: keep only the members that don't conflict,
+            # dropping the group key (m == tag) so it isn't re-expanded at read.
+            result.extend(
+                m for m in expanded if m not in added_expanded and m != tag
+            )
+    return _dedupe_lower(result)
 
 
 def _coerce_int(value: Any) -> int | None:
@@ -241,16 +289,39 @@ def _reconcile(prior: ExtractedSignals, parsed: dict[str, Any]) -> ExtractedSign
     # both-lists state from earlier turns is left alone. Without this, the model
     # omitting the opposite list leaves a tag in both, and the orchestrator's
     # +2/-2 QA weights cancel to 0.0, silently neutralizing the fresh preference.
-    added_pref = set(signals.preferred_cuisines) - set(prior.preferred_cuisines)
-    added_dis = set(signals.disliked_cuisines) - set(prior.disliked_cuisines)
+    #
+    # Conflicts are resolved in EXPANDED taxonomy space (via _drop_conflicts):
+    # cuisines are stored compact now, so disliking a group ("asian") then liking
+    # a member ("chinese") only collides once expanded — a literal set purge on
+    # the compact tags would miss it and let the read-time weights cancel.
+    added_pref = expand_cuisine_terms(
+        set(signals.preferred_cuisines) - set(prior.preferred_cuisines)
+    )
+    added_dis = expand_cuisine_terms(
+        set(signals.disliked_cuisines) - set(prior.disliked_cuisines)
+    )
     if added_pref:
-        signals.disliked_cuisines = [
-            t for t in signals.disliked_cuisines if t not in added_pref
-        ]
+        signals.disliked_cuisines = _drop_conflicts(
+            signals.disliked_cuisines, set(added_pref)
+        )
     if added_dis:
-        signals.preferred_cuisines = [
-            t for t in signals.preferred_cuisines if t not in added_dis
-        ]
+        signals.preferred_cuisines = _drop_conflicts(
+            signals.preferred_cuisines, set(added_dis)
+        )
+
+    # Storage-normalize to the COMPACT form: if the model expanded a group
+    # ("asian" -> its 20 members) despite the prompt, collapse it back to the key
+    # so the stored/echoed list stays small (the output-token latency fix). Done
+    # AFTER flip resolution so each side's `blocked` opposite list is final — a
+    # group whose members were split across like/dislike is left explicit rather
+    # than snapping back to the umbrella and cancelling at read. Lossless: the key
+    # re-expands to the full member set in orchestrator_agent._reconcile.
+    signals.preferred_cuisines = compact_cuisine_terms(
+        signals.preferred_cuisines, blocked=signals.disliked_cuisines
+    )
+    signals.disliked_cuisines = compact_cuisine_terms(
+        signals.disliked_cuisines, blocked=signals.preferred_cuisines
+    )
     # Dietary: controlled-vocabulary synonyms, no group expansion.
     signals.dietary_restrictions = _merge_dietary_field(
         prior.dietary_restrictions,
@@ -381,6 +452,27 @@ _ANALYZE_MAX_TOKENS_FAST = 512
 _ANALYZE_MAX_TOKENS_FULL = 1024
 
 
+def _reasoning_off(provider: str) -> dict[str, Any] | None:
+    """OpenRouter reasoning-disable knob for `provider`, else None.
+
+    The analyze/extraction turn wants a direct JSON answer, not hidden reasoning.
+    On a reasoning model (gemini-2.5-flash and claude-sonnet-5 both are, via
+    OpenRouter) the model otherwise spends OUTPUT tokens — the latency-dominant
+    resource here (~13 ms/token) — on a thinking phase before the JSON, and on a
+    tight max_tokens budget can even exhaust it and return empty
+    (finish_reason="length"), which forces a degraded turn. Turning reasoning off
+    makes it emit the JSON directly: faster, and no spurious degradation. This is
+    the same knob orchestrate() uses on its re-rank. Only OpenRouter understands
+    it, so other providers (e.g. the Salesforce gateway, not a runaway-reasoning
+    model) get None and are left untouched.
+    """
+    return (
+        {"reasoning": {"enabled": False}}
+        if provider.strip().lower() == "openrouter"
+        else None
+    )
+
+
 async def analyze_turn(
     message: str,
     *,
@@ -437,16 +529,21 @@ async def analyze_turn(
     # name is only valid for its own provider, and the measured speedup came from
     # the pair (the same model was ~3x slower through the other gateway).
     if fast:
+        provider = settings.active_extraction_provider
         raw = await chat_completion(
             messages,
             temperature=0.2,
-            provider=settings.active_extraction_provider,
+            provider=provider,
             model=settings.active_extraction_model,
             max_tokens=_ANALYZE_MAX_TOKENS_FAST,
+            extra_body=_reasoning_off(provider),
         ) or ""
     else:
         raw = await chat_completion(
-            messages, temperature=0.2, max_tokens=_ANALYZE_MAX_TOKENS_FULL
+            messages,
+            temperature=0.2,
+            max_tokens=_ANALYZE_MAX_TOKENS_FULL,
+            extra_body=_reasoning_off(settings.llm_provider),
         ) or ""
 
     try:

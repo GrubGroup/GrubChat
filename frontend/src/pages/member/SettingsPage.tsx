@@ -339,7 +339,7 @@ export function SettingsPage() {
                     !canEditCredentials ? (
                       <span className="text-xs text-text-muted">Managed by Google</span>
                     ) : emailSaved ? (
-                      <span className="text-xs text-success">Email updated</span>
+                      <span className="text-xs text-success-text">Email updated</span>
                     ) : undefined
                   }
                 />
@@ -372,7 +372,7 @@ export function SettingsPage() {
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Re-enter new password"
                   />
-                  {pwError && <p className="text-sm text-error">{pwError}</p>}
+                  {pwError && <p className="text-sm text-error-text">{pwError}</p>}
                   <div className="flex justify-end gap-2">
                     <Button variant="ghost" size="sm" onClick={cancelPassword} disabled={pwSaving}>
                       Cancel
@@ -394,7 +394,7 @@ export function SettingsPage() {
                     !canEditCredentials ? (
                       <span className="text-xs text-text-muted">Managed by Google</span>
                     ) : pwSaved ? (
-                      <span className="text-xs text-success">Password updated</span>
+                      <span className="text-xs text-success-text">Password updated</span>
                     ) : undefined
                   }
                 />
@@ -413,11 +413,11 @@ export function SettingsPage() {
                     {!authMethodsLoaded ? (
                       <span className="text-xs text-text-muted">Checking…</span>
                     ) : googleConnected ? (
-                      <span className="text-xs text-success">Connected · {connectedEmail}</span>
+                      <span className="text-xs text-success-text">Connected · {connectedEmail}</span>
                     ) : (
                       <span className="text-xs text-text-muted">Not connected</span>
                     )}
-                    {linkError && <span className="text-xs text-error">{linkError}</span>}
+                    {linkError && <span className="text-xs text-error-text">{linkError}</span>}
                   </div>
                 </div>
                 {authMethodsLoaded && !googleConnected && (
@@ -440,7 +440,7 @@ export function SettingsPage() {
             <div className="overflow-hidden rounded-card border border-border">
               <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-sunken text-primary">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-sunken text-primary-text">
                     <Icon name="moon" size={18} />
                   </span>
                   <div className="flex flex-col gap-0.5">
@@ -460,7 +460,7 @@ export function SettingsPage() {
             <div className="overflow-hidden rounded-card border border-border">
               <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-sunken text-primary">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-sunken text-primary-text">
                     <Icon name="speaker" size={18} />
                   </span>
                   <div className="flex flex-col gap-0.5">
@@ -490,7 +490,7 @@ export function SettingsPage() {
           <Section label="Danger zone" variants={animate ? sectionItem : undefined}>
             <div className="flex items-center justify-between gap-3 rounded-card border border-error/30 bg-error/[0.05] px-4 py-4">
               <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-semibold text-error">Delete account</span>
+                <span className="text-sm font-semibold text-error-text">Delete account</span>
                 <span className="text-sm text-text-muted">
                   Delete your account and remove yourself from all groups
                 </span>
@@ -527,7 +527,7 @@ export function SettingsPage() {
               freed up for future sign-ups.
             </p>
           </div>
-          {deleteError && <p className="text-sm text-error">{deleteError}</p>}
+          {deleteError && <p className="text-sm text-error-text">{deleteError}</p>}
           <div className="flex justify-end gap-2">
             <Button
               variant="ghost"

@@ -30,10 +30,10 @@ export function Wordmark({ size = 'md', dark = false, showTile = true, className
   const s = SIZES[size]
   return (
     <div className={cn('flex items-center gap-2.5', className)}>
-      {showTile && <BrandMark size={s.mark} className={dark ? 'text-white' : 'text-text'} />}
+      {showTile && <BrandMark size={s.mark} className={dark ? 'text-on-inverse' : 'text-text'} />}
       <span className={cn('font-display font-extrabold leading-none', s.text)}>
-        <span className={dark ? 'text-white' : 'text-text'}>Grub</span>
-        <span className="text-primary">Chat</span>
+        <span className={dark ? 'text-on-inverse' : 'text-text'}>Grub</span>
+        <span className="text-primary-text">Chat</span>
       </span>
     </div>
   )

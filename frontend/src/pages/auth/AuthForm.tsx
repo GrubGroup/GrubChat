@@ -260,7 +260,7 @@ export function AuthForm({ mode }: AuthFormProps) {
         </div>
       </div>
 
-      {error && <p className="text-body text-error">{error}</p>}
+      {error && <p className="text-body text-error-text">{error}</p>}
 
       <Button fullWidth variant="primary" onClick={handleSubmit} isLoading={loading}>
         {isSignup ? 'Create account' : 'Sign in'}
@@ -276,7 +276,7 @@ export function AuthForm({ mode }: AuthFormProps) {
         {isSignup ? 'Already have an account? ' : "Don't have an account? "}
         <button
           onClick={() => navigate(isSignup ? '/login' : '/signup')}
-          className="font-semibold text-text hover:text-primary"
+          className="font-semibold text-text hover:text-primary-text"
         >
           {isSignup ? 'Sign in' : 'Sign up'}
         </button>

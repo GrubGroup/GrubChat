@@ -87,7 +87,7 @@ export function RankedRestaurantCard({
           <div className="flex items-center justify-between gap-2">
             <span className="font-display text-[15px] font-semibold text-text">{restaurant.name}</span>
             {pct != null && (
-              <span className="font-display text-section-title font-bold text-primary">
+              <span className="font-display text-section-title font-bold text-primary-text">
                 <AnimatedPct value={pct} />
                 <span className="text-caption">%</span>
               </span>

@@ -2,28 +2,39 @@
 
 /*
  * Class-based dark mode: any `dark:` utility follows the `.dark` class on <html>
- * (set by the theme store / anti-FOUC script) instead of the OS media query. No
- * `dark:` utilities exist yet — the theme swaps entirely via the Tier-2 token
- * overrides in the `.dark { … }` block below — so this is future-proofing.
+ * (set by the theme store / anti-FOUC script) instead of the OS media query.
+ * Almost nothing needs one — the theme swaps through the Tier-1.5 ramps below —
+ * and the handful that exist are hand-tuned exceptions commented at their call
+ * sites (BrandPanel, GroupChatPage, LandingPage).
  */
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
  * GrubChat design tokens — the SINGLE source of truth for all visual design.
  *
- * Two tiers:
- *   Tier 1 — raw palette ("crayon box"). NEVER referenced by components.
- *   Tier 2 — semantic aliases. The ONLY tokens components/utilities may use
- *            (e.g. `bg-primary`, `text-text-muted`, `rounded-card`).
+ * Four layers, page-side to component-side:
+ *   Tier 1    — raw palette ("crayon box"). NEVER referenced by components.
+ *   Tier 1.5  — THEME RAMPS: `--surface-1..5` (numbered by ELEVATION) and
+ *               `--fg-1..3` (numbered by EMPHASIS). Declared WITHOUT the
+ *               `--color-` prefix on purpose: Tailwind generates no utility for
+ *               them, so this layer is physically unreachable from a component
+ *               rather than merely conventionally off-limits.
+ *   Tier 2    — semantic aliases. The ONLY tokens components may use
+ *               (e.g. `bg-primary`, `text-text-muted`, `rounded-card`).
  *
- * To re-theme the whole app: edit Tier 2 aliases (and Tier 1 hexes) only.
+ * To re-theme the whole app: edit Tier 1.5 (and the Tier 1 hexes behind it).
  * To swap a font: change the @font-face/<link> name + the one --font-* line.
  * Components must never contain a hex, rgb(), or arbitrary value like bg-[#...].
  *
- * Dark mode: the `.dark { … }` block after @theme re-declares the Tier-2
- * aliases with a true-black (#000) palette (Anthropic brand tones). Because
- * every color utility compiles to `var(--color-*)`, redeclaring those custom
- * properties under `.dark` re-resolves the whole app with no component edits.
+ * Dark mode: the `.dark { … }` block re-points the Tier-1.5 ramps onto
+ * Anthropic's warm ink/bone palette. Because Tier 2 is nothing but NAMES for
+ * ramp rungs, eight ramp lines re-resolve every bg / text / border utility in
+ * the app with no per-component edits. Only the tokens whose MEANING differs
+ * per mode (the agent-session header, the chat canvas, the accent copy values)
+ * are declared twice — each stating its own intent rather than one theme
+ * hacking around the other.
+ *
+ * Numbers in the comments below are measured sRGB WCAG contrast, not estimates.
  */
 
 @theme {
@@ -49,13 +60,14 @@
   --color-chat-bg: #f5f3ee; /* chat scroll area */
   --color-panel-bg: #f7f4f0; /* side panels */
 
-  /* Member identity colors (avatars / progress) — from wireframe */
-  --color-member-purple: #6d28d9;
-  --color-member-pink: #be185d;
-  --color-member-terracotta: #c2410c;
-  --color-member-green: #15803d;
-  --color-member-blue: #1d4ed8;
-  --color-member-amber: #b45309;
+  /* Member identity colors (avatars / progress) — from wireframe. RAW hues; the
+   * Tier-2 aliases below are what components consume, and only those flip. */
+  --color-id-purple: #6d28d9;
+  --color-id-pink: #be185d;
+  --color-id-terracotta: #c2410c;
+  --color-id-green: #15803d;
+  --color-id-blue: #1d4ed8;
+  --color-id-amber: #b45309;
 
   /* Utility */
   --color-focus: #61aaf2;
@@ -68,36 +80,89 @@
    * TIER 2 — semantic aliases (components use ONLY these)
    * ============================================================ */
 
-  /* Brand + interactive */
+  /* Brand + interactive. Read the pairing as: the BARE token is the FILL, the
+   * `-text` sibling is body COPY, `on-*` is the ink that goes on the fill.
+   * The split exists because a mid-tone accent cannot do both jobs on a dark
+   * ladder: #d97757 is 5.91:1 on the page but only 4.01:1 on a card, and 51
+   * `text-primary` sites live on cards. Light values are identical for both
+   * halves, so every renamed call site renders the same pixel it does today. */
   --color-primary: var(--color-orange-500);
+  --color-primary-text: var(--color-orange-500);
   --color-primary-hover: var(--color-orange-700);
   --color-primary-soft: var(--color-orange-300);
   --color-on-primary: var(--color-white);
   --color-secondary: var(--color-orange-700);
-  --color-on-secondary: var(--color-white);
+  --color-secondary-text: var(--color-orange-700);
 
-  /* Surfaces (page → card → sunken → panels → inverse) */
-  --color-surface: var(--color-chat-bg);
-  --color-surface-raised: var(--color-white);
-  --color-surface-sunken: var(--color-sand-200);
-  --color-surface-panel: var(--color-panel-bg);
-  --color-surface-inverse: var(--color-cocoa-900);
+  /* Surfaces — names for elevation rungs (see the Tier-1.5 block after @theme) */
+  --color-surface: var(--surface-1);
+  --color-surface-sunken: var(--surface-2);
+  --color-surface-panel: var(--surface-3);
+  --color-surface-raised: var(--surface-4);
+  --color-surface-inverse: var(--surface-5);
+  /* The one surface alias light does NOT take from a rung: the user bubble uses
+   * the softer cocoa-800, a shade the ladder has no room for. Dark takes the top
+   * rung, so this is the single surface token restated in `.dark`. */
   --color-bubble-user: var(--color-cocoa-800);
 
-  /* Text */
-  --color-text: var(--color-cocoa-900);
-  --color-text-muted: var(--color-taupe-500);
-  --color-text-subtle: var(--color-taupe-300);
+  /* Agent-session chrome — the ONE screen where the two themes genuinely
+   * disagree about which rung means "header", so both say it out loud. On paper
+   * the private header is the inverted TOP rung on a light canvas. On ink it
+   * cannot be: surface-5 is the LIGHTEST thing on screen, which is exactly why
+   * the bar used to render as a pale slab hanging over a black conversation.
+   * Naming the canvas too is what lets ONE class on the chat column express
+   * "this is the conversation surface" in both themes.
+   * Light values are the exact hexes those elements already resolve to, so light
+   * mode is byte-identical and only dark flips. */
+  --color-surface-header: var(--surface-5);
+  --color-on-header: var(--color-white);
+  --color-chat-canvas: var(--surface-1);
+
+  /* Text — names for emphasis rungs */
+  --color-text: var(--fg-1);
+  --color-text-muted: var(--fg-2);
+  --color-text-subtle: var(--fg-3);
   --color-on-inverse: var(--color-white);
+
+  /* Member identity — Tier 2 because they re-base in dark. Light values are the
+   * wireframe hexes verbatim. --color-on-member is the ink for avatar initials:
+   * white on the deep light hues (5.0–7.1:1), near-black on the lifted dark ones
+   * (4.66–9.96:1). It exists so Avatar/MemberDot can stop hardcoding text-white,
+   * which would fail the moment the fill got lighter — and in dark it does. */
+  --color-member-purple: var(--color-id-purple);
+  --color-member-pink: var(--color-id-pink);
+  --color-member-terracotta: var(--color-id-terracotta);
+  --color-member-green: var(--color-id-green);
+  --color-member-blue: var(--color-id-blue);
+  --color-member-amber: var(--color-id-amber);
+  --color-on-member: var(--color-white);
 
   /* Lines */
   --color-border: rgba(0, 0, 0, 0.06);
   --color-border-strong: rgba(0, 0, 0, 0.1);
 
-  /* State */
+  /* State. Same fill / -text / on-* triple as the brand accents above.
+   * Splitting success is what retires `dark:bg-[#16a34a]` — the only raw hex in
+   * any component. That hex existed because dark's `--color-success` was a mint
+   * tuned for TEXT being painted as a FILL, where white measured 1.74:1; naming
+   * the fill and its ink separately fixes the cause instead of the symptom. */
   --color-focus-ring: var(--color-focus);
   --color-success: var(--color-success-base);
+  --color-success-text: var(--color-success-base);
+  --color-on-success: var(--color-white);
   --color-error: var(--color-error-base);
+  --color-error-text: var(--color-error-base);
+  --color-on-error: var(--color-white);
+  /* Two semantic tones for the profile taxonomy. PreferenceTag used to borrow
+   * `member-purple` / `member-blue` as TEXT — the only two `text-member-*` sites
+   * in the app, and the worst dark-mode pair in it (1.92:1). They were never
+   * identity: allergy and diet are categories, not people. Naming them lets the
+   * identity hues stay FILL-only and free to keep a wide lightness spread.
+   * Light values are the identity hexes verbatim, so the pills do not move. */
+  --color-caution: var(--color-id-purple);
+  --color-caution-text: var(--color-id-purple);
+  --color-info: var(--color-id-blue);
+  --color-info-text: var(--color-id-blue);
   --color-overlay: color-mix(in srgb, var(--color-cocoa-900) 50%, transparent);
 
   /* Typography — swap a font by editing one line (+ the <link> in index.html) */
@@ -162,71 +227,275 @@
   --spacing-safe-t: env(safe-area-inset-top, 0px);
 }
 
+/*
+ * TIER 1.5 — THEME RAMPS (light). The only neutrals `.dark` restates.
+ *
+ * Both ramps are numbered by ROLE, not by lightness, so the same number means
+ * the same thing in both themes and the Tier-2 mapping above never needs a dark
+ * twin:
+ *
+ *   surface-1..5  ELEVATION. 1 = the page; every higher number is one step
+ *                 further toward the viewer. Light climbs toward white and ends
+ *                 on an INVERTED near-black rung (that is what "surface-inverse"
+ *                 has always meant). surface-2 is the one rung that travels in
+ *                 opposite directions per mode: paper recesses by getting
+ *                 darker, but you cannot recess below a near-black page, so on
+ *                 ink it lifts instead.
+ *   fg-1..3       EMPHASIS. 1 = primary copy, 3 = the faintest label.
+ *
+ * Declared in a plain `:root` rather than inside `@theme` for two reasons: no
+ * `--color-` prefix means Tailwind generates no utility, so no component can
+ * reach Tier 1.5; and a plain custom property is always emitted, where an
+ * @theme variable referenced only from here is exactly the shape theme
+ * tree-shaking can drop.
+ *
+ * Values are byte-for-byte what the app renders today; only the names are new.
+ */
+:root {
+  --surface-1: var(--color-chat-bg); /* #f5f3ee — page */
+  --surface-2: var(--color-sand-200); /* #f0ede8 — recessed fields, icon rail */
+  --surface-3: var(--color-panel-bg); /* #f7f4f0 — side columns, chat canvas */
+  --surface-4: var(--color-white); /* #ffffff — cards, modals, popovers */
+  --surface-5: var(--color-cocoa-900); /* #1a1208 — inverted top rung */
+
+  --fg-1: var(--color-cocoa-900); /* #1a1208 */
+  --fg-2: var(--color-taupe-500); /* #9a8b7a */
+  --fg-3: var(--color-taupe-300); /* #b8a898 */
+
+  /* Shadow TINTS. The geometry stays inline at each call site (so no shadow
+   * changes shape); only the colour is tokenised, which is what lets a shadow
+   * survive the flip — a cocoa shadow contributes nothing on a near-black page.
+   * These are the exact rgba() values the 10 arbitrary shadows in LandingPage
+   * and BrandPanel use today, so light is unchanged (see the spec's note on the
+   * two BrandPanel cards whose alpha normalises by 0.05). */
+  --shadow-tint-soft: rgba(26, 18, 8, 0.12);
+  --shadow-tint-medium: rgba(26, 18, 8, 0.14);
+  --shadow-tint-strong: rgba(26, 18, 8, 0.18);
+  --shadow-tint-deep: rgba(26, 18, 8, 0.45);
+}
+
+/* The popover layer. The modal backdrop is z-50 in the ROOT stacking context
+ * (Modal.tsx:125) and #root sets no z-index, so a menu portaled to <body> must
+ * clear 50 or it renders UNDER the dialog. Tailwind v4's default z scale stops
+ * at 50, so this names the rung instead of scattering `z-[60]`. */
+@utility z-popover {
+  z-index: 60;
+}
+
 /* ============================================================================
- * DARK MODE — true-black (#000) OLED theme on Anthropic's brand palette.
+ * DARK MODE — Anthropic's warm ink palette. NOT true black.
  *
  * The `.dark` class is toggled on <html> by the theme store (stores/themeStore)
- * and the anti-FOUC script in index.html. This block re-declares ONLY the Tier-2
- * semantic aliases with dark values; because every color utility compiles to a
- * `var(--color-…)` reference, redeclaring these custom properties re-resolves
- * the entire app (every bg / text / border / ring utility) with NO per-component
- * edits. Tier-1 raw palette is intentionally left untouched (preserves the "edit
- * semantics to re-theme" contract). Values are verified WCAG AA — see the plan.
+ * and the anti-FOUC script in index.html. Structure, top to bottom:
+ *
+ *   1. the raw Anthropic ramps (this block's half of Tier 1),
+ *   2. the Tier-1.5 theme ramps re-pointed onto them — EIGHT lines that
+ *      re-resolve every surface and every line of copy in the app,
+ *   3. only those Tier-2 tokens whose MEANING differs per mode.
+ *
+ * Note the Tier-1 ramps here carry no `--color-` prefix, same as Tier 1.5:
+ * Tailwind emits no utility for them, so they are unreachable from a component.
  *
  * Bare `.dark` (not `:root.dark`): it has the same specificity (0,1,0) as the
  * `:root` selector `@theme` emits, so it wins purely by SOURCE ORDER — hence it
- * MUST come after the @theme block above.
+ * MUST come after both blocks above.
+ *
+ * WHY THE LADDER IS SHAPED THE WAY IT IS. The ceiling is not a taste call, it
+ * is forced. Pin muted copy to the brand's #b0aea5 (the one neutral that works
+ * in both directions), require `text-subtle` to clear 4.5:1 where it actually
+ * lives (cards), and keep muted/subtle at least 1.25:1 apart so the emphasis
+ * ramp has three usable rungs — and the `raised` rung cannot exceed L* 21.56.
+ * Everything else is spaced evenly beneath it: ΔL* 5.12 / 4.92 / 5.19 / 5.88,
+ * every adjacent pair above the ~2 L* JND for large flat fields, and more even
+ * than the true-black ladder it replaces (6.32 / 4.94 / 5.80 / 6.01).
  * ==========================================================================*/
 .dark {
   color-scheme: dark;
 
-  /* Brand + interactive — clay accent (Anthropic "book cloth"); hover BRIGHTENS
-   * on black rather than darkening; ink text reads on the clay fills. */
-  --color-primary: #cc785c;
-  --color-primary-hover: #d8977f;
-  --color-primary-soft: #8a4a38;
-  --color-on-primary: #1a1512;
-  --color-secondary: #cc785c;
-  --color-on-secondary: #1a1512;
+  /* ---------------------------------------------------------------- Tier 1
+   * INK — the warm near-black ramp. #141413 is a PAGE, not a card: a card
+   * painted the page value has no edge at all. The drift widens as the ramp
+   * climbs (R−B: 1 → 4 → 6 → 8 → 11) because down at near-black a single point
+   * is all the hue a channel can carry, while by the top rung you need ~11 to
+   * still read as the same family rather than as grey. That drift is
+   * load-bearing: a cold #1a1a1f ladder reads foreign next to the clay. */
+  --ink-950: #141413; /* Anthropic Dark, verbatim */
+  --ink-900: #201e1c;
+  --ink-800: #2b2825;
+  --ink-700: #37332f;
+  --ink-600: #45403a;
 
-  /* Surfaces — pure-black page base + a monotonic NEUTRAL-GREY elevation ladder
-   * (Anthropic's dark scheme: true-black surfaces + grey, warmth carried ONLY by
-   * the cream text and clay accent — surfaces are deliberately un-tinted so they
-   * don't read brown). On a #000 page every surface must be LIGHTER than the page
-   * (you can't recess below black), so the light-mode "sunken is darker than the
-   * page" flips to a stepped stack: each rung is perceptibly lighter than the one
-   * it sits on, so the depth cues light mode gets from white-on-beige survive.
-   * Lightness order (dark→light): surface < sunken < panel < raised < inverse.
-   *   sunken  — recessed fields (inputs, chips, badges, skeletons) + the icon rail
-   *   panel   — side columns (groups/events panel, right detail panel)
-   *   raised  — cards, MODALS, dropdowns, chat main, SELECTED group rows, bubbles
-   *   inverse — rail ACTIVE tab, primary CTA fill, "me" bubble, avatars (top rung)
-   * Steps mirror the Anthropic dark reference's elevated-grey ladder. */
-  --color-surface: #000000;
-  --color-surface-sunken: #141414;
-  --color-surface-panel: #1e1e1e;
-  --color-surface-raised: #2a2a2a;
-  --color-surface-inverse: #373737;
-  --color-bubble-user: #373737;
+  /* BONE — the warm near-white ramp. #b0aea5 is Anthropic's Mid Gray and the
+   * one neutral that works in both directions (secondary text on ink, secondary
+   * elements on paper), so it is pinned here as muted copy.
+   * #e8e6dc is deliberately absent from this block: as a fill it is blinding on
+   * ink, and as text it is indistinguishable from #faf9f5. Its "one step in from
+   * the lightest thing" job is done by the elevated surfaces instead — which is
+   * what an elevation ramp is for.
+   * bone-500 is the tightest value in the theme: 4.51:1 on a card (needs 4.50)
+   * and 1.249:1 from bone-400 (needs 1.25). Moving either breaks the other. */
+  --bone-50: #faf9f5; /* Anthropic Light, verbatim */
+  --bone-400: #b0aea5; /* Anthropic Mid Gray, verbatim */
+  --bone-500: #9e9b93;
 
-  /* Text — soft near-white primary (Anthropic keeps a faint warm cast on TEXT
-   * only, not on surfaces). Muted/subtle are NEUTRAL grey so secondary copy on
-   * the grey ladder doesn't read brown. */
-  --color-text: #f5f4f2;
-  --color-text-muted: #9a9a98;
-  --color-text-subtle: #8a8a88;
-  --color-on-inverse: #f5f4f2;
+  /* ACCENTS. All three brand accents appear verbatim as FILLS. Each clears AA
+   * as body text on the PAGE (5.91 / 6.30 / 5.01 with ink) — the licence dark
+   * has and light does not, since #d97757 on #faf9f5 is only 2.96:1, which is
+   * why light keeps them to fills, borders and large text.
+   * The `-300` lifts are the body-copy values: a mid-tone accent cannot be read
+   * at 14px on a card (#d97757 is 4.01:1 on ink-700, and no background lighter
+   * than luminance 0.0247 can carry it at all).
+   * All three are MID-TONE, so the ink that sits ON an accent fill is #141413,
+   * never white — white measures 2.93–3.68:1 on every one of them. */
+  --clay-500: #d97757; /* Anthropic Orange — the primary FILL */
+  --clay-300: #eb9a71; /* lifted clay — accent COPY and the hover fill */
+  --clay-800: #8a4a35; /* deep clay — washes and glows only, never text */
+  --sky-500: #6a9bcc; /* Anthropic Blue — focus ring, info FILL */
+  --sky-300: #93bde4; /* lifted blue — info COPY */
+  --moss-500: #788c5d; /* Anthropic Green, verbatim — success FILL */
+  --moss-300: #a4bb7c; /* lifted moss — success COPY */
+  --rust-500: #e05a52; /* warm red — error FILL. The palette ships no red; this
+                        * sits 11.4 deg off the clay, the most separation
+                        * available without leaving the warm family. */
+  --rust-300: #f7a69e; /* lifted rust — error COPY */
+  --iris-500: #9068d4; /* purple — the allergy tone's dot. Not a brand accent;
+                        * the taxonomy needs a fourth hue and the palette has
+                        * three, so this is the one invented value in the theme. */
+  --iris-300: #c8b0f0; /* lifted iris — allergy COPY */
 
-  /* Lines — MUST flip to light-on-dark or every divider/border vanishes. */
-  --color-border: rgba(255, 255, 255, 0.12);
-  --color-border-strong: rgba(255, 255, 255, 0.18);
+  /* IDENTITY — the six member hues, re-based as FILLS ONLY.
+   * They are avatars, dots and gradient stops; the only two places they were
+   * ever TEXT are PreferenceTag, which now uses the caution/info tones instead.
+   * Being fill-only is what buys the wide lightness spread: 23.4 L* here, where
+   * forcing all six to be readable as body text on a wash would compress them
+   * into 6.7 L* and leave hue as the sole identity channel — unusable on a 24px
+   * avatar for a red-green-deficient viewer.
+   * Floor: ink initials must clear 4.5:1, i.e. L* >= 52.7. Terracotta is held at
+   * L* 53.5 rather than following the others up, so `from-member-terracotta
+   * to-primary` (4 gradients) stays a visible gradient (1.267:1) instead of
+   * collapsing into the brand clay (1.011:1). */
+  --id-purple-dk: #8f6fd0; /* L* 53.8, ink 4.70 */
+  --id-terracotta-dk: #c76438; /* L* 53.5, ink 4.66 */
+  --id-pink-dk: #d2699a; /* L* 58.2, ink 5.47 */
+  --id-blue-dk: #5b93cf; /* L* 59.5, ink 5.72 */
+  --id-green-dk: #8fc987; /* L* 75.7, ink 9.54 */
+  --id-amber-dk: #e6b855; /* L* 77.1, ink 9.96 */
 
-  /* State — success/error/focus brightened so they clear 4.5:1 on true black. */
-  --color-focus-ring: #7cb8f5;
-  --color-success: #4ade80;
-  --color-error: #f87171;
-  /* Darker scrim — a near-black modal barely separates from the dark page. */
-  --color-overlay: rgba(0, 0, 0, 0.72);
+  /* -------------------------------------------------------------- Tier 1.5
+   * The entire neutral flip. Everything the app paints — page, rails, panels,
+   * cards, modals, bubbles, every line of copy — resolves through these eight
+   * declarations, because Tier 2 is nothing but names for them. */
+  --surface-1: var(--ink-950); /* page + the private agent header */
+  --surface-2: var(--ink-900); /* recessed fields, chips, skeletons, icon rail */
+  --surface-3: var(--ink-800); /* side columns + the agent CHAT CANVAS */
+  --surface-4: var(--ink-700); /* cards, modals, dropdowns, bubbles, composer */
+  --surface-5: var(--ink-600); /* CTA fill, "me" bubble, active tab, bands */
+
+  --fg-1: var(--bone-50); /* 17.50:1 on the page, 11.89:1 on a card */
+  --fg-2: var(--bone-400); /* 8.29 / 5.63 */
+  --fg-3: var(--bone-500); /* 6.64 / 4.51 — AA on every rung a label lands on */
+
+  /* ---------------------------------------------------------------- Tier 2
+   * Only tokens whose MEANING differs per mode appear below. Surfaces and text
+   * are absent on purpose: they already resolved, above. */
+
+  /* The one surface alias light does not take from a rung. */
+  --color-bubble-user: var(--surface-5);
+
+  /* --- The agent-session flip ---
+   * Light says "the private header is the inverted top rung". Ink cannot say
+   * that. On ink the darkest surface IS the base rung, so the header takes
+   * surface-1 and the CANVAS lifts to surface-3 — the conversation sits above
+   * its header in both themes.
+   * Two rungs, not one, and that is the whole point: at one rung the flip is
+   * 1.108:1 / ΔL* 5.05, right at the edge of legible on an uncalibrated panel;
+   * at two it is 1.258:1 / ΔL* 10.04. It also keeps `hover:bg-surface-sunken` on
+   * the quick-reply chips OFF the canvas value — at surface-2 the canvas and the
+   * chip hover would be the same colour and the hover would vanish entirely.
+   * Agent bubbles and the composer (surface-4) still sit a full rung above the
+   * canvas at 1.170:1, and the "me" bubble at 1.429:1. */
+  --color-surface-header: var(--surface-1);
+  --color-on-header: var(--bone-50);
+  --color-chat-canvas: var(--surface-3);
+
+  /* Brand + interactive. primary-hover BRIGHTENS on ink rather than darkening —
+   * on a dark page "more ink" is the wrong direction and "more light" is the
+   * right one — and it doubles as Badge's accent copy, which is what it already
+   * is in light.
+   * secondary stays in the CLAY family. Anthropic's Blue is spent below on the
+   * focus ring and the info tone, where it does semantic work; pointing
+   * `secondary` at it would make the kraft cuisine tag blue in dark and orange
+   * in light, i.e. a category that changes colour with the theme. The token is
+   * not redundant — its LIGHT value is the deeper orange-700 — it is simply that
+   * on ink a deeper clay is mud, so both ends converge on the brand value. */
+  --color-primary: var(--clay-500);
+  --color-primary-text: var(--clay-300);
+  --color-primary-hover: var(--clay-300);
+  --color-primary-soft: var(--clay-800);
+  --color-on-primary: var(--ink-950);
+  --color-secondary: var(--clay-500);
+  --color-secondary-text: var(--clay-300);
+
+  /* Text on fills. */
+  --color-on-inverse: var(--bone-50); /* 9.74:1 on the top rung */
+  --color-on-member: var(--ink-950); /* ink initials on the lifted identity fills */
+
+  /* Identity — fills only; see the ramp note above. */
+  --color-member-purple: var(--id-purple-dk);
+  --color-member-pink: var(--id-pink-dk);
+  --color-member-terracotta: var(--id-terracotta-dk);
+  --color-member-green: var(--id-green-dk);
+  --color-member-blue: var(--id-blue-dk);
+  --color-member-amber: var(--id-amber-dk);
+
+  /* Lines — ALPHA, never solid. A solid hairline is correct on exactly one
+   * surface; a bone alpha composites correctly on all five. Bone rather than
+   * pure white so a line belongs to the same warm family as what it divides.
+   * They are already translucent, so an opacity modifier COMPOUNDS:
+   * `border-border/60` is 0.06 alpha, not 0.10.
+   * border-strong is 0.20 — higher than the nominal "emphasis" value — for one
+   * measurable reason: it is the ONLY thing separating the primary CTA from the
+   * page (Button.tsx / IconButton.tsx), and that rim is the single boundary in
+   * the app that meets WCAG 1.4.11. It ships today at 3.092:1. At 0.14 it would
+   * be 2.692 and at 0.16 2.863 — both FAIL, because 3:1 is an absolute
+   * threshold, not a relative one. At 0.20 it is 3.184:1. Do not lower it
+   * without re-measuring that rim. */
+  --color-border: rgba(250, 249, 245, 0.10);
+  --color-border-strong: rgba(250, 249, 245, 0.20);
+
+  /* State. Blue is Anthropic's second accent and focus is the one role in this
+   * app that genuinely needs a non-clay hue (6.30:1 on the page, and >=3:1 on
+   * every rung, so it clears the non-text UI threshold everywhere).
+   * Every `-text` value below is tuned so the tint pill it renders on — the
+   * `bg-<fill>/10..15` wash of its OWN fill, which is what the text actually
+   * sits on and what every prior audit measured wrong — clears 4.5:1 on a card:
+   * primary 4.89, success 5.25, error 5.83, kraft 5.05, danger-subtle 5.70,
+   * and all four PreferenceTag tones 5.11–5.78. */
+  --color-focus-ring: var(--sky-500);
+  --color-success: var(--moss-500);
+  --color-success-text: var(--moss-300);
+  --color-on-success: var(--ink-950);
+  --color-error: var(--rust-500);
+  --color-error-text: var(--rust-300);
+  --color-on-error: var(--ink-950);
+  --color-caution: var(--iris-500);
+  --color-caution-text: var(--iris-300);
+  --color-info: var(--sky-500);
+  --color-info-text: var(--sky-300);
+
+  /* Scrim — warm, and one step BELOW the page, because a scrim painted in the
+   * page colour dims nothing on a page-coloured screen. A modal on surface-4
+   * keeps 1.553:1 against the dimmed background (the true-black theme got
+   * 1.463:1). Pure black over a warm ladder reads cold and slightly bruised. */
+  --color-overlay: rgba(10, 10, 9, 0.72);
+
+  /* Shadow tints — black and much heavier than the light cocoa values, because
+   * a 12%-alpha shadow is invisible on a near-black page. Geometry is untouched
+   * at every call site; only the colour moves. */
+  --shadow-tint-soft: rgba(0, 0, 0, 0.55);
+  --shadow-tint-medium: rgba(0, 0, 0, 0.6);
+  --shadow-tint-strong: rgba(0, 0, 0, 0.7);
+  --shadow-tint-deep: rgba(0, 0, 0, 0.75);
 }
 
 /* Minimal global resets — layout/visuals belong in components via tokens. */

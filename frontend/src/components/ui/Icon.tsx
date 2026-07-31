@@ -23,6 +23,7 @@ export type IconName =
   | 'utensils'
   | 'users'
   | 'calendar'
+  | 'clock'
   | 'message'
   | 'sparkles'
   | 'map-pin'
@@ -126,6 +127,17 @@ const PATHS: Record<IconName, ReactSvgContent> = {
     <>
       <rect x="3" y="4" width="18" height="18" rx="2" />
       <path d="M16 2v4M8 2v4M3 10h18" />
+    </>
+  ),
+  // Clock face — the duration / answer-window affordance. r=9 matches this
+  // file's `circle` (not Lucide's r=10) so a 2px stroke doesn't crowd the 24px
+  // box; the hands are one polyline — minute up, hour to ~2 o'clock — i.e.
+  // Lucide's 12 6 / 12 12 / 16 14 scaled 0.9 about the centre to clean
+  // coordinates, so the tips land 5 and 4.03 units out, inside the dial.
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3.5 2" />
     </>
   ),
   message: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z" />,

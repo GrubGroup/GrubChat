@@ -28,7 +28,7 @@ export function MemberRoster({ members, currentUserId }: MemberRosterProps) {
                 <motion.span
                   key="ready"
                   aria-label="ready"
-                  className="text-success"
+                  className="text-success-text"
                   initial={{ scale: reduce ? 1 : 0.5, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ opacity: 0 }}

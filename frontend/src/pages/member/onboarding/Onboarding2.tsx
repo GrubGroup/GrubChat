@@ -30,7 +30,7 @@ export function BudgetStep() {
               className={cn(
                 'flex h-12 items-center justify-between rounded-input border px-4 text-left transition-colors',
                 selected
-                  ? 'border-text bg-surface-inverse text-white'
+                  ? 'border-text bg-surface-inverse text-on-inverse'
                   : 'border-border bg-surface-sunken text-text hover:border-border-strong',
               )}
             >
