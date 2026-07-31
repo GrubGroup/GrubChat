@@ -283,6 +283,7 @@ Postgres (with the `vector`/pgvector extension), mirrored from `backend/gateway/
 | displayUsername | string?  | non-normalized username for display                              |
 | created_at      | datetime | row creation time                                                |
 | updated_at      | datetime | last update time                                                 |
+| deactivated_at  | datetime? | soft-delete marker (NULL = active; else the deactivation time)  |
 
 
 
@@ -320,6 +321,7 @@ who set a default address never re-geocodes it per session.
 | host_user_id | int       | foreign key to User (host)                       |
 | group_id     | int?      | foreign key to originating Group; cascade delete |
 | time_limit   | int       | session time limit                               |
+| scheduled_for | datetime? | host's chosen event time; drives restaurant open/closed evaluation and is snapshotted onto `Event.date` at close |
 | created_at   | datetime  | when the session started                         |
 | closed_at    | datetime? | when the session was closed                      |
 
@@ -344,8 +346,9 @@ Composite primary key `(session_id, user_id)`.
 
 One row **per (session, member)**: each member's temporary, session-scoped preference overrides
 captured by their QA sub-agent. These outrank the durable `Profile` for this session only and are
-**deleted when the Event is created** (session close). `occasion` and `time_slot` are **host-only**
-(they describe the shared event); a non-host's row leaves them null.
+**deleted when the Event is created** (session close). `occasion` is **host-only** (it describes the
+shared event); a non-host's row leaves it null. The host's chosen event time is no longer a `Qa`
+field — it now lives on `Session.scheduled_for`.
 
 
 | column name        | type     | description                                                            |
@@ -361,7 +364,6 @@ captured by their QA sub-agent. These outrank the durable `Profile` for this ses
 | location_lat       | float?   | latitude, only if provided                                             |
 | location_lon       | float?   | longitude, only if provided                                            |
 | radius_miles       | float?   | search radius in miles                                                 |
-| time_slot          | string?  | desired time — **host-only**                                           |
 | budget_min         | int?     | per-person lower budget                                                |
 | budget_max         | int?     | per-person upper budget                                                |
 | member_status      | string?  | free-form member status note                                           |
@@ -377,10 +379,12 @@ Unique on `(session_id, user_id)` — one row per member per session (get-or-cre
 | id              | int      | primary key                                                        |
 | date            | datetime | date/time of the outing                                            |
 | address         | string   | outing address                                                     |
+| lat             | float?   | latitude of the chosen location, snapshotted from the host's `Qa` row at close  |
+| lon             | float?   | longitude of the chosen location, snapshotted from the host's `Qa` row at close |
 | restaurant_id   | int      | foreign key to Restaurant                                          |
 | restaurant_name | string   | restaurant name snapshot (denormalized)                            |
 | occasion        | string?  | host-only occasion, snapshotted from the host's `Qa` row at close  |
-| time_slot       | string?  | host-only time slot, snapshotted from the host's `Qa` row at close |
+| time_slot       | string?  | host-only display label derived from `Session.scheduled_for` at close |
 | group_id        | int?     | foreign key to Group; set null on group delete                     |
 | group_name      | string?  | group name snapshot; persists after group deletion                 |
 
@@ -541,7 +545,7 @@ Unique on `token`; indexed on `userId`.
 - `Profile.liked_restaurant_ids` is a plain `int[]` (denormalized), not a managed relation — no FK integrity. Resolve separately: `prisma.restaurant.findMany({ where: { id: { in: profile.liked_restaurant_ids } } })`.
 - `Restaurant.embedding` is an `Unsupported("vector(1024)")` pgvector column — it can't be read/written through the typed Prisma client, so embeddings are written with raw SQL (`::vector` cast).
 - **Group deletion is asymmetric.** A `Session` is transient, so deleting its group **cascades**. An `Event` is a historical record, so deleting its group uses **SetNull** — the event survives with `group_id` null but keeps the `group_name` snapshot copied at creation.
-- **Event creation flow:** all members fill the Q&A (or the session times out) → AI produces recommendations → the host confirms one → an `Event` is created, stamping `group_id`, copying the group's current `name` into `group_name`, and snapshotting the host's `occasion` / `time_slot` from their `Qa` row. In the same transaction the session's `Qa` rows are **deleted** (they were temporary session-scoped overrides — the durable `Profile` is never mutated, and occasion/time_slot survive on the Event).
+- **Event creation flow:** all members fill the Q&A (or the session times out) → AI produces recommendations → the host confirms one → an `Event` is created, stamping `group_id`, copying the group's current `name` into `group_name`, snapshotting the host's `occasion` from their `Qa` row, and stamping `Event.date` (and the `time_slot` display label) from `Session.scheduled_for`. In the same transaction the session's `Qa` rows are **deleted** (they were temporary session-scoped overrides — the durable `Profile` is never mutated, and occasion/time survive on the Event).
 
 
 
