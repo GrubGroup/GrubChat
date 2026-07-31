@@ -2,7 +2,8 @@ import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { motion, useReducedMotion, type Variants } from 'framer-motion'
-import { Button, Icon, Input, Modal } from '@/components/ui'
+import { Button, Icon, Input, Modal, PasswordChecklist } from '@/components/ui'
+import { isPasswordValid } from '@/utils/password'
 import { EASE } from '@/lib/motion'
 import { changeEmail, changePassword, linkSocial } from '@/lib/authClient'
 import { fetchAuthMethods, type AuthMethods } from '@/api/authApi'
@@ -239,8 +240,8 @@ export function SettingsPage() {
       setPwError('Enter your current password.')
       return
     }
-    if (newPassword.length < 8) {
-      setPwError('New password must be at least 8 characters.')
+    if (!isPasswordValid(newPassword)) {
+      setPwError('Your new password must meet all the requirements listed below.')
       return
     }
     if (newPassword !== confirmPassword) {
@@ -363,6 +364,7 @@ export function SettingsPage() {
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="At least 8 characters"
                   />
+                  {newPassword.length > 0 && <PasswordChecklist value={newPassword} />}
                   <Input
                     label="Confirm new password"
                     type="password"

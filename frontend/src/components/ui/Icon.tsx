@@ -40,6 +40,8 @@ export type IconName =
   | 'sun'
   | 'moon'
   | 'monitor'
+  | 'eye'
+  | 'eye-off'
 
 const PATHS: Record<IconName, ReactSvgContent> = {
   mic: (
@@ -209,6 +211,23 @@ const PATHS: Record<IconName, ReactSvgContent> = {
   ),
   // Crescent moon — the "Dark" theme segment.
   moon: <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />,
+  // Eye — the "show password" affordance. Almond outline + pupil.
+  eye: (
+    <>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  // Slashed eye — the "hide password" affordance. A diagonal cut over a partial
+  // eye reads as "hidden" regardless of state.
+  'eye-off': (
+    <>
+      <path d="M2 2 22 22" />
+      <path d="M6.7 6.7A11.9 11.9 0 0 0 2 12s3.5 7 10 7a10.8 10.8 0 0 0 5.3-1.3" />
+      <path d="M9.9 4.2A11 11 0 0 1 12 4c6.5 0 10 7 10 7a12.9 12.9 0 0 1-2.2 3.1" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+    </>
+  ),
   // Desktop monitor — the "System" theme segment (follow OS setting).
   monitor: (
     <>
