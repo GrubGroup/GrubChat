@@ -38,6 +38,8 @@ export type IconName =
   | 'settings'
   | 'user'
   | 'speaker'
+  | 'play'
+  | 'pause'
   | 'sun'
   | 'moon'
   | 'monitor'
@@ -212,6 +214,17 @@ const PATHS: Record<IconName, ReactSvgContent> = {
       <path d="M19 5a9 9 0 0 1 0 14" />
     </>
   ),
+  // Play / pause — the voice-preview button's two states. The triangle is a
+  // CLOSED path, so it works stroked or filled as-is; pause's two bars are
+  // zero-area strokes and would disappear under fill, hence the FILLED_PATHS
+  // entry below.
+  play: <path d="M8 5.5v13l11-6.5Z" />,
+  pause: (
+    <>
+      <path d="M9.5 5.5v13" />
+      <path d="M14.5 5.5v13" />
+    </>
+  ),
   // Sun — the "Light" theme segment. A disc plus eight radiating rays.
   sun: (
     <>
@@ -235,6 +248,14 @@ const PATHS: Record<IconName, ReactSvgContent> = {
 // purpose-built filled variants for those; everything else just fills its stroke
 // path. Needed by the tab/rail icons (users, calendar, user) and the mic.
 const FILLED_PATHS: Partial<Record<IconName, ReactSvgContent>> = {
+  // Solid pause: the outline's two bars are zero-area lines, which vanish under
+  // fill. Rects of the same visual weight keep the glyph identical either way.
+  pause: (
+    <>
+      <rect x="8" y="5" width="3.2" height="14" rx="1.2" />
+      <rect x="12.8" y="5" width="3.2" height="14" rx="1.2" />
+    </>
+  ),
   // Solid mic: filled capsule head + a solid "cradle" wedge (the u-shaped stand
   // ring, drawn as a closed shape so no open arc self-intersects) + a short
   // filled stem/base. Built purpose-first so the outline's open base tick
