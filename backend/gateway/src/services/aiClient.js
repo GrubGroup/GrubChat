@@ -58,4 +58,29 @@ const analyzeTurn = async (sessionId, body) => {
   return data;
 };
 
-export { embed, getRecommendations, analyzeTurn };
+/**
+ * Render the fixed voice-preview line in one of the selectable Cartesia voices.
+ *
+ * Returns raw WAV bytes, NOT JSON — hence `responseType: 'arraybuffer'`, without
+ * which axios would coerce the binary body to a UTF-8 string and corrupt it. The
+ * ai_service caches each voice's clip in-process, so a repeat request costs a
+ * round trip and nothing else.
+ *
+ * @param {string|null} voiceId a Cartesia voice id; unknown/null → server default
+ * @returns {Promise<{ audio: Buffer, contentType: string }>}
+ */
+const previewVoice = async (voiceId) => {
+  const res = await client.post(
+    '/api/v1/voice/preview',
+    { voice_id: voiceId ?? null },
+    // Well under the shared 120s: this is one short TTS call, and a user waiting
+    // on a preview button should get an error long before two minutes.
+    { responseType: 'arraybuffer', timeout: 20_000 },
+  );
+  return {
+    audio: Buffer.from(res.data),
+    contentType: res.headers['content-type'] ?? 'audio/wav',
+  };
+};
+
+export { embed, getRecommendations, analyzeTurn, previewVoice };

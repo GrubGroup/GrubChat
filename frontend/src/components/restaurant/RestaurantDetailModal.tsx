@@ -1,6 +1,8 @@
 import type { Restaurant } from '@/types'
 import { Badge, Button, Icon, Modal } from '@/components/ui'
 import { TagRow } from './TagRow'
+import { RestaurantImage } from './RestaurantImage'
+import { restaurantTint } from '@/constants/restaurantVisuals'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { formatHours, isOpenAt } from '@/utils/hours'
 import { priceLevel } from '@/utils/price'
@@ -64,6 +66,16 @@ export function RestaurantDetailModal({
     >
       {restaurant && (
         <div className="flex flex-col gap-4">
+          {/* Cuisine photo — re-rolled each time the modal opens on a different
+              restaurant, matching the card that launched it in spirit but not
+              (deliberately) in the exact picture. */}
+          <RestaurantImage
+            cuisineTags={restaurant.cuisine_tags}
+            identity={restaurant.id}
+            className="h-40 w-full rounded-card sm:h-52"
+            tintClass={restaurantTint(restaurant.id)}
+          />
+
           {/* Rating · price · open status */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-body text-text-muted">
             {restaurant.avg_rating != null && (

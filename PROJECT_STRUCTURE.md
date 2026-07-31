@@ -104,12 +104,14 @@ gateway/
     │   ├── userRoutes.js         # /user — caller identity (GET /me, PATCH /)
     │   ├── usersRoutes.js        # /users — username search (member-picker)
     │   ├── groupsRoutes.js       # /groups — group CRUD + membership
-    │   └── eventsRoutes.js       # /events — the caller's dining history
+    │   ├── eventsRoutes.js       # /events — the caller's dining history
+    │   └── voiceRoutes.js        # /voice — POST /preview (audition a TTS voice from settings)
     ├── controllers/              # Request handlers (the logic per route)
     │   ├── restaurantsController.js  # create Restaurant + embed via ai_service + ::vector write
     │   ├── sessionsController.js     # session lifecycle + AI proxy (recommendations/analyze) + geocode
     │   ├── profileController.js  userController.js  usersController.js
     │   ├── groupsController.js  eventsController.js  authMethodsController.js
+    │   ├── voiceController.js    # proxies the voice preview; returns WAV bytes, not JSON
     ├── middleware/               # Cross-cutting request logic
     │   ├── authMiddleware.js     # Better Auth session guard (requireAuth)
     │   └── errorMiddleware.js    # Central error handling
@@ -118,7 +120,8 @@ gateway/
     │   ├── sessionHandlers.js    # group:join/leave, chat:message, session:start/picks/confirmed, typing:*, vote:*
     │   └── voiceHandlers.js      # voice:* binary relay — bridges the browser mic loop to ai_service's voice WS
     ├── services/                 # Outbound clients
-    │   ├── aiClient.js           # Talks to the FastAPI ai_service (embed, recommendations, analyze)
+    │   ├── aiClient.js           # Talks to the FastAPI ai_service (embed, recommendations, analyze,
+    │   │                         #   voice preview — the last one returns audio, not JSON)
     │   ├── geocodeClient.js      # Server-side geocoding (Geocodio) for the host modal
     │   └── voiceClient.js        # Opens a raw WS to ai_service's /voice/session (forwards X-Internal-Secret)
     └── utils/
@@ -178,7 +181,9 @@ ai_service/
     │           ├── health.py         # Is the service up?
     │           ├── ai.py             # POST /embed, POST /sessions/{id}/recommendations,
     │           │                     #   POST /sessions/{id}/analyze, POST /analyze
-    │           └── voice.py          # WS /voice/session — cascaded STT→analyze→TTS voice loop
+    │           └── voice.py          # WS /voice/session — cascaded STT→analyze→TTS voice loop;
+    │                                 #   POST /voice/preview — one-shot WAV of a fixed line in a
+    │                                 #   chosen voice (settings audition), cached per voice
     ├── services/                 # Business logic (multi-step workflows)
     │   ├── recommendation_service.py  # orchestrator wrapper: guard → pipeline → persist
     │   ├── session_service.py         # analyze_member_turn (in-session Qa)
@@ -231,7 +236,13 @@ frontend/
 ├── eslint.config.js      # Linting rules
 ├── index.html            # HTML entry point
 ├── README.md
-├── public/               # Static files served as-is (favicon.svg, icons.svg)
+├── scripts/              # One-off asset tooling (not part of the build)
+│   └── fetch-cuisine-images.ts   # (re)builds public/media/cuisines from Openverse; `bun run` it
+├── public/               # Static files served as-is (favicon.svg, icons.svg, worklets/)
+│   └── media/cuisines/   # COMMITTED cuisine stock photos, 5 per pool, served at
+│                         #   /media/cuisines/<key>/<key>-N.jpg on the deployed site.
+│                         #   Plus ATTRIBUTION.md + credits.json (CC BY needs credit) and
+│                         #   rejected.json (Openverse ids a review pass ruled out).
 └── src/                  # Application source (see §4a)
     ├── main.tsx          # App entry point (mounts React inside <BrowserRouter>)
     ├── App.tsx           # The route tree (<Routes>) — layout routes + every path
@@ -247,7 +258,7 @@ The feature structure below **exists and is populated** — build new work into 
 src/
 ├── api/            # HTTP calls to the gateway via axios (live only — no mock layer)
 │   └── authApi.ts  sessionApi.ts  eventsApi.ts  restaurantsApi.ts
-│       profileApi.ts  groupsApi.ts  userApi.ts  usersApi.ts
+│       profileApi.ts  groupsApi.ts  userApi.ts  usersApi.ts  voiceApi.ts
 ├── pages/          # Full screens (one per route)
 │   ├── public/         # LandingPage                          → /
 │   ├── auth/           # AuthForm (Better Auth sign-in/up + Google)  → /login, /signup
@@ -268,14 +279,18 @@ src/
 │   │                   #   GroupMessageRow, ChatStream, SessionCard, MemberRoster, GroupList,
 │   │                   #   MobileSessionStrip, GroupDetailPanel, …)
 │   ├── restaurant/     # RankedRestaurantCard (reused by TopPicksPage; ephemeral voting), MenuList
-│   │                   #   (placeholder), RestaurantHeader, TagRow, MenuItemRow
+│   │                   #   (placeholder), RestaurantHeader, TagRow, MenuItemRow,
+│   │                   #   RestaurantImage (the random cuisine-photo banner, used by every
+│   │                   #   restaurant surface incl. the Events rows/hero)
 │   ├── profile/        # CuisineTriStatePicker, PreferenceTag
 │   └── voice/          # VoiceComposer — one composer, two paths (Web Speech dictation for group
-│                       #   chat; hands-free server voice loop for the session agent chat)
+│                       #   chat; hands-free server voice loop for the session agent chat).
+│                       #   VoicePreviewButton — auditions a TTS voice from Settings
 ├── hooks/          # Routing: useGroupId, useSessionId (decode a name-42 slug), useBindSession
 │                   #   (rebinds a group's live session on a cold URL entry).
 │                   #   Sync: useSocket, useGroupSync, useSessionSync, useSessionCountdown.
 │                   #   Voice: useVoiceInput (Web Speech), useVoiceSession (server loop).
+│                   #   Visuals: useCuisineImage (holds one random cuisine photo per mount).
 │                   #   Plus usePlacesInput, useMediaQuery, useIsMobile, useNewItemIds,
 │                   #   useScrollToBottom, useScrollLock, useDismissOnBack, useCreateGroup, useSignOut
 ├── stores/         # 9 zustand stores: auth, session, groupChat, chat, event, eventList,
@@ -302,4 +317,5 @@ src/
 | An AI-proxy route (Node)      | `backend/gateway/src/routes/` + `controllers/` + `services/aiClient.js` |
 | A new screen/page (React)     | `frontend/src/pages/` + a `<Route>` in `frontend/src/App.tsx`            |
 | A reusable UI element (React) | `frontend/src/components/`                                              |
+| A static image/asset          | `frontend/public/media/` (served verbatim at `/media/…` in prod)        |
 | A product/planning doc        | `planning/`                                                             |

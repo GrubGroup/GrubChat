@@ -9,6 +9,7 @@ Python backend dedicated to API logic, agent orchestration, and the AI pipeline.
 - **RAG** — Perplexity `pplx-embed-v1-0.6b` embeddings (1024-dim) via OpenRouter + pgvector retrieval over restaurants
 - **LLM chat calls** — provider chosen at runtime by `LLM_PROVIDER` (default `openrouter` → Claude/DeepSeek; `salesforce` → Claude via the internal gateway) for ranking, reasoning, and reply generation. Preference **extraction** routes separately to a fast model (`EXTRACTION_MODEL`, default `google/gemini-2.5-flash`) to keep the analyze turn voice-viable.
 - **Server voice loop** — a WebSocket (`/api/v1/voice/session`) running a cascaded **STT → analyze → TTS** shell: Deepgram Flux streaming STT + Cartesia TTS. Transcribed text feeds the same `analyze_turn` extraction as typed text.
+- **Voice preview** — `POST /api/v1/voice/preview` renders one fixed sentence in a chosen (allowlisted) Cartesia voice and returns a complete WAV, so the frontend's settings picker can be auditioned without opening a session. The transcript never varies, so each voice is synthesized at most once per process and cached in memory.
 
 The Node.js **gateway** service proxies AI/RAG requests to this service.
 

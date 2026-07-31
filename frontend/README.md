@@ -86,16 +86,30 @@ a deep link like `/groups/12` works via in-app navigation but 404s on refresh or
 To check: deploy, then hard-refresh a deep link such as `/groups/12/sessions/48`. It should load the
 app, not a 404.
 
+### Static media
+
+`public/` is copied verbatim into `dist/`, so anything under `public/media/` is served at
+`/media/…` on the deployed site with no extra configuration — including the committed cuisine
+photos in `public/media/cuisines/` (see below). The SPA rewrite rule above only applies to paths
+that don't match a real file, so it does not shadow them.
+
 ## Project layout
 
 ```
+public/
+└── media/cuisines/   # 5 committed stock photos per cuisine pool, plus ATTRIBUTION.md /
+                      #   credits.json (CC BY requires credit) and rejected.json.
+                      #   Rebuild with `bun run scripts/fetch-cuisine-images.ts`.
+scripts/
+└── fetch-cuisine-images.ts   # One-off asset builder for the folder above (not part of the build)
+
 src/
 ├── main.tsx          # App entry point (mounts React inside <BrowserRouter>)
 ├── App.tsx           # The route tree (<Routes>) — layout routes + every path
 ├── index.css         # Tailwind import + @theme design tokens
 ├── api/              # HTTP calls to the gateway via axios
 │   ├── sessionApi.ts  eventsApi.ts  restaurantsApi.ts  profileApi.ts
-│   ├── authApi.ts  groupsApi.ts  userApi.ts  usersApi.ts
+│   ├── authApi.ts  groupsApi.ts  userApi.ts  usersApi.ts  voiceApi.ts
 │   └── (no mock layer)
 ├── pages/            # Full screens (one per route)
 │   ├── auth/         # AuthForm (Better Auth sign-in/up + Google)
@@ -109,9 +123,11 @@ src/
 │   │                 #   BrandPanel, AppSplash, AccountMenu + mobile chrome (BottomTabBar, MobileHeader, MobileActionSheet)
 │   ├── session/      # HostSessionModal, SessionTopBar, SessionTimer, GroupMessageRow, ChatStream, SessionCard,
 │   │                 #   GroupList, GroupDetailPanel, MobileSessionStrip, …
-│   ├── restaurant/   # RankedRestaurantCard (ephemeral voting), MenuList (placeholder), RestaurantHeader, TagRow, MenuItemRow
+│   ├── restaurant/   # RankedRestaurantCard (ephemeral voting), MenuList (placeholder), RestaurantHeader, TagRow, MenuItemRow,
+│   │                 #   RestaurantImage (random cuisine-photo banner, shared by Explore/Top picks/Events)
 │   ├── profile/      # CuisineTriStatePicker, PreferenceTag
-│   └── voice/        # VoiceComposer — one composer, two paths (Web Speech dictation + hands-free server loop)
+│   └── voice/        # VoiceComposer — one composer, two paths (Web Speech dictation + hands-free server loop);
+│                     #   VoicePreviewButton — audition a TTS voice from Settings
 ├── hooks/            # Routing (useGroupId, useSessionId, useBindSession); sync (useSocket, useGroupSync,
 │                     #   useSessionSync, useSessionCountdown); voice (useVoiceInput, useVoiceSession);
 │                     #   usePlacesInput, useMediaQuery, useIsMobile, useScrollLock, useDismissOnBack, useCreateGroup, useSignOut, …
@@ -119,5 +135,6 @@ src/
 ├── lib/              # axios, socket, authClient (Better Auth), env, motion
 ├── types/            # Shared TypeScript types (user, profile, session, recommendation, analyze, group, restaurant, voice, …)
 ├── utils/            # cn.ts, hours.ts (TS mirror of ai_service app/ai/hours.py), slug.ts (name-42 route slugs), …
-└── constants/        # dietary.ts, memberColors.ts, agentChat.ts, mobileNav.ts
+└── constants/        # dietary.ts, memberColors.ts, agentChat.ts, mobileNav.ts, theme.ts, voices.ts,
+                      #   restaurantVisuals.ts, cuisineImages.ts (cuisine tag → photo pool mapping)
 ```

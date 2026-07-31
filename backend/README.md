@@ -17,6 +17,7 @@ The frontend-facing service. Handles:
 - React + Vite integration layer (REST API gateway)
 - Proxies AI / RAG requests to `ai_service`
 - Relays the hands-free voice loop (browser mic ↔ `ai_service` STT/TTS) over Socket.IO
+- Proxies the settings-screen voice preview (`POST /api/voice/preview` → WAV bytes)
 
 Run: `cd gateway && bun install && bun run dev`
 

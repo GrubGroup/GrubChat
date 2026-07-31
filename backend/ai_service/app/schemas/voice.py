@@ -151,3 +151,18 @@ class StopFrame(BaseModel):
     """End the voice session: close the upstream STT stream and any TTS."""
 
     type: Literal["stop"]
+
+
+# ---- HTTP: voice preview ----------------------------------------------------
+# Not a WS control frame — the settings screen's "hear this voice" button posts
+# this to `POST /api/v1/voice/preview` and gets a WAV back. It lives here because
+# the field is the same `voice_id` the StartFrame above carries, validated against
+# the same allowlist (`app.ai.voice.voices.resolve_voice_id`).
+
+
+class VoicePreviewRequest(BaseModel):
+    """Which voice to speak the fixed preview line in."""
+
+    # Optional so an older/omitting client still gets the server default voice
+    # rather than a 422; unknown ids resolve to the default too.
+    voice_id: str | None = None
