@@ -5,14 +5,13 @@ import { Avatar, Badge, Button, Icon } from '@/components/ui'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { BottomTabBar, TabBarSpacer } from '@/components/layout/BottomTabBar'
 import { MobileHeader } from '@/components/layout/MobileHeader'
+import { RestaurantImage } from '@/components/restaurant/RestaurantImage'
 import { memberColor } from '@/constants/memberColors'
+import { restaurantTint } from '@/constants/restaurantVisuals'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useEventListStore } from '@/stores/eventListStore'
 import { cn } from '@/utils/cn'
 import { idFromSlug, toSlugId } from '@/utils/slug'
-
-// A cuisine/dietary emoji is not on the API row, so pick a stable default.
-const EVENT_EMOJI = '🍽️'
 
 // Sidebar subtitle: the event date + time, e.g. "Mon, Jul 28 · 7:00 PM".
 // Invalid dates render "".
@@ -34,9 +33,15 @@ function EventRow({ e, active }: { e: EventRecord; active: boolean }) {
           : 'flex w-full items-center gap-3 border-b border-border px-4 py-3 text-left transition-colors duration-150 ease-out hover:bg-surface-sunken/50'
       }
     >
-      <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-surface-raised text-lg">
-        {EVENT_EMOJI}
-      </span>
+      {/* Photo tile, replacing the one generic 🍽️ every row used to carry. Keyed
+          on the EVENT (rows are too), while the tint underneath stays keyed on the
+          restaurant so a venue keeps one identity colour across the app. */}
+      <RestaurantImage
+        cuisineTags={e.cuisine_tags}
+        identity={e.id}
+        className="h-10 w-10 shrink-0 rounded-2xl border border-border"
+        tintClass={restaurantTint(e.restaurant_id)}
+      />
       <div className="min-w-0 flex-1">
         <span className="block truncate text-item-title font-semibold text-text">
           {e.restaurant_name}
@@ -220,21 +225,38 @@ export function EventsPage() {
               title={active.restaurant_name}
               subtitle={active.group_name ?? undefined}
             />
-            <div className="flex h-56 shrink-0 flex-col justify-end gap-1 bg-surface-inverse p-4 text-on-inverse md:p-6">
-              {/* The time was absolutely positioned top-right, where it collided
-                  with the text-display title at 390px. In flow above the address
-                  it reads as part of the same block at every width. */}
-              {active.time_slot && (
-                <span className="text-caption text-on-inverse/70">{active.time_slot}</span>
-              )}
-              <p className="text-caption text-on-inverse/70">
-                📍 {active.address ?? active.group_name ?? 'Location TBD'}
-              </p>
-              <h1 className="font-display text-section-title font-bold md:text-display">
-                {active.restaurant_name}
-              </h1>
-              {active.occasion && <p className="text-body text-on-inverse/80">{active.occasion}</p>}
-            </div>
+            {/* Hero — a cuisine photo behind the outing's details. The scrim is
+                what keeps the on-inverse text at its contrast ratio over an
+                arbitrary photo; the flat surface-inverse fill stays beneath as
+                the tint, so this reads identically before the image lands. */}
+            <RestaurantImage
+              cuisineTags={active.cuisine_tags}
+              identity={active.id}
+              className="h-56 w-full shrink-0"
+              tintClass="bg-surface-inverse"
+            >
+              <div
+                aria-hidden
+                className="absolute inset-0 bg-gradient-to-t from-surface-inverse via-surface-inverse/80 to-surface-inverse/30"
+              />
+              <div className="relative flex h-full flex-col justify-end gap-1 p-4 text-on-inverse md:p-6">
+                {/* The time was absolutely positioned top-right, where it collided
+                    with the text-display title at 390px. In flow above the address
+                    it reads as part of the same block at every width. */}
+                {active.time_slot && (
+                  <span className="text-caption text-on-inverse/70">{active.time_slot}</span>
+                )}
+                <p className="text-caption text-on-inverse/70">
+                  📍 {active.address ?? active.group_name ?? 'Location TBD'}
+                </p>
+                <h1 className="font-display text-section-title font-bold md:text-display">
+                  {active.restaurant_name}
+                </h1>
+                {active.occasion && (
+                  <p className="text-body text-on-inverse/80">{active.occasion}</p>
+                )}
+              </div>
+            </RestaurantImage>
 
             <div className="flex flex-col gap-5 p-4 md:p-6">
               <div className="flex flex-wrap gap-2">
