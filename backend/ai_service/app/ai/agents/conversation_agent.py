@@ -57,6 +57,88 @@ _MISSING_ORDER = [
 
 _VALID_LOCATION_MODES = {"named", "realtime", "unset"}
 
+# Phrases that mean "I have no cuisine preference — you/my profile decide". When a
+# member says one of these and NO cuisine was captured, we stop re-asking and fall
+# back to their saved Profile favorites instead of looping until they name one.
+# Matched as space-padded substrings against a normalized message (apostrophes
+# dropped, non-alphanumerics -> single spaces), so "I'm flexible" / "don't care"
+# reduce to "im flexible" / "dont care". This is the deterministic backstop; the
+# LLM's own `no_cuisine_preference` flag (see the prompt) covers paraphrases the
+# list misses. Gated on an EMPTY preferred_cuisines set by the caller, so a real
+# answer in the same turn ("thai, but otherwise anything") is never overridden.
+_CUISINE_FLEXIBLE_PHRASES = frozenset(
+    {
+        "anything works",
+        "anything is fine",
+        "anything fine",
+        "anything is good",
+        "anything good",
+        "anything is ok",
+        "anything is okay",
+        "anything goes",
+        "eat anything",
+        "open to anything",
+        "open to whatever",
+        "im flexible",
+        "i am flexible",
+        "flexible",
+        "no preference",
+        "no preferences",
+        "no strong preference",
+        "no strong feelings",
+        "dont have a preference",
+        "dont have any preference",
+        "dont have preferences",
+        "no opinion",
+        "dont care",
+        "doesnt matter",
+        "does not matter",
+        "no matter",
+        "whatever",
+        "whatever works",
+        "you decide",
+        "you choose",
+        "you pick",
+        "up to you",
+        "your call",
+        "surprise me",
+        "im open",
+        "i am open",
+        "im not picky",
+        "i am not picky",
+        "not picky",
+        "im easy",
+        "i am easy",
+    }
+)
+
+
+def _normalize_for_match(message: str) -> str:
+    """Lowercase, drop apostrophes, and collapse non-alphanumerics to spaces.
+
+    Space-padded so the phrase set can be tested as whole-token substrings
+    ("flexible" matches " flexible " but not "inflexible").
+    """
+    out = []
+    for ch in message.lower():
+        out.append(ch if ch.isalnum() else " " if ch not in "'’" else "")
+    return f" {' '.join(''.join(out).split())} "
+
+
+def _expresses_cuisine_flexibility(message: str) -> bool:
+    """True when the message is a "no cuisine preference / you decide" statement."""
+    if not message:
+        return False
+    norm = _normalize_for_match(message)
+    return any(f" {phrase} " in norm for phrase in _CUISINE_FLEXIBLE_PHRASES)
+
+
+def _parsed_no_cuisine_pref(raw_signals: Any) -> bool:
+    """Read the LLM's optional `no_cuisine_preference` flag from the parse."""
+    return isinstance(raw_signals, dict) and bool(
+        raw_signals.get("no_cuisine_preference")
+    )
+
 
 def _ask_order(is_host: bool) -> list[str]:
     """The signals this member's agent asks about, in ask-order.
@@ -83,12 +165,21 @@ class TurnResult:
         agent_reply: str,
         missing_signals: list[str],
         degraded: bool = False,
+        wants_profile_cuisines: bool = False,
     ) -> None:
         self.signals = signals
         self.agent_reply = agent_reply
         self.missing_signals = missing_signals
         # True when the LLM output was unusable and we fell back to prior signals.
         self.degraded = degraded
+        # True when the member expressed NO cuisine preference ("anything works",
+        # "I'm flexible") and none was captured, so the caller should acknowledge
+        # their durable Profile favorites in the reply (see
+        # apply_profile_cuisine_fallback — chat-layer only; the profile is already
+        # the +1 ranking baseline, so nothing is persisted). Kept as a
+        # request-for-data flag rather than doing the DB read here so analyze_turn
+        # stays pure/no-I/O.
+        self.wants_profile_cuisines = wants_profile_cuisines
 
 
 def _clean_tags(value: Any) -> list[str] | None:
@@ -343,17 +434,29 @@ def _summarize_tags(tags: list[str], *, limit: int = 4) -> str:
     return f"{shown}, +{len(pretty) - limit} more"
 
 
-def _fallback_reply(signals: ExtractedSignals, missing: list[str]) -> str:
-    """Deterministic reply used only when the LLM's own reply is unusable.
+def _fallback_reply(
+    signals: ExtractedSignals,
+    missing: list[str],
+    *,
+    profile_cuisines: list[str] | None = None,
+) -> str:
+    """Deterministic reply used when the server authors the line itself.
 
     Confirms whatever is now captured and asks the next missing question — the
     same confirm-then-ask shape the prompt requests, so a degraded turn still
-    behaves correctly for the user.
+    behaves correctly for the user. `profile_cuisines`, when given, is the
+    member's saved-Profile favorites to acknowledge after a "no preference" turn;
+    it is phrased as "your usual" and takes the place of the extracted-preference
+    bit. These are display-only and deliberately NOT in `signals`: the fallback is
+    not persisted as a session override (see apply_profile_cuisine_fallback), so
+    the ranking uses the Profile's own +1 weight rather than a heavier Qa +2.
     """
     bits: list[str] = []
     if signals.disliked_cuisines:
         bits.append(f"you don't like {_summarize_tags(signals.disliked_cuisines)}")
-    if signals.preferred_cuisines:
+    if profile_cuisines:
+        bits.append(f"I'll go with your usual {_summarize_tags(profile_cuisines)}")
+    elif signals.preferred_cuisines:
         bits.append(f"you're into {_summarize_tags(signals.preferred_cuisines)}")
     if signals.dietary_restrictions:
         bits.append(f"dietary: {', '.join(signals.dietary_restrictions)}")
@@ -366,6 +469,39 @@ def _fallback_reply(signals: ExtractedSignals, missing: list[str]) -> str:
     if missing:
         return f"{confirm} {_QUESTION_FOR.get(missing[0], 'What else matters to you?')}"
     return f"{confirm} That's everything I need — thanks!"
+
+
+def apply_profile_cuisine_fallback(
+    result: TurnResult, profile_cuisines: list[str]
+) -> TurnResult:
+    """Acknowledge a flexible member's saved cuisines WITHOUT boosting their weight.
+
+    Called by the service ONLY when ``result.wants_profile_cuisines`` is set (the
+    member said "anything works" / "I'm flexible" and named nothing) AND their
+    Profile has saved favorites. This is what lets a member skip re-stating a
+    cuisine every session.
+
+    Deliberately CHAT-LAYER ONLY: it re-authors the reply to confirm we're falling
+    back to their usual favorites and leaves the cuisine question answered
+    (analyze_turn already dropped it from missing), but it does NOT write those
+    cuisines into ``result.signals`` (and thus never into the session Qa row). The
+    recommendation pipeline already counts every member's durable Profile cuisines
+    at the base +1 weight, so the profile is used at ranking regardless; persisting
+    them as a Qa override would stack the +2 session weight on top (=+3), letting a
+    member who DECLINED to choose outrank one who actively did — the opposite of
+    "flexible". Mutates and returns ``result``; a no-op if nothing nameable remains.
+    """
+    # Display-only, unexpanded (readable), and never a cuisine they just vetoed —
+    # an explicit "no sushi, otherwise anything" must not be echoed back as a like.
+    disliked = set(result.signals.disliked_cuisines)
+    favorites = [c for c in _dedupe_lower(profile_cuisines) if c not in disliked]
+    if not favorites:
+        return result
+    result.wants_profile_cuisines = False
+    result.agent_reply = _fallback_reply(
+        result.signals, result.missing_signals, profile_cuisines=favorites
+    )
+    return result
 
 
 # Output-token cap for the analyze call. The turn's response is small — a
@@ -456,11 +592,21 @@ async def analyze_turn(
 
     if not isinstance(parsed, dict):
         missing = _compute_missing(prior, is_host=is_host)
+        # Even on a degraded (LLM-unusable) turn, honor a "no cuisine preference"
+        # message so a flaky LLM doesn't strand the member in the ask loop: drop
+        # the cuisine question and flag the Profile-favorites acknowledgment
+        # (message-only, since there is no parse to read a flag from).
+        wants_profile_cuisines = (
+            _expresses_cuisine_flexibility(message) and not prior.preferred_cuisines
+        )
+        if wants_profile_cuisines:
+            missing = [m for m in missing if m != "preferred_cuisines"]
         return TurnResult(
             signals=prior,
             agent_reply=_fallback_reply(prior, missing),
             missing_signals=missing,
             degraded=True,
+            wants_profile_cuisines=wants_profile_cuisines,
         )
 
     raw_signals = parsed.get("extracted_signals")
@@ -471,12 +617,27 @@ async def analyze_turn(
     signals = _reconcile(prior, raw_signals)
     missing = _clean_missing(parsed.get("missing_signals"), signals, is_host=is_host)
 
-    if fast:
+    # "Anything works" handling: when the member expressed no cuisine preference
+    # (a flexibility phrase in the message, or the LLM's no_cuisine_preference
+    # flag) and none was captured this turn, treat the cuisine question as
+    # ANSWERED — dropping it from missing stops the re-ask loop — and flag that the
+    # caller should acknowledge the member's saved-Profile favorites in the reply
+    # (used at ranking as the +1 baseline; not persisted as a session override).
+    wants_profile_cuisines = (
+        _expresses_cuisine_flexibility(message) or _parsed_no_cuisine_pref(raw_signals)
+    ) and not signals.preferred_cuisines
+    if wants_profile_cuisines:
+        missing = [m for m in missing if m != "preferred_cuisines"]
+
+    if fast or wants_profile_cuisines:
         # Low-latency mode asked the model NOT to write a reply, so the server
         # authors the whole line. _fallback_reply already produces exactly the
         # confirm-then-ask shape the prompt otherwise requests, and it walks the
         # canonical ask-order — which also makes the spoken wording deterministic
-        # (what the voice/TTS path needs) rather than a model paraphrase.
+        # (what the voice/TTS path needs) rather than a model paraphrase. We also
+        # author it when wants_profile_cuisines is set, so the LLM's reply (written
+        # before the Profile back-fill, and likely still re-asking cuisine) can't
+        # leak through ahead of apply_profile_cuisine_fallback.
         reply = _fallback_reply(signals, missing)
     else:
         reply = parsed.get("agent_reply")
@@ -489,4 +650,5 @@ async def analyze_turn(
         signals=signals,
         agent_reply=reply,
         missing_signals=missing,
+        wants_profile_cuisines=wants_profile_cuisines,
     )

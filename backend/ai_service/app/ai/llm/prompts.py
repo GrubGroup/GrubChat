@@ -80,6 +80,11 @@ PREFERENCE_TURN_SYSTEM = (
     "nut-free, dairy-free, shellfish-free).\n"
     '  "preferred_cuisines" (list[str]): cuisines / groups / styles they want.\n'
     '  "disliked_cuisines" (list[str]): cuisines / groups / styles to avoid.\n'
+    '  "no_cuisine_preference" (bool): true when the user has NO specific cuisine '
+    'preference — they are flexible / say "anything works" / "I don\'t mind" / '
+    "want YOU to decide. In that case do NOT invent cuisines: leave "
+    "preferred_cuisines empty and set this flag; the app falls back to the user's "
+    "saved profile favorites so they need not re-state a cuisine every session.\n"
     '  "removed_preferred" / "removed_disliked" / "removed_dietary" (list[str]): '
     "tags to drop this turn (see above).\n"
     '  "budget_min" (int|null), "budget_max" (int|null): per-person price in '
