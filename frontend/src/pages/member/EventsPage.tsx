@@ -158,7 +158,7 @@ export function EventsPage() {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-surface-raised">
-      <AppSidebar eyebrow="Events">
+      <AppSidebar eyebrow="Events" panelWidth="w-64">
         <EventSearch value={query} onChange={setQuery} />
         {loaded && !error && events.length === 0 && (
           <p className="px-4 py-6 text-body text-text-muted">

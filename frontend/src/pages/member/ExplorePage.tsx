@@ -92,7 +92,7 @@ export function ExplorePage() {
   return (
     <div className="flex h-dvh overflow-hidden bg-surface-raised">
       {/* Desktop sidebar — the "Liked places" panel. */}
-      <AppSidebar eyebrow="Explore" panelWidth="w-72">
+      <AppSidebar eyebrow="Explore" panelWidth="w-64">
         <LikedPlacesPanel liked={liked} pending={likePending} onToggleLike={(id) => void toggleLike(id)} />
       </AppSidebar>
 
