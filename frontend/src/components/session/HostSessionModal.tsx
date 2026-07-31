@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import type { Session } from "@/types";
 import { Button, Chip, Icon, Input, Modal } from "@/components/ui";
+import { EASE } from "@/lib/motion";
 import { usePlacesInput } from "@/hooks/usePlacesInput";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { cn } from "@/utils/cn";
@@ -105,6 +108,87 @@ export function HostSessionModal({
   const [timeLimitText, setTimeLimitText] = useState("15 minutes");
   const [timeLimitOpen, setTimeLimitOpen] = useState(false);
   const timeLimit = parseMinutes(timeLimitText);
+  // The combobox field wrapper — the preset menu is portaled to <body> and
+  // fixed-positioned against this box so it floats over the modal (like a native
+  // <select> popup) instead of expanding inside the modal's scroll container.
+  const timeLimitFieldRef = useRef<HTMLDivElement>(null);
+  const timeLimitMenuRef = useRef<HTMLUListElement>(null);
+  const [anchorRect, setAnchorRect] = useState<{
+    left: number;
+    top: number;
+    bottom: number;
+    height: number;
+    width: number;
+  } | null>(null);
+  // Resolved menu top. null until the first alignment pass measures the list, so
+  // we can render it hidden and avoid a one-frame flash at the wrong position.
+  const [menuTop, setMenuTop] = useState<number | null>(null);
+
+  // Measure the field before paint whenever the menu opens, and keep it aligned
+  // while open if the modal body scrolls or the window resizes.
+  useLayoutEffect(() => {
+    if (!timeLimitOpen) return;
+    const measure = () => {
+      const el = timeLimitFieldRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setAnchorRect({
+        left: r.left,
+        top: r.top,
+        bottom: r.bottom,
+        height: r.height,
+        width: r.width,
+      });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    // capture:true so we also catch scrolls on the modal's inner scroll container.
+    window.addEventListener("scroll", measure, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
+  }, [timeLimitOpen]);
+
+  // Align the menu like a native <select>: center the currently-selected preset
+  // over the input box so the list opens both above and below it. Falls back to
+  // dropping below the field when no preset matches (e.g. a custom duration).
+  // Clamped to the viewport so it never runs off the top/bottom edge.
+  useLayoutEffect(() => {
+    if (!timeLimitOpen || !anchorRect) return;
+    const menu = timeLimitMenuRef.current;
+    if (!menu) return;
+    const selected = menu.querySelector<HTMLElement>('[aria-selected="true"]');
+    const menuH = menu.offsetHeight;
+    let top = selected
+      ? anchorRect.top +
+        anchorRect.height / 2 -
+        (selected.offsetTop + selected.offsetHeight / 2)
+      : anchorRect.bottom + 4;
+    const margin = 8;
+    top = Math.max(
+      margin,
+      Math.min(top, window.innerHeight - menuH - margin),
+    );
+    setMenuTop(top);
+  }, [timeLimitOpen, anchorRect, timeLimitText]);
+
+  // Open/close helpers. Closing clears the resolved top so the next open re-hides
+  // until the alignment pass runs (avoids a flash at the stale position).
+  const openTimeLimit = () => setTimeLimitOpen(true);
+  const closeTimeLimit = () => {
+    setTimeLimitOpen(false);
+    setMenuTop(null);
+  };
+
+  // Close the preset menu in the same tick we dismiss the modal, so both start
+  // their exit fade on the same render. (Relying on the input's 150ms blur
+  // timeout to close the menu left it lingering a beat after the modal.)
+  const handleClose = () => {
+    closeTimeLimit();
+    onClose();
+  };
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -183,9 +267,10 @@ export function HostSessionModal({
   };
 
   return (
+    <>
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       title="Start a group session"
       // `lg` on desktop so the location field is wide enough to show its full
       // "Search a place, e.g. Salesforce Tower" placeholder without truncating.
@@ -207,7 +292,7 @@ export function HostSessionModal({
           <Button
             variant="ghost"
             fullWidth={isMobile}
-            onClick={onClose}
+            onClick={handleClose}
             disabled={submitting}
             // Cancel reads first on desktop, but on a phone the primary action
             // belongs at the thumb — so reverse the order, not the markup.
@@ -371,7 +456,7 @@ export function HostSessionModal({
           >
             Members answer within
           </label>
-          <div className="relative">
+          <div className="relative" ref={timeLimitFieldRef}>
             <Input
               id="answer-window"
               role="combobox"
@@ -385,16 +470,18 @@ export function HostSessionModal({
               value={timeLimitText}
               onChange={(e) => {
                 setTimeLimitText(e.target.value);
-                setTimeLimitOpen(true);
+                // Typing means the host is entering a custom duration, so get the
+                // preset menu out of the way.
+                closeTimeLimit();
               }}
-              onFocus={() => setTimeLimitOpen(true)}
+              onFocus={openTimeLimit}
               onBlur={() => {
                 // Delay so a menu click registers before the blur closes it.
-                window.setTimeout(() => setTimeLimitOpen(false), 150);
+                window.setTimeout(closeTimeLimit, 150);
               }}
               onKeyDown={(e) => {
-                if (e.key === "Escape") setTimeLimitOpen(false);
-                if (e.key === "ArrowDown") setTimeLimitOpen(true);
+                if (e.key === "Escape") closeTimeLimit();
+                if (e.key === "ArrowDown") openTimeLimit();
               }}
               error={
                 timeLimitText.trim() && timeLimit === null
@@ -411,7 +498,8 @@ export function HostSessionModal({
               aria-label="Toggle duration options"
               onMouseDown={(e) => {
                 e.preventDefault();
-                setTimeLimitOpen((o) => !o);
+                if (timeLimitOpen) closeTimeLimit();
+                else openTimeLimit();
               }}
               className={cn(
                 "absolute right-3.5 top-[22px] -translate-y-1/2 text-text-muted transition-transform hover:text-text",
@@ -420,48 +508,76 @@ export function HostSessionModal({
             >
               <Icon name="chevron-down" size={16} />
             </button>
-            {timeLimitOpen && (
-              <ul
-                id="answer-window-options"
-                role="listbox"
-                className="absolute z-20 mt-1 w-full overflow-hidden rounded-input border border-border bg-surface py-1 shadow-lg"
-              >
-                {TIME_LIMIT_PRESETS.map((o) => (
-                  <li key={o.value}>
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={timeLimit === o.value}
-                      // onMouseDown fires before the input's onBlur, so the pick
-                      // isn't lost to the blur-close above.
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        setTimeLimitText(o.label);
-                        setTimeLimitOpen(false);
-                      }}
-                      className={cn(
-                        "flex w-full items-center justify-between px-3 py-2 text-left text-body text-text hover:bg-surface-sunken",
-                        timeLimit === o.value && "bg-surface-sunken",
-                      )}
-                    >
-                      {o.label}
-                      {timeLimit === o.value && (
-                        <Icon
-                          name="check"
-                          size={14}
-                          className="text-primary"
-                        />
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+            {/* Dropdown chevron affordance sits above; the floating preset menu is
+                rendered as a SIBLING of <Modal> below (not here) — see the note
+                there for why. */}
           </div>
         </div>
 
         {error && <p className="text-body text-error">{error}</p>}
       </div>
     </Modal>
+
+    {/* The floating preset menu — a SIBLING of <Modal>, not a child. Nested inside
+        the modal, framer-motion freezes the exiting subtree with its old props
+        during the modal's exit, so the menu never sees open=false and only
+        vanishes once that frozen subtree unmounts — a visible lag. As a sibling it
+        reacts to `open` on the same render the modal does, so both fade together.
+        Portaled to <body> + fixed-positioned against the field so it floats over
+        the modal (like a native <select> popup) and the selected preset centers on
+        the input, opening the list above AND below it. */}
+    {createPortal(
+      <AnimatePresence>
+        {open && timeLimitOpen && anchorRect && (
+          <motion.ul
+            ref={timeLimitMenuRef}
+            id="answer-window-options"
+            role="listbox"
+            style={{
+              position: "fixed",
+              left: anchorRect.left,
+              top: menuTop ?? anchorRect.bottom + 4,
+              width: anchorRect.width,
+              // Hide the alignment pass's first frame to avoid a flash at the
+              // pre-measured position.
+              visibility: menuTop === null ? "hidden" : "visible",
+            }}
+            className="z-[60] overflow-hidden rounded-input border border-border bg-surface py-1 shadow-lg"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: EASE }}
+          >
+            {TIME_LIMIT_PRESETS.map((o) => (
+              <li key={o.value}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={timeLimit === o.value}
+                  // onMouseDown fires before the input's onBlur, so the pick
+                  // isn't lost to the blur-close above.
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setTimeLimitText(o.label);
+                    closeTimeLimit();
+                  }}
+                  className={cn(
+                    "flex w-full items-center justify-between px-3 py-2 text-left text-body text-text hover:bg-surface-sunken",
+                    timeLimit === o.value && "bg-surface-sunken",
+                  )}
+                >
+                  {o.label}
+                  {timeLimit === o.value && (
+                    <Icon name="check" size={14} className="text-primary" />
+                  )}
+                </button>
+              </li>
+            ))}
+          </motion.ul>
+        )}
+      </AnimatePresence>,
+      document.body,
+    )}
+    </>
   );
 }
