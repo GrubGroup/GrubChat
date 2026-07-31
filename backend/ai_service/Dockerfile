@@ -13,6 +13,13 @@ RUN uv sync --frozen --no-dev
 # Copy application code
 COPY . .
 
+# Startup shim: pin the Render DB host into /etc/hosts before the app boots so
+# asyncpg resolves it via the local hosts file, sidestepping Fly's internal
+# resolver, which intermittently fails to resolve Render's IPv4-only DB host
+# (gaierror -> 502 on every DB-touching endpoint). See docker-entrypoint.sh.
+RUN chmod +x /app/docker-entrypoint.sh
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+
 EXPOSE 8000
 
 # Run the FastAPI app. Bind 0.0.0.0 so Fly's public proxy + health checks reach
