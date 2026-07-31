@@ -14,8 +14,17 @@ export interface ChatSlice {
   // active session changes, so session B never inherits session A's chat.
   sessionId: number | null
   // The reconciled signal set the agent has accumulated across turns — sent back
-  // on each turn so corrections work, and rendered in the "Noted so far" panel.
+  // on each turn so corrections work. Cuisines here are COMPACT (a broad answer is
+  // the group key "asian"), which keeps the analyze turn fast and the spoken voice
+  // reply short — do NOT render these in the panel directly.
   currentSignals: ExtractedSignals
+  // DISPLAY-ONLY expanded cuisine lists for the "Noted so far" panel: the concrete
+  // members a stored group key covers (asian -> chinese, japanese, ...), computed
+  // by the backend with the SAME expansion the orchestrator ranks on. Kept
+  // separate from currentSignals so expanding the panel never re-inflates what we
+  // echo back to the LLM. Empty until the first analyze reply that carries them.
+  displayPreferredCuisines: string[]
+  displayDislikedCuisines: string[]
   missingSignals: string[]
   // Authoritative "the member has answered everything" flag, from the analyze
   // response's is_complete (fallback: missingSignals empty). Seeded false so it's
@@ -46,6 +55,8 @@ const makeChatSlice = (): ChatSlice => ({
   messages: [],
   sessionId: null,
   currentSignals: emptySignals(),
+  displayPreferredCuisines: [],
+  displayDislikedCuisines: [],
   missingSignals: [],
   isComplete: false,
   sending: false,
@@ -103,6 +114,9 @@ interface ChatState {
       extracted_signals: ExtractedSignals
       missing_signals: string[]
       is_complete?: boolean
+      // Expanded cuisines for the panel (see ChatSlice.displayPreferredCuisines).
+      display_preferred_cuisines?: string[]
+      display_disliked_cuisines?: string[]
     },
   ) => void
   // A voice turn failed upstream (analyze error / relay drop). Clear `sending` and
@@ -155,6 +169,8 @@ export const useChatStore = create<ChatState>((set, get) => {
         messages: [opening],
         sessionId,
         currentSignals: emptySignals(),
+        displayPreferredCuisines: [],
+        displayDislikedCuisines: [],
         missingSignals: [],
         isComplete: false,
       })
@@ -202,6 +218,13 @@ export const useChatStore = create<ChatState>((set, get) => {
         patchChat(groupId, (prev) => ({
           messages: [...prev.messages, agentMsg],
           currentSignals: res.extracted_signals,
+          // Panel shows the expanded members; fall back to the compact list for an
+          // older backend that omits the display fields (never leave it empty when
+          // a cuisine was captured).
+          displayPreferredCuisines:
+            res.display_preferred_cuisines ?? res.extracted_signals.preferred_cuisines,
+          displayDislikedCuisines:
+            res.display_disliked_cuisines ?? res.extracted_signals.disliked_cuisines,
           missingSignals: res.missing_signals,
           // Prefer the server's authoritative flag; fall back to the missing list
           // being empty for an older gateway/ai_service that omits is_complete.
@@ -254,6 +277,12 @@ export const useChatStore = create<ChatState>((set, get) => {
       patchChat(groupId, (prev) => ({
         messages: [...prev.messages, agentMsg],
         currentSignals: result.extracted_signals,
+        // Expanded members for the panel; same compact-list fallback as the text
+        // path so an older ai_service still populates the panel.
+        displayPreferredCuisines:
+          result.display_preferred_cuisines ?? result.extracted_signals.preferred_cuisines,
+        displayDislikedCuisines:
+          result.display_disliked_cuisines ?? result.extracted_signals.disliked_cuisines,
         missingSignals: result.missing_signals,
         // Same precedence as the text path: prefer the server flag, else infer from
         // an empty missing list. (turn_result always carries is_complete, but keep
@@ -287,5 +316,11 @@ export const selectMissingSignals = (groupId: number) => (s: ChatState) =>
   (s.byGroup[groupId] ?? EMPTY_CHAT_SLICE).missingSignals
 export const selectCurrentSignals = (groupId: number) => (s: ChatState) =>
   (s.byGroup[groupId] ?? EMPTY_CHAT_SLICE).currentSignals
+// The panel's cuisine chips: expanded members (asian -> chinese, japanese, ...),
+// NOT the compact currentSignals form the LLM round-trips.
+export const selectDisplayPreferredCuisines = (groupId: number) => (s: ChatState) =>
+  (s.byGroup[groupId] ?? EMPTY_CHAT_SLICE).displayPreferredCuisines
+export const selectDisplayDislikedCuisines = (groupId: number) => (s: ChatState) =>
+  (s.byGroup[groupId] ?? EMPTY_CHAT_SLICE).displayDislikedCuisines
 export const selectIsComplete = (groupId: number) => (s: ChatState) =>
   (s.byGroup[groupId] ?? EMPTY_CHAT_SLICE).isComplete

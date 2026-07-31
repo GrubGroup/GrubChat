@@ -45,6 +45,7 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 
 from app.ai.agents.conversation_agent import _QUESTION_FOR
+from app.ai.taxonomy import expand_cuisine_terms
 from app.ai.voice.keyterms import get_keyterms
 from app.ai.voice.stt import TurnEvent, consume_turns
 from app.ai.voice.tts import ConcurrencyLimitError, stream_audio
@@ -78,6 +79,12 @@ _SILENCE_INTERVAL_S = 0.08
 # the member on one question forever.
 _MAX_REASK = 2
 
+# Max wait for the client's `start` re-seed before dispatching the first turn.
+# The frame normally lands well under a second (before any EndOfTurn exists), so
+# this is a safety cap for a client that never seeds — NOT added latency in the
+# hot path. Bounded so an older client that omits `start` still proceeds.
+_SEED_WAIT_S = 2.0
+
 # Refuse a second concurrent connection for the same (session, user): a duplicate
 # open mic double-bills Deepgram and races two turn loops onto one Qa row.
 _active: set[tuple[int, int]] = set()
@@ -99,10 +106,22 @@ class _VoiceConnection:
         self._turn_lock = asyncio.Lock()
         # The in-flight TTS streaming task, so barge-in can cancel JUST speech.
         self._tts_task: asyncio.Task | None = None
+        # Set once the FINAL confirmation turn starts speaking: while true, barge-in
+        # is suppressed so the closing line ("Great — that's everything I need.")
+        # plays to completion instead of being cut by the user's reflexive "thanks!"
+        # (a guaranteed Flux StartOfTurn) or TTS echo leaking past imperfect AEC.
+        self._completing = False
         # Seeded from the client's `start` frame; kept current across turns so the
         # analyze context matches what the text chat already tracks.
         self._history: list[ConversationTurn] = []
         self._signals = ExtractedSignals()
+        # Set once the client's `start` re-seed (accumulated signals + history) is
+        # applied, so the FIRST turn isn't analyzed against the empty initial set.
+        # On a re-tap to edit answers, the connection is brand-new (empty signals)
+        # but the client re-seeds the prior signals right after `ready`; without
+        # this barrier a fast first utterance races ahead of the re-seed and the
+        # loop re-asks already-answered questions.
+        self._seeded = asyncio.Event()
         # The Cartesia voice this member picked (settings dropdown), seeded from
         # the `start` frame and validated against the allowlist. Defaults to the
         # configured server voice until a `start` frame supplies one.
@@ -178,6 +197,10 @@ class _VoiceConnection:
             # Validate the requested voice against the allowlist; an unknown value
             # falls back to the server default rather than reaching Cartesia raw.
             self._voice_id = resolve_voice_id(frame.get("voice_id"))
+            # Release the first-turn dispatch barrier: prior signals + history are
+            # now in place, so the first analyze reconciles against them (not the
+            # empty initial set), which is what stops the re-ask-everything bug.
+            self._seeded.set()
         return True
 
     async def audio_iter(self) -> AsyncIterator[bytes]:
@@ -209,6 +232,13 @@ class _VoiceConnection:
     async def relay_event(self, event: TurnEvent) -> None:
         """``on_event`` hook: forward interim captions + barge-in to the client."""
         if event.is_barge_in:
+            # On the FINAL confirmation turn, ignore barge-in so the closing line
+            # plays to the end. The user's reflexive "thanks!" fires a guaranteed
+            # Flux StartOfTurn, and TTS echo can leak past imperfect AEC — either
+            # would otherwise cancel the last utterance mid-word. There's no next
+            # question to interrupt to, so suppression costs nothing.
+            if self._completing:
+                return
             self._cancel_tts()
             await self._send(BargeInFrame())
         elif event.transcript and not event.is_final:
@@ -250,6 +280,15 @@ class _VoiceConnection:
                 await turn_q.put(None)
 
         stt_task = asyncio.create_task(_stt_loop())
+        # Wait (briefly) for the client's `start` re-seed before dispatching the
+        # FIRST turn. Otherwise a fast first utterance on a re-tap is analyzed
+        # against the empty initial signals and the loop re-asks answered
+        # questions. This gates only turn DISPATCH — the STT task keeps ingesting
+        # audio and relaying captions/barge-in via on_event, so nothing is lost;
+        # transcripts simply buffer in turn_q until seeding lands (normally the
+        # event is already set before any transcript exists, so the wait is free).
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(self._seeded.wait(), timeout=_SEED_WAIT_S)
         try:
             while True:
                 transcript = await turn_q.get()
@@ -306,6 +345,12 @@ class _VoiceConnection:
             # the deterministic recompute, which can read empty spuriously. Keep the
             # loop going and re-ask (bounded by _MAX_REASK below).
             complete = (not missing) and not degraded
+            # Latch the completing flag BEFORE speaking so relay_event suppresses
+            # a barge-in that lands mid-utterance on the closing line. Gated on the
+            # real `complete` (not the closing text), so a degraded turn — which
+            # can spuriously read missing==[] — keeps barge-in enabled.
+            if complete:
+                self._completing = True
             spoken = _voice_confirm(signals, missing, reply)
             await self._send(
                 TurnResultFrame(
@@ -314,6 +359,15 @@ class _VoiceConnection:
                     agent_reply=reply,
                     is_complete=complete,
                     degraded=degraded,
+                    # Expanded members for the panel (compact signals stay compact;
+                    # the spoken `spoken` line is unaffected). Same expansion the
+                    # orchestrator ranks on — see TurnResultFrame / AnalyzeResponse.
+                    display_preferred_cuisines=expand_cuisine_terms(
+                        signals.preferred_cuisines
+                    ),
+                    display_disliked_cuisines=expand_cuisine_terms(
+                        signals.disliked_cuisines
+                    ),
                 )
             )
             await self._speak(spoken)

@@ -3,13 +3,18 @@ import { Icon } from '@/components/ui'
 import {
   useChatStore,
   selectCurrentSignals,
+  selectDisplayPreferredCuisines,
+  selectDisplayDislikedCuisines,
   selectMissingSignals,
   selectChatMessages,
 } from '@/stores/chatStore'
 import { useSessionStore, selectIsHost } from '@/stores/sessionStore'
 
-// How many cuisine tags to show before collapsing behind a "+N more" toggle, so
-// a broad answer ("Asian") that expands to ~20 tags never overflows the panel.
+// How many cuisine tags to show before collapsing behind a "+N more" toggle. A
+// broad answer ("Asian") is intentionally shown EXPANDED into its member cuisines
+// (chinese, japanese, ...) so the diner sees what the group covers — the same set
+// the orchestrator ranks on — and the toggle keeps that ~20-tag list from
+// overflowing the panel.
 const TAG_LIMIT = 6
 
 // A row is one of three states:
@@ -78,6 +83,11 @@ export interface NotedSoFarPanelProps {
 
 export function NotedSoFarPanel({ groupId }: NotedSoFarPanelProps) {
   const signals = useChatStore(selectCurrentSignals(groupId))
+  // Cuisine CHIPS render the expanded members (asian -> chinese, japanese, ...);
+  // `signals` (compact) is still used for the pending/None/confirmed state logic
+  // and the non-cuisine rows (budget, location, dietary).
+  const displayPreferred = useChatStore(selectDisplayPreferredCuisines(groupId))
+  const displayDisliked = useChatStore(selectDisplayDislikedCuisines(groupId))
   const missing = useChatStore(selectMissingSignals(groupId))
   // Whether the user has taken at least one turn. Before that, an empty +
   // not-missing field is "pending" (not yet reached), NOT "None" — the greeting
@@ -109,16 +119,19 @@ export function NotedSoFarPanel({ groupId }: NotedSoFarPanelProps) {
       })
     }
 
+    // Chips show the EXPANDED members (displayPreferred/Disliked); the row state
+    // keys off the compact `signals` list, which is empty/non-empty in lockstep
+    // with the expanded one, so completion tracking is unchanged.
     out.push({
       key: 'preferred_cuisines',
       label: 'Likes',
-      tags: signals.preferred_cuisines,
+      tags: displayPreferred,
       state: resolve('preferred_cuisines', signals.preferred_cuisines.length > 0),
     })
     out.push({
       key: 'disliked_cuisines',
       label: 'Avoids',
-      tags: signals.disliked_cuisines,
+      tags: displayDisliked,
       state: resolve('disliked_cuisines', signals.disliked_cuisines.length > 0),
     })
 
@@ -151,7 +164,7 @@ export function NotedSoFarPanel({ groupId }: NotedSoFarPanelProps) {
     }
 
     return out
-  }, [signals, missing, hasAnswered, isHost])
+  }, [signals, displayPreferred, displayDisliked, missing, hasAnswered, isHost])
 
   return (
     <div className="flex flex-col gap-3">

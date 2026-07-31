@@ -19,6 +19,7 @@ from app.ai.llm.prompts import build_group_rerank_messages
 from app.core.config import settings
 from app.ai.rag.embeddings import embed_text
 from app.ai.rag.retriever import similarity_search
+from app.ai.taxonomy import expand_cuisine_terms
 
 # How many candidates to pull from pgvector before the geo/hours/LLM re-rank
 # passes. Larger than the final top-5 so post-retrieval proximity scoring and the
@@ -106,24 +107,27 @@ def _reconcile(state: PipelineState) -> ReconciledConstraints:
         # `is not None` — that reintroduces the empty-candidates bug.
         if member.effective_budget_max:
             budget_caps.append(member.effective_budget_max)
-        # Durable Profile cuisines (+/-1).
-        for cuisine in member.preferred_cuisines:
-            if cuisine:
-                cuisine_weights[cuisine] = cuisine_weights.get(cuisine, 0.0) + 1.0
-        for cuisine in member.disliked_cuisines:
-            if cuisine:
-                cuisine_weights[cuisine] = cuisine_weights.get(cuisine, 0.0) - 1.0
+        # Cuisine signals are stored COMPACT (group/style keys like "asian"), so
+        # this read choke point is where they EXPAND into their concrete member
+        # tags (chinese, japanese, thai, ...). expand_cuisine_terms is idempotent,
+        # so a legacy row that was stored already-expanded yields identical
+        # weights — expanding here rather than at write is purely a latency win
+        # (the analyze turn no longer echoes 21 tags per group every turn), with
+        # no change to the ranking these weights drive. Durable Profile cuisines
+        # score +/-1; session QA cuisines add +/-_QA_CUISINE_WEIGHT on top.
+        for cuisine in expand_cuisine_terms(member.preferred_cuisines):
+            cuisine_weights[cuisine] = cuisine_weights.get(cuisine, 0.0) + 1.0
+        for cuisine in expand_cuisine_terms(member.disliked_cuisines):
+            cuisine_weights[cuisine] = cuisine_weights.get(cuisine, 0.0) - 1.0
         # Session QA overrides, weighted heavier so they dominate this session.
-        for cuisine in member.qa_preferred_cuisines:
-            if cuisine:
-                cuisine_weights[cuisine] = (
-                    cuisine_weights.get(cuisine, 0.0) + _QA_CUISINE_WEIGHT
-                )
-        for cuisine in member.qa_disliked_cuisines:
-            if cuisine:
-                cuisine_weights[cuisine] = (
-                    cuisine_weights.get(cuisine, 0.0) - _QA_CUISINE_WEIGHT
-                )
+        for cuisine in expand_cuisine_terms(member.qa_preferred_cuisines):
+            cuisine_weights[cuisine] = (
+                cuisine_weights.get(cuisine, 0.0) + _QA_CUISINE_WEIGHT
+            )
+        for cuisine in expand_cuisine_terms(member.qa_disliked_cuisines):
+            cuisine_weights[cuisine] = (
+                cuisine_weights.get(cuisine, 0.0) - _QA_CUISINE_WEIGHT
+            )
 
     price_max: float | None = min(budget_caps) if budget_caps else None
     avg_budget: float | None = (
