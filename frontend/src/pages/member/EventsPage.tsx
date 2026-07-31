@@ -285,6 +285,7 @@ export function EventsPage() {
                         >
                           <Avatar
                             name={name}
+                            src={a.avatar_url}
                             size="sm"
                             colorClass={memberColor(a.id)}
                             className={removed ? 'opacity-50' : undefined}
