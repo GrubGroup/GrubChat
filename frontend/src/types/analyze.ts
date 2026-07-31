@@ -103,6 +103,11 @@ export interface EventRecord {
   time_slot?: string | null
   group_id?: number | null
   group_name?: string | null
+  // The booked restaurant's cuisine tags, read through the Event→Restaurant
+  // relation by the gateway's listEvents. Not stored on the Event row itself —
+  // it exists purely so the Events UI can pick a cuisine photo without loading
+  // the whole restaurant catalog. Absent → the neutral fallback pool.
+  cuisine_tags?: string[]
   // Participants who attended the session this event came from (gateway
   // listEvents joins Event.attendees). Absent on legacy rows / mock fixtures
   // that don't supply it.
