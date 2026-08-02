@@ -42,12 +42,28 @@ import logging
 import time
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+import httpx
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 
 from app.ai.agents.conversation_agent import _QUESTION_FOR
+from app.ai.taxonomy import expand_cuisine_terms
 from app.ai.voice.keyterms import get_keyterms
 from app.ai.voice.stt import TurnEvent, consume_turns
-from app.ai.voice.tts import ConcurrencyLimitError, stream_audio
+from app.ai.voice.tts import (
+    WAV_OUTPUT,
+    ConcurrencyLimitError,
+    stream_audio,
+    synthesize_bytes,
+)
 from app.ai.voice.voices import resolve_voice_id
 from app.api.deps import require_internal_secret
 from app.core.config import settings
@@ -61,6 +77,7 @@ from app.schemas.voice import (
     SpeechEndFrame,
     TurnFinalFrame,
     TurnResultFrame,
+    VoicePreviewRequest,
 )
 from app.services import session_service
 
@@ -77,6 +94,12 @@ _SILENCE_INTERVAL_S = 0.08
 # repeatedly-degraded turn (LLM failing on a "nothing to avoid" answer) can't loop
 # the member on one question forever.
 _MAX_REASK = 2
+
+# Max wait for the client's `start` re-seed before dispatching the first turn.
+# The frame normally lands well under a second (before any EndOfTurn exists), so
+# this is a safety cap for a client that never seeds — NOT added latency in the
+# hot path. Bounded so an older client that omits `start` still proceeds.
+_SEED_WAIT_S = 2.0
 
 # Refuse a second concurrent connection for the same (session, user): a duplicate
 # open mic double-bills Deepgram and races two turn loops onto one Qa row.
@@ -99,10 +122,22 @@ class _VoiceConnection:
         self._turn_lock = asyncio.Lock()
         # The in-flight TTS streaming task, so barge-in can cancel JUST speech.
         self._tts_task: asyncio.Task | None = None
+        # Set once the FINAL confirmation turn starts speaking: while true, barge-in
+        # is suppressed so the closing line ("Great — that's everything I need.")
+        # plays to completion instead of being cut by the user's reflexive "thanks!"
+        # (a guaranteed Flux StartOfTurn) or TTS echo leaking past imperfect AEC.
+        self._completing = False
         # Seeded from the client's `start` frame; kept current across turns so the
         # analyze context matches what the text chat already tracks.
         self._history: list[ConversationTurn] = []
         self._signals = ExtractedSignals()
+        # Set once the client's `start` re-seed (accumulated signals + history) is
+        # applied, so the FIRST turn isn't analyzed against the empty initial set.
+        # On a re-tap to edit answers, the connection is brand-new (empty signals)
+        # but the client re-seeds the prior signals right after `ready`; without
+        # this barrier a fast first utterance races ahead of the re-seed and the
+        # loop re-asks already-answered questions.
+        self._seeded = asyncio.Event()
         # The Cartesia voice this member picked (settings dropdown), seeded from
         # the `start` frame and validated against the allowlist. Defaults to the
         # configured server voice until a `start` frame supplies one.
@@ -178,6 +213,10 @@ class _VoiceConnection:
             # Validate the requested voice against the allowlist; an unknown value
             # falls back to the server default rather than reaching Cartesia raw.
             self._voice_id = resolve_voice_id(frame.get("voice_id"))
+            # Release the first-turn dispatch barrier: prior signals + history are
+            # now in place, so the first analyze reconciles against them (not the
+            # empty initial set), which is what stops the re-ask-everything bug.
+            self._seeded.set()
         return True
 
     async def audio_iter(self) -> AsyncIterator[bytes]:
@@ -209,6 +248,13 @@ class _VoiceConnection:
     async def relay_event(self, event: TurnEvent) -> None:
         """``on_event`` hook: forward interim captions + barge-in to the client."""
         if event.is_barge_in:
+            # On the FINAL confirmation turn, ignore barge-in so the closing line
+            # plays to the end. The user's reflexive "thanks!" fires a guaranteed
+            # Flux StartOfTurn, and TTS echo can leak past imperfect AEC — either
+            # would otherwise cancel the last utterance mid-word. There's no next
+            # question to interrupt to, so suppression costs nothing.
+            if self._completing:
+                return
             self._cancel_tts()
             await self._send(BargeInFrame())
         elif event.transcript and not event.is_final:
@@ -250,6 +296,15 @@ class _VoiceConnection:
                 await turn_q.put(None)
 
         stt_task = asyncio.create_task(_stt_loop())
+        # Wait (briefly) for the client's `start` re-seed before dispatching the
+        # FIRST turn. Otherwise a fast first utterance on a re-tap is analyzed
+        # against the empty initial signals and the loop re-asks answered
+        # questions. This gates only turn DISPATCH — the STT task keeps ingesting
+        # audio and relaying captions/barge-in via on_event, so nothing is lost;
+        # transcripts simply buffer in turn_q until seeding lands (normally the
+        # event is already set before any transcript exists, so the wait is free).
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(self._seeded.wait(), timeout=_SEED_WAIT_S)
         try:
             while True:
                 transcript = await turn_q.get()
@@ -306,6 +361,12 @@ class _VoiceConnection:
             # the deterministic recompute, which can read empty spuriously. Keep the
             # loop going and re-ask (bounded by _MAX_REASK below).
             complete = (not missing) and not degraded
+            # Latch the completing flag BEFORE speaking so relay_event suppresses
+            # a barge-in that lands mid-utterance on the closing line. Gated on the
+            # real `complete` (not the closing text), so a degraded turn — which
+            # can spuriously read missing==[] — keeps barge-in enabled.
+            if complete:
+                self._completing = True
             spoken = _voice_confirm(signals, missing, reply)
             await self._send(
                 TurnResultFrame(
@@ -314,6 +375,15 @@ class _VoiceConnection:
                     agent_reply=reply,
                     is_complete=complete,
                     degraded=degraded,
+                    # Expanded members for the panel (compact signals stay compact;
+                    # the spoken `spoken` line is unaffected). Same expansion the
+                    # orchestrator ranks on — see TurnResultFrame / AnalyzeResponse.
+                    display_preferred_cuisines=expand_cuisine_terms(
+                        signals.preferred_cuisines
+                    ),
+                    display_disliked_cuisines=expand_cuisine_terms(
+                        signals.disliked_cuisines
+                    ),
                 )
             )
             await self._speak(spoken)
@@ -472,3 +542,102 @@ async def _session_guard(conn: _VoiceConnection) -> None:
         conn._audio_q.put_nowait(None)
     with contextlib.suppress(Exception):
         await conn.ws.close(code=1000)
+
+
+# ---------------------------------------------------------------------------
+# Voice preview (HTTP) — "what does this voice sound like?" for the settings
+# screen's voice picker, so choosing one never means starting a real session.
+#
+# Deliberately NOT part of the WS relay above: there is no mic, no STT, no
+# analyze and no Qa write here — just one fixed sentence run through Cartesia and
+# handed back as a whole WAV the browser can drop into an <audio> element.
+# ---------------------------------------------------------------------------
+
+# The line every voice speaks. Fixed on purpose: comparing two voices only works
+# if they say the same thing, and a constant transcript is what makes the cache
+# below a cache. Kept short (~4s) — this is a timbre sample, not a demo.
+PREVIEW_LINE = (
+    "Hi, I'm your GrubGroup agent. Tell me what you're in the mood for, "
+    "and I'll find a spot the whole group will love."
+)
+
+# voice_id -> rendered WAV. The transcript never changes, so a voice is
+# synthesized at most ONCE per process: Cartesia bills per generation and a user
+# auditioning four voices back and forth would otherwise pay for every click.
+# Bounded by the allowlist (`SELECTABLE_VOICES`), so it cannot grow unboundedly.
+_preview_cache: dict[str, bytes] = {}
+# One lock per voice so N simultaneous first-clicks collapse into ONE synthesis
+# instead of N (the cache is only useful if concurrent misses wait for it).
+_preview_locks: dict[str, asyncio.Lock] = {}
+
+
+@router.post("/voice/preview", dependencies=[Depends(require_internal_secret)])
+async def voice_preview(payload: VoicePreviewRequest) -> Response:
+    """Return a short WAV of `PREVIEW_LINE` spoken in the requested voice."""
+    voice_id = resolve_voice_id(payload.voice_id)
+
+    audio = _preview_cache.get(voice_id)
+    if audio is None:
+        lock = _preview_locks.setdefault(voice_id, asyncio.Lock())
+        async with lock:
+            # Re-read under the lock: whoever held it first may have filled it.
+            audio = _preview_cache.get(voice_id)
+            if audio is None:
+                audio = await _synthesize_preview(voice_id)
+                _preview_cache[voice_id] = audio
+
+    return Response(
+        content=audio,
+        media_type="audio/wav",
+        headers={
+            # Immutable for the browser too — same voice, same fixed line. This is
+            # what makes a re-click after a page reload cost nothing at all.
+            "Cache-Control": "public, max-age=86400, immutable",
+            "Content-Disposition": 'inline; filename="voice-preview.wav"',
+        },
+    )
+
+
+async def _synthesize_preview(voice_id: str) -> bytes:
+    """One-shot TTS for the preview line, with upstream failures mapped to 5xx.
+
+    Uses the BYTES endpoint rather than the SSE one the live loop uses: there is
+    no turn to start early, the caller wants a complete file, and a WAV container
+    is directly playable by <audio> (the streaming path emits headerless PCM).
+
+    ``WAV_OUTPUT`` is 44.1 kHz float PCM, so this line is roughly 0.9 MB — large
+    for a preview, and a deliberate choice: it is the exact output format the rest
+    of the service already uses against Cartesia, so it is known-good. A lighter
+    ``{"container": "mp3", "bit_rate": …}`` or 16-bit/24 kHz PCM would cut it by
+    an order of magnitude and is a one-line change, but neither has been verified
+    against the live API here (``tts.py`` documents how easily an unverified
+    output field turns into a hard 400), and both browser and server cache the
+    result after the first play.
+    """
+    try:
+        return await synthesize_bytes(
+            PREVIEW_LINE, voice_id=voice_id, output_format=WAV_OUTPUT
+        )
+    except RuntimeError as exc:  # no CARTESIA_API_KEY configured
+        logger.error("voice preview unavailable: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Voice preview is not configured on this deployment.",
+        ) from exc
+    except httpx.HTTPStatusError as exc:
+        # 429 is Cartesia's concurrency cap — a retry moments later works, so say
+        # "busy" rather than "broken".
+        upstream = exc.response.status_code
+        code = (
+            status.HTTP_503_SERVICE_UNAVAILABLE
+            if upstream == 429
+            else status.HTTP_502_BAD_GATEWAY
+        )
+        logger.warning("voice preview upstream %s: %s", upstream, exc)
+        raise HTTPException(status_code=code, detail="Could not generate a preview.") from exc
+    except Exception as exc:
+        logger.exception("voice preview failed")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not generate a preview.",
+        ) from exc

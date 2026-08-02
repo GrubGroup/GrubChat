@@ -123,13 +123,13 @@ export function NewGroupModal({ open, onClose, onSubmit, pending = false }: NewG
                     }
                     className="inline-flex items-center gap-1.5 rounded-pill border border-border bg-surface-panel py-1 pl-1 pr-2.5 text-body font-medium text-text"
                   >
-                    {/* Brief ring flash on landing — the "just added" sparkle. */}
-                    <motion.span
-                      initial={reduce ? false : { boxShadow: '0 0 0 3px rgba(234,106,30,0.55)' }}
-                      animate={{ boxShadow: '0 0 0 0px rgba(234,106,30,0)' }}
-                      transition={{ duration: 0.7, ease: 'easeOut' }}
-                      className="rounded-pill"
-                    >
+                    {/* Brief ring flash on landing — the "just added" sparkle. The
+                        ring lives in the class layer (ring-primary) and only its
+                        OPACITY animates: framer-motion can't interpolate a token
+                        inside a box-shadow string, so animating the shadow meant
+                        hardcoding the light-mode orange, which read off-brand in
+                        dark. An absolutely-positioned sibling gives the same halo. */}
+                    <span className="relative inline-flex rounded-pill">
                       <Avatar
                         name={u.display_name ?? u.username}
                         src={u.avatar_url}
@@ -137,7 +137,14 @@ export function NewGroupModal({ open, onClose, onSubmit, pending = false }: NewG
                         colorClass={memberColor(u.id)}
                         className="h-6 w-6 text-[9px]"
                       />
-                    </motion.span>
+                      <motion.span
+                        aria-hidden
+                        initial={reduce ? false : { opacity: 0.55 }}
+                        animate={{ opacity: 0 }}
+                        transition={{ duration: 0.7, ease: 'easeOut' }}
+                        className="pointer-events-none absolute inset-0 rounded-pill ring-[3px] ring-primary"
+                      />
+                    </span>
                     <span>@{u.username}</span>
                     <button
                       type="button"
@@ -187,7 +194,7 @@ export function NewGroupModal({ open, onClose, onSubmit, pending = false }: NewG
                       )}
                       <p className="truncate text-caption text-text-muted">@{u.username}</p>
                     </div>
-                    <span className="text-text-subtle transition-colors group-hover:text-primary">
+                    <span className="text-text-subtle transition-colors group-hover:text-primary-text">
                       <Icon name="plus" size={14} />
                     </span>
                   </button>

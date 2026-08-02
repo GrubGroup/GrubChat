@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router'
-import { Button, Input } from '@/components/ui'
+import { Button, Input, PasswordChecklist } from '@/components/ui'
+import { isPasswordValid } from '@/utils/password'
 import { useGroupsStore, mostRecentGroup } from '@/stores/groupsStore'
 import { toSlugId } from '@/utils/slug'
 import { useAuthStore } from '@/stores/authStore'
@@ -105,6 +106,13 @@ export function AuthForm({ mode }: AuthFormProps) {
     if (isSignup) {
       if (!email || !password || !username) {
         setError('Username, email, and password are required.')
+        setLoading(false)
+        return
+      }
+      // Enforce the shared strength rules client-side before hitting the gateway
+      // (the checklist below already shows which rule is unmet).
+      if (!isPasswordValid(password)) {
+        setError('Please choose a password that meets all the requirements below.')
         setLoading(false)
         return
       }
@@ -246,10 +254,13 @@ export function AuthForm({ mode }: AuthFormProps) {
               if (e.key === 'Enter') handleSubmit()
             }}
           />
+          {isSignup && password.length > 0 && (
+            <PasswordChecklist value={password} className="mt-1" />
+          )}
         </div>
       </div>
 
-      {error && <p className="text-body text-error">{error}</p>}
+      {error && <p className="text-body text-error-text">{error}</p>}
 
       <Button fullWidth variant="primary" onClick={handleSubmit} isLoading={loading}>
         {isSignup ? 'Create account' : 'Sign in'}
@@ -265,7 +276,7 @@ export function AuthForm({ mode }: AuthFormProps) {
         {isSignup ? 'Already have an account? ' : "Don't have an account? "}
         <button
           onClick={() => navigate(isSignup ? '/login' : '/signup')}
-          className="font-semibold text-text hover:text-primary"
+          className="font-semibold text-text hover:text-primary-text"
         >
           {isSignup ? 'Sign in' : 'Sign up'}
         </button>

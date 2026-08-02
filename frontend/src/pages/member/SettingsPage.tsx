@@ -1,11 +1,14 @@
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
-import { motion, useReducedMotion } from 'framer-motion'
-import { Button, Icon, Input, Modal } from '@/components/ui'
+import { motion, useReducedMotion, type Variants } from 'framer-motion'
+import { Button, Icon, Input, Modal, PasswordChecklist } from '@/components/ui'
+import { VoicePreviewButton } from '@/components/voice/VoicePreviewButton'
+import { isPasswordValid } from '@/utils/password'
 import { EASE } from '@/lib/motion'
 import { changeEmail, changePassword, linkSocial } from '@/lib/authClient'
 import { fetchAuthMethods, type AuthMethods } from '@/api/authApi'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { useDeleteAccount } from '@/hooks/useSignOut'
 import { useAuthStore } from '@/stores/authStore'
 import { useVoicePrefStore } from '@/stores/voicePrefStore'
@@ -14,6 +17,24 @@ import { VOICE_OPTIONS } from '@/constants/voices'
 import { THEME_OPTIONS, type Theme } from '@/constants/theme'
 import type { IconName } from '@/components/ui'
 import { cn } from '@/utils/cn'
+
+// Web-only staggered reveal for the settings sections: the container cascades its
+// children in one after another as the page pushes in. Applied only when `animate`
+// is on (desktop, motion allowed); otherwise the sections render statically.
+//
+// `hidden` doubles as the EXIT: clicking Back animates the container back to
+// `hidden`, so the same sections cascade out — in reverse order (`staggerDirection`
+// -1) so it reads as the entrance played backwards. `when: 'afterChildren'` makes
+// the container's onAnimationComplete wait for every section, which is what
+// triggers the actual navigation (see the container below).
+const sectionsContainer = {
+  hidden: { transition: { staggerChildren: 0.05, staggerDirection: -1, when: 'afterChildren' } },
+  show: { transition: { staggerChildren: 0.06, delayChildren: 0.08 } },
+}
+const sectionItem = {
+  hidden: { opacity: 0, y: 12, transition: { duration: 0.25, ease: EASE } },
+  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: EASE } },
+}
 
 // Account settings screen. Mirrors the "Account settings" wireframe (Account /
 // Connected accounts / Danger zone) and reuses the full-page shell from
@@ -27,6 +48,12 @@ import { cn } from '@/utils/cn'
 // (DELETE /api/user) then runs the sign-out teardown.
 export function SettingsPage() {
   const reduce = useReducedMotion()
+  // Web only: at ≥md this page is PUSHED from the rail's account menu, so an
+  // entrance fade/rise (and a staggered section reveal) reads as that push. Below
+  // `md` it's reached from the profile tab and should paint instantly, matching
+  // ProfilePage's convention — so gate the whole animation on desktop.
+  const isMobile = useIsMobile()
+  const animate = !isMobile && !reduce
   const navigate = useNavigate()
   const location = useLocation()
   const user = useAuthStore((s) => s.user)
@@ -37,6 +64,10 @@ export function SettingsPage() {
   // `start` frame, so a change takes effect on the next voice session.
   const voiceId = useVoicePrefStore((s) => s.voiceId)
   const setVoiceId = useVoicePrefStore((s) => s.setVoiceId)
+  const selectedVoice = VOICE_OPTIONS.find((v) => v.id === voiceId)
+  // A failed preview (TTS unconfigured, upstream busy) is reported here rather
+  // than inside the button — the control row has no space for a message.
+  const [voicePreviewError, setVoicePreviewError] = useState<string | null>(null)
 
   // Color theme — a per-device rendering preference (themeStore, persisted to
   // localStorage). Changing it re-applies immediately via the store's applyTheme
@@ -114,6 +145,10 @@ export function SettingsPage() {
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
+  // Web-only exit: clicking Back fades/drops the page out (mirroring the entrance)
+  // before we actually navigate, so the push in and the pop out feel symmetric.
+  const [leaving, setLeaving] = useState(false)
+
   const openDeleteConfirm = () => {
     setDeleteError(null)
     setConfirmingDelete(true)
@@ -141,8 +176,16 @@ export function SettingsPage() {
   // Back returns wherever the user came from. A 'default' location key means this
   // was the entry point (deep link or fresh reload), so fall through to home
   // rather than leaving the site. (Same rule as ProfilePage.)
-  const goBack = () =>
+  const doNavigateBack = () =>
     location.key === 'default' ? navigate('/groups') : navigate(-1)
+
+  // On desktop, run the exit animation first and navigate when it finishes (see
+  // onAnimationComplete below). On mobile / reduced-motion there's no entrance, so
+  // Back should navigate instantly — animating the exit alone would feel lopsided.
+  const goBack = () => {
+    if (animate) setLeaving(true)
+    else doNavigateBack()
+  }
 
   const openEmailEditor = () => {
     setEmail(user?.email ?? '')
@@ -202,8 +245,8 @@ export function SettingsPage() {
       setPwError('Enter your current password.')
       return
     }
-    if (newPassword.length < 8) {
-      setPwError('New password must be at least 8 characters.')
+    if (!isPasswordValid(newPassword)) {
+      setPwError('Your new password must meet all the requirements listed below.')
       return
     }
     if (newPassword !== confirmPassword) {
@@ -231,9 +274,12 @@ export function SettingsPage() {
   return (
     <motion.div
       className="h-screen overflow-y-auto bg-surface-raised"
-      initial={{ opacity: 0, y: reduce ? 0 : 8 }}
+      // Root stays fully opaque throughout — its `bg-surface-raised` is the page
+      // backdrop. Fading it out on exit revealed the (dark) app backdrop behind,
+      // since the previous route isn't mounted yet. Only the content cascades out.
+      initial={animate ? { opacity: 0, y: 8 } : false}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: reduce ? 0.15 : 0.3, ease: EASE }}
+      transition={animate ? { duration: 0.3, ease: EASE } : { duration: 0 }}
     >
       <div className="mx-auto max-w-3xl">
         {/* Header bar */}
@@ -250,9 +296,19 @@ export function SettingsPage() {
           </p>
         </div>
 
-        <div className="flex flex-col gap-8 px-8 py-6">
+        <motion.div
+          className="flex flex-col gap-8 px-8 py-6"
+          variants={animate ? sectionsContainer : undefined}
+          initial={animate ? 'hidden' : false}
+          animate={animate ? (leaving ? 'hidden' : 'show') : false}
+          onAnimationComplete={(def) => {
+            // Fires for both directions; only the exit cascade ('hidden' while
+            // leaving) should navigate.
+            if (leaving && def === 'hidden') doNavigateBack()
+          }}
+        >
           {/* ACCOUNT */}
-          <Section label="Account">
+          <Section label="Account" variants={animate ? sectionItem : undefined}>
             <div className="overflow-hidden rounded-card border border-border">
               {/* Email — view / inline edit */}
               {editingEmail ? (
@@ -288,7 +344,7 @@ export function SettingsPage() {
                     !canEditCredentials ? (
                       <span className="text-xs text-text-muted">Managed by Google</span>
                     ) : emailSaved ? (
-                      <span className="text-xs text-success">Email updated</span>
+                      <span className="text-xs text-success-text">Email updated</span>
                     ) : undefined
                   }
                 />
@@ -313,6 +369,7 @@ export function SettingsPage() {
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="At least 8 characters"
                   />
+                  {newPassword.length > 0 && <PasswordChecklist value={newPassword} />}
                   <Input
                     label="Confirm new password"
                     type="password"
@@ -320,7 +377,7 @@ export function SettingsPage() {
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Re-enter new password"
                   />
-                  {pwError && <p className="text-sm text-error">{pwError}</p>}
+                  {pwError && <p className="text-sm text-error-text">{pwError}</p>}
                   <div className="flex justify-end gap-2">
                     <Button variant="ghost" size="sm" onClick={cancelPassword} disabled={pwSaving}>
                       Cancel
@@ -342,7 +399,7 @@ export function SettingsPage() {
                     !canEditCredentials ? (
                       <span className="text-xs text-text-muted">Managed by Google</span>
                     ) : pwSaved ? (
-                      <span className="text-xs text-success">Password updated</span>
+                      <span className="text-xs text-success-text">Password updated</span>
                     ) : undefined
                   }
                 />
@@ -351,7 +408,7 @@ export function SettingsPage() {
           </Section>
 
           {/* CONNECTED ACCOUNTS */}
-          <Section label="Connected accounts">
+          <Section label="Connected accounts" variants={animate ? sectionItem : undefined}>
             <div className="overflow-hidden rounded-card border border-border">
               <div className="flex items-center justify-between gap-3 px-4 py-4">
                 <div className="flex items-center gap-3">
@@ -361,11 +418,11 @@ export function SettingsPage() {
                     {!authMethodsLoaded ? (
                       <span className="text-xs text-text-muted">Checking…</span>
                     ) : googleConnected ? (
-                      <span className="text-xs text-success">Connected · {connectedEmail}</span>
+                      <span className="text-xs text-success-text">Connected · {connectedEmail}</span>
                     ) : (
                       <span className="text-xs text-text-muted">Not connected</span>
                     )}
-                    {linkError && <span className="text-xs text-error">{linkError}</span>}
+                    {linkError && <span className="text-xs text-error-text">{linkError}</span>}
                   </div>
                 </div>
                 {authMethodsLoaded && !googleConnected && (
@@ -384,11 +441,11 @@ export function SettingsPage() {
           </Section>
 
           {/* APPEARANCE */}
-          <Section label="Appearance">
+          <Section label="Appearance" variants={animate ? sectionItem : undefined}>
             <div className="overflow-hidden rounded-card border border-border">
               <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-sunken text-primary">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-sunken text-primary-text">
                     <Icon name="moon" size={18} />
                   </span>
                   <div className="flex flex-col gap-0.5">
@@ -404,11 +461,11 @@ export function SettingsPage() {
           </Section>
 
           {/* AI SETTINGS */}
-          <Section label="AI settings">
+          <Section label="AI settings" variants={animate ? sectionItem : undefined}>
             <div className="overflow-hidden rounded-card border border-border">
               <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-sunken text-primary">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-sunken text-primary-text">
                     <Icon name="speaker" size={18} />
                   </span>
                   <div className="flex flex-col gap-0.5">
@@ -418,27 +475,46 @@ export function SettingsPage() {
                     </span>
                   </div>
                 </div>
-                <select
-                  aria-label="Agent voice"
-                  value={voiceId}
-                  onChange={(e) => setVoiceId(e.target.value)}
-                  className="h-11 w-full min-w-0 rounded-input border border-border bg-surface-sunken px-3 text-text focus:outline-none focus:ring-2 focus:ring-focus-ring sm:w-auto sm:min-w-56"
-                >
-                  {VOICE_OPTIONS.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.name} ({v.gender})
-                    </option>
-                  ))}
-                </select>
+                {/* Preview sits to the LEFT of the picker: the point is to hear a
+                    voice BEFORE committing to it, and a session is otherwise the
+                    only place you'd find out what it sounds like. */}
+                <div className="flex w-full items-center gap-2 sm:w-auto">
+                  <VoicePreviewButton
+                    voiceId={voiceId}
+                    voiceName={selectedVoice?.name ?? 'the selected voice'}
+                    onError={setVoicePreviewError}
+                    className="shrink-0 border border-border bg-surface-sunken text-text"
+                  />
+                  <select
+                    aria-label="Agent voice"
+                    value={voiceId}
+                    onChange={(e) => {
+                      setVoiceId(e.target.value)
+                      setVoicePreviewError(null)
+                    }}
+                    className="h-11 min-w-0 flex-1 rounded-input border border-border bg-surface-sunken px-3 text-text focus:outline-none focus:ring-2 focus:ring-focus-ring sm:flex-none sm:w-auto sm:min-w-56"
+                  >
+                    {VOICE_OPTIONS.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name} ({v.gender})
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
+              {voicePreviewError && (
+                <p className="px-4 pb-4 text-xs text-error-text" role="status">
+                  {voicePreviewError}
+                </p>
+              )}
             </div>
           </Section>
 
           {/* DANGER ZONE */}
-          <Section label="Danger zone">
+          <Section label="Danger zone" variants={animate ? sectionItem : undefined}>
             <div className="flex items-center justify-between gap-3 rounded-card border border-error/30 bg-error/[0.05] px-4 py-4">
               <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-semibold text-error">Delete account</span>
+                <span className="text-sm font-semibold text-error-text">Delete account</span>
                 <span className="text-sm text-text-muted">
                   Delete your account and remove yourself from all groups
                 </span>
@@ -453,7 +529,7 @@ export function SettingsPage() {
               </Button>
             </div>
           </Section>
-        </div>
+        </motion.div>
       </div>
 
       {/* Delete-account confirmation. Guard onClose while the request is in
@@ -475,7 +551,7 @@ export function SettingsPage() {
               freed up for future sign-ups.
             </p>
           </div>
-          {deleteError && <p className="text-sm text-error">{deleteError}</p>}
+          {deleteError && <p className="text-sm text-error-text">{deleteError}</p>}
           <div className="flex justify-end gap-2">
             <Button
               variant="ghost"
@@ -580,14 +656,24 @@ function ThemeSegmented({
   )
 }
 
-function Section({ label, children }: { label: string; children: ReactNode }) {
+function Section({
+  label,
+  children,
+  variants,
+}: {
+  label: string
+  children: ReactNode
+  // Passed by the page for the web-only staggered reveal; omitted (undefined) on
+  // mobile / reduced-motion so the section renders statically.
+  variants?: Variants
+}) {
   return (
-    <section className="flex flex-col gap-3">
+    <motion.section className="flex flex-col gap-3" variants={variants}>
       <h3 className="text-[11px] font-semibold uppercase tracking-wider text-text-subtle">
         {label}
       </h3>
       {children}
-    </section>
+    </motion.section>
   )
 }
 

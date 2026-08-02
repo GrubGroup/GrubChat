@@ -8,6 +8,7 @@ from app.ai.agents.conversation_agent import (
     analyze_turn,
     apply_profile_cuisine_fallback,
 )
+from app.ai.taxonomy import expand_cuisine_terms
 from app.crud import session as session_crud
 from app.crud import user as user_crud
 from app.db.session import async_session_factory
@@ -162,6 +163,15 @@ async def analyze_member_turn(
         "qa_updated": qa_updated,
         "agent_reply": result.agent_reply,
         "missing_signals": result.missing_signals,
+        # Expand the COMPACT stored cuisines for the UI panel only (see
+        # AnalyzeResponse) — the same expansion the orchestrator ranks on, so what
+        # the diner sees under "Noted so far" is exactly what the search will use.
+        "display_preferred_cuisines": expand_cuisine_terms(
+            result.signals.preferred_cuisines
+        ),
+        "display_disliked_cuisines": expand_cuisine_terms(
+            result.signals.disliked_cuisines
+        ),
         # Surfaced for the voice loop, which must not auto-advance / mark complete
         # on a degraded (LLM-unusable) turn. Harmless to the HTTP path:
         # AnalyzeResponse has no such field and pydantic ignores the extra key.

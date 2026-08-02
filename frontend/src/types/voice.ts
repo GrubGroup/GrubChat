@@ -35,6 +35,11 @@ export interface VoiceTurnResultFrame {
   agent_reply: string
   is_complete: boolean
   degraded: boolean
+  // Display-only expanded cuisines for the "Noted so far" panel (see
+  // AnalyzeResponse) — extracted_signals stays compact. Optional so an older
+  // ai_service without them degrades to the compact list.
+  display_preferred_cuisines?: string[]
+  display_disliked_cuisines?: string[]
 }
 export interface VoiceSpeechEndFrame {
   type: 'speech_end'

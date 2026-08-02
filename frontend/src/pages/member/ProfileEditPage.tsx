@@ -384,7 +384,7 @@ export function ProfileEditPage() {
             />
           </Field>
 
-          {formError && <p className="text-body text-error">{formError}</p>}
+          {formError && <p className="text-body text-error-text">{formError}</p>}
 
           {/* Actions — reversed and stacked below `sm` so Save is the wide button
               closest to the thumb, with Cancel beneath it. */}

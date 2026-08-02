@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Session } from "@/types";
-import { Button, Chip, Icon, Input, Modal } from "@/components/ui";
+import { AnchoredMenu, Button, Chip, Icon, Input, Modal } from "@/components/ui";
 import { usePlacesInput } from "@/hooks/usePlacesInput";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { cn } from "@/utils/cn";
@@ -92,23 +92,26 @@ export function HostSessionModal({
     lat: number;
     lon: number;
   } | null>(null);
-  // Whether the location field is focused. The autocomplete dropdown shows whenever
-  // the field is focused AND suggestions exist — so matches appear live as the host
-  // types. (It used to be a hand-toggled "open" flag set true only in onChange and
-  // false on a 150ms blur timer; any stray blur — clicking the list's scrollbar, a
-  // focus shuffle — flipped it off and nothing turned it back on until the next
-  // keystroke, so loaded suggestions stayed hidden until you "clicked around".)
-  const [focused, setFocused] = useState(false);
+  // Whether the autocomplete dropdown is open. Opened on focus AND on each keystroke,
+  // closed on blur/Escape/pick/outside-click — so matches stay visible the whole time
+  // the host is in the field. (Opening on focus, not only on keystroke, is what stops
+  // a stray blur — clicking the list's scrollbar, a focus shuffle — from stranding
+  // loaded suggestions hidden until the next keystroke.) Rendered via AnchoredMenu.
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const locationRef = useRef<HTMLInputElement>(null);
 
   const [timeMode, setTimeMode] = useState<"now" | "schedule">("now");
   const [date, setDate] = useState(todayIso());
   const [hour, setHour] = useState(19); // 7 PM default
 
-  // Free-text answer window (combobox): defaults to the "15 minutes" preset but the
-  // host can type any duration. `timeLimit` is the parsed whole-minute value, null
-  // when the text doesn't read as a positive duration.
-  const [timeLimitText, setTimeLimitText] = useState("15 minutes");
+  // Free-text answer window (combobox). Starts EMPTY on purpose: pre-filling it
+  // with "15 minutes" made the field read like a fixed preset, when the host can
+  // type any duration in minutes or hours (see parseMinutes). `timeLimit` is the
+  // parsed whole-minute value, null when the text doesn't read as a positive
+  // duration — which keeps "Start session" disabled until the host picks one.
+  const [timeLimitText, setTimeLimitText] = useState("");
   const [timeLimitOpen, setTimeLimitOpen] = useState(false);
+  const timeLimitRef = useRef<HTMLInputElement>(null);
   const timeLimit = parseMinutes(timeLimitText);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -130,11 +133,11 @@ export function HostSessionModal({
     }
   };
 
-  // Editing the address invalidates a prior geocode result + picked coords. The
-  // dropdown follows focus + suggestion availability, so typing alone surfaces it —
-  // no explicit "open" toggle needed here.
+  // Editing the address invalidates a prior geocode result + picked coords, and
+  // (re)opens the dropdown so the fresh matches surface as the host types.
   const handleAddressChange = (value: string) => {
     location.setValue(value);
+    setShowSuggestions(true);
     if (selectedCoords) setSelectedCoords(null);
     if (geoStatus !== "idle") setGeoStatus("idle");
   };
@@ -166,12 +169,16 @@ export function HostSessionModal({
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
+    // Redundant with canSubmit, but it is what narrows `number | null` -> number
+    // for the payload below; a non-null assertion would silently allow NaN if
+    // canSubmit is ever refactored.
+    if (timeLimit === null) return;
     setSubmitting(true);
     setError(null);
     try {
       const session = await createSession({
         group_id: groupId,
-        time_limit: timeLimit ?? 15,
+        time_limit: timeLimit,
         occasion: occasion.trim() || null,
         scheduled_for: buildScheduledFor(),
         location_address: trimmedAddress,
@@ -256,22 +263,28 @@ export function HostSessionModal({
             <div className="relative flex-1">
               <Input
                 leftIcon={<Icon name="map-pin" size={14} />}
+                ref={locationRef}
+                role="combobox"
+                aria-expanded={showSuggestions && location.suggestions.length > 0}
+                aria-controls="location-options"
+                aria-autocomplete="list"
+                autoComplete="off"
                 placeholder="Search a place, e.g. Salesforce Tower"
                 value={location.value}
                 onChange={(e) => handleAddressChange(e.target.value)}
-                onFocus={() => setFocused(true)}
+                onFocus={() => setShowSuggestions(true)}
                 onBlur={() => {
                   // Delay so a suggestion click (onMouseDown) registers before we
                   // close the dropdown / kick off validation.
                   window.setTimeout(() => {
-                    setFocused(false);
+                    setShowSuggestions(false);
                     if (!selectedCoords) void validateLocation();
                   }, 150);
                 }}
                 onKeyDown={(e) => {
-                  // Escape dismisses the current matches without leaving the field;
-                  // they re-appear on the next keystroke.
-                  if (e.key === "Escape") location.clear();
+                  // Escape closes the dropdown without leaving the field; the
+                  // matches re-open on the next focus or keystroke.
+                  if (e.key === "Escape") setShowSuggestions(false);
                 }}
                 error={
                   geoStatus === "notfound"
@@ -280,34 +293,40 @@ export function HostSessionModal({
                 }
                 hint={geoStatus === "ok" ? "✓ Location confirmed" : undefined}
               />
-              {focused && location.suggestions.length > 0 && (
-                <ul
-                  className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-input border border-border bg-surface py-1 shadow-lg"
-                  role="listbox"
-                >
-                  {location.suggestions.map((s) => (
-                    <li key={s.placeId}>
-                      <button
-                        type="button"
-                        // onMouseDown fires before the input's onBlur, so the pick
-                        // isn't lost to the blur-close above.
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          handleSelectSuggestion(s.placeId);
-                        }}
-                        className="flex w-full items-start gap-2 px-3 py-2 text-left text-body text-text hover:bg-surface-sunken"
-                      >
-                        <Icon
-                          name="map-pin"
-                          size={14}
-                          className="mt-0.5 shrink-0 text-text-muted"
-                        />
-                        <span>{s.description}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <AnchoredMenu
+                open={showSuggestions && location.suggestions.length > 0}
+                anchorRef={locationRef}
+                onDismiss={() => setShowSuggestions(false)}
+                id="location-options"
+                role="listbox"
+                // Geoapify results arrive async, so the menu's height changes
+                // AFTER open — re-measure (and re-decide the flip) when it does.
+                revision={location.suggestions.length}
+                // Reproduces the old `max-h-60`.
+                maxHeight={240}
+              >
+                {location.suggestions.map((s) => (
+                  <li
+                    key={s.placeId}
+                    role="option"
+                    aria-selected={false}
+                    // onMouseDown fires before the input's onBlur, so the pick
+                    // isn't lost to the blur-close above.
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      handleSelectSuggestion(s.placeId);
+                    }}
+                    className="flex cursor-pointer items-start gap-2 px-3 py-2 text-left text-body text-text hover:bg-surface-sunken"
+                  >
+                    <Icon
+                      name="map-pin"
+                      size={14}
+                      className="mt-0.5 shrink-0 text-text-muted"
+                    />
+                    <span>{s.description}</span>
+                  </li>
+                ))}
+              </AnchoredMenu>
             </div>
             <Button
               variant="ghost"
@@ -333,7 +352,7 @@ export function HostSessionModal({
                 className={cn(
                   "flex-1 rounded-input border px-3 py-2 text-body font-medium transition-colors",
                   timeMode === mode
-                    ? "border-surface-inverse bg-surface-inverse text-white"
+                    ? "border-surface-inverse bg-surface-inverse text-on-inverse"
                     : "border-border bg-surface-sunken text-text-muted hover:border-border-strong",
                 )}
               >
@@ -384,14 +403,16 @@ export function HostSessionModal({
           <div className="relative">
             <Input
               id="answer-window"
+              ref={timeLimitRef}
               role="combobox"
               aria-expanded={timeLimitOpen}
               aria-controls="answer-window-options"
               autoComplete="off"
-              leftIcon={<Icon name="calendar" size={14} />}
+              leftIcon={<Icon name="clock" size={14} />}
               // pr-11 keeps the typed value clear of the inset chevron affordance.
               className="pr-11"
-              placeholder="e.g. 15 minutes"
+              placeholder="e.g. 20 minutes"
+              hint="Type any duration — 20 minutes, 45 min, 2 hours"
               value={timeLimitText}
               onChange={(e) => {
                 setTimeLimitText(e.target.value);
@@ -430,47 +451,50 @@ export function HostSessionModal({
             >
               <Icon name="chevron-down" size={16} />
             </button>
-            {timeLimitOpen && (
-              <ul
-                id="answer-window-options"
-                role="listbox"
-                className="absolute z-20 mt-1 w-full overflow-hidden rounded-input border border-border bg-surface py-1 shadow-lg"
-              >
-                {TIME_LIMIT_PRESETS.map((o) => (
-                  <li key={o.value}>
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={timeLimit === o.value}
-                      // onMouseDown fires before the input's onBlur, so the pick
-                      // isn't lost to the blur-close above.
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        setTimeLimitText(o.label);
-                        setTimeLimitOpen(false);
-                      }}
-                      className={cn(
-                        "flex w-full items-center justify-between px-3 py-2 text-left text-body text-text hover:bg-surface-sunken",
-                        timeLimit === o.value && "bg-surface-sunken",
-                      )}
-                    >
-                      {o.label}
-                      {timeLimit === o.value && (
-                        <Icon
-                          name="check"
-                          size={14}
-                          className="text-primary"
-                        />
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+            {/* Portaled to <body> as position:fixed so it OVERLAYS the dialog
+                like a native select popup, instead of joining the modal body
+                scroller's overflow and inflating it by ~162px. */}
+            <AnchoredMenu
+              open={timeLimitOpen}
+              anchorRef={timeLimitRef}
+              onDismiss={() => setTimeLimitOpen(false)}
+              id="answer-window-options"
+              role="listbox"
+            >
+              {TIME_LIMIT_PRESETS.map((o) => (
+                <li
+                  key={o.value}
+                  role="option"
+                  aria-selected={timeLimit === o.value}
+                  // onMouseDown fires before the input's onBlur, so the pick
+                  // isn't lost to the blur-close above. role="option" lives on
+                  // the <li>: an implicit `listitem` is not a permitted child of
+                  // `listbox`, and these were never keyboard-operable anyway
+                  // (no onClick, no onKeyDown), so dropping the inner <button>
+                  // costs nothing and closes a real focus hole — Tab used to
+                  // land on option #1, whose 150ms blur timer then unmounted it
+                  // and dropped focus to <body>, outside the dialog's tab trap.
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setTimeLimitText(o.label);
+                    setTimeLimitOpen(false);
+                  }}
+                  className={cn(
+                    "flex cursor-pointer items-center justify-between px-3 py-2 text-left text-body text-text hover:bg-surface-sunken",
+                    timeLimit === o.value && "bg-surface-sunken",
+                  )}
+                >
+                  {o.label}
+                  {timeLimit === o.value && (
+                    <Icon name="check" size={14} className="text-primary-text" />
+                  )}
+                </li>
+              ))}
+            </AnchoredMenu>
           </div>
         </div>
 
-        {error && <p className="text-body text-error">{error}</p>}
+        {error && <p className="text-body text-error-text">{error}</p>}
       </div>
     </Modal>
   );

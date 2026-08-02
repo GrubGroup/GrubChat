@@ -60,6 +60,7 @@ __all__ = [
     "normalize_tag",
     "expand_cuisine_terms",
     "expand_group_terms_only",
+    "compact_cuisine_terms",
     "normalize_dietary_terms",
 ]
 
@@ -366,6 +367,69 @@ def _build_group_alias_index() -> dict[str, list[str]]:
 
 _ALIAS_TO_EXPANSION: dict[str, list[str]] = _build_alias_index()
 _GROUP_ALIAS_TO_EXPANSION: dict[str, list[str]] = _build_group_alias_index()
+
+# group_key -> the set of its MEMBER cuisines (for the compaction fraction test).
+_GROUP_MEMBER_SETS: dict[str, frozenset[str]] = {
+    key: frozenset(normalize_tag(m) for m in group["members"])
+    for key, group in CUISINE_GROUPS.items()
+}
+# group_key -> its FULL read-time expansion (key + seed_umbrella + members), the
+# tags a stored key covers so they're redundant to also store explicitly.
+_GROUP_FULL_EXPANSION: dict[str, frozenset[str]] = {
+    key: frozenset(_ALIAS_TO_EXPANSION[key]) for key in CUISINE_GROUPS
+}
+
+# A stored cuisine list collapses a group's members back to its single group key
+# once this fraction of the group's members are present — so the stored/echoed
+# form stays small (the analyze turn is output-token-bound, ~13 ms/token, and a
+# 21-tag echo measured ~+286 ms/turn vs a 3-tag one). Below the threshold a
+# handful of named cuisines is NOT a whole-group ask and is kept specific.
+_COMPACT_GROUP_THRESHOLD = 0.7
+
+
+def compact_cuisine_terms(
+    tags: Iterable[str], *, blocked: Iterable[str] = ()
+) -> list[str]:
+    """Collapse a group's member cuisines back to its single group key.
+
+    The inverse-in-spirit of ``expand_cuisine_terms`` and the storage-side half of
+    the compact-signal latency fix: the analyze turn stores/echoes COMPACT group
+    keys, and ``orchestrator_agent._reconcile`` re-expands them at read time. A
+    group collapses to its key when the list already holds the key (redundant
+    members are dropped) OR is saturated with the group's members (fraction >=
+    ``_COMPACT_GROUP_THRESHOLD``). Because the key re-expands to the FULL member
+    set at read, collapsing is INTENT-lossless: it can only restore members the
+    model dropped from a whole-group answer ("asian food"), never invent a group
+    the user didn't broadly ask for (a lone "chinese" is 1/20, far below the bar).
+
+    ``blocked`` is the OPPOSITE like/dislike list (already reconciled): a group is
+    NOT collapsed if its expansion overlaps a blocked tag, because re-expanding it
+    at read would re-introduce a cuisine the user just moved to the other side —
+    which would cancel the orchestrator's +/- weights to zero. This keeps a
+    like/dislike FLIP that removed one member from a group stored as the explicit
+    remaining members rather than snapping back to the umbrella key.
+    """
+    norm = _dedupe(normalize_tag(t) for t in tags if t)
+    present = set(norm)
+    blocked_expanded = set(expand_cuisine_terms(blocked)) if blocked else set()
+
+    keys_to_add: list[str] = []
+    covered: set[str] = set()
+    for key, members in _GROUP_MEMBER_SETS.items():
+        full = _GROUP_FULL_EXPANSION[key]
+        key_present = bool(present & full & ({key} | set(CUISINE_GROUPS[key]["seed_umbrella"])))
+        saturated = bool(members) and len(present & members) / len(members) >= _COMPACT_GROUP_THRESHOLD
+        if not (key_present or saturated):
+            continue
+        if full & blocked_expanded:
+            continue  # collapsing would re-introduce an opposite-list cuisine
+        keys_to_add.append(key)
+        covered |= full
+
+    if not keys_to_add:
+        return norm
+    kept = [t for t in norm if t not in covered]
+    return _dedupe([*keys_to_add, *kept])
 
 
 def expand_group_terms_only(tags: Iterable[str]) -> list[str]:

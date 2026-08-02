@@ -24,7 +24,7 @@ export function Chip({ label, selected = false, onToggle, disabled = false, clas
         'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
         'disabled:cursor-not-allowed disabled:opacity-50',
         selected
-          ? 'border-surface-inverse bg-surface-inverse text-white'
+          ? 'border-surface-inverse bg-surface-inverse text-on-inverse'
           : 'border-border bg-surface-sunken text-text-muted hover:border-border-strong',
         className,
       )}

@@ -179,7 +179,7 @@ export function LocationStep() {
               className={cn(
                 'flex min-h-11 items-center justify-center rounded-input border px-3 py-2 text-body font-medium transition-colors',
                 d === radius
-                  ? 'border-text bg-surface-inverse text-white'
+                  ? 'border-text bg-surface-inverse text-on-inverse'
                   : 'border-border bg-surface-sunken text-text hover:border-border-strong',
               )}
             >
@@ -208,7 +208,7 @@ export function LocationStep() {
         </span>
       </div>
 
-      {error && <p className="text-body text-error">{error}</p>}
+      {error && <p className="text-body text-error-text">{error}</p>}
 
       <div className="flex items-center gap-2">
         <Button

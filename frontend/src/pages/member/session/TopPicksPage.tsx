@@ -199,7 +199,7 @@ export function TopPicksPage() {
             </button>
           </div>
           <div className="flex flex-1 flex-col items-center justify-center gap-4 text-text-muted">
-            <Spinner size="lg" className="text-primary" />
+            <Spinner size="lg" className="text-primary-text" />
             <div className="flex flex-col items-center gap-1 text-center">
               <p className="text-body font-medium text-text">Finding the group's picks…</p>
               <p className="max-w-xs text-caption text-text-muted">

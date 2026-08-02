@@ -23,6 +23,7 @@ export type IconName =
   | 'utensils'
   | 'users'
   | 'calendar'
+  | 'clock'
   | 'message'
   | 'sparkles'
   | 'map-pin'
@@ -37,9 +38,13 @@ export type IconName =
   | 'settings'
   | 'user'
   | 'speaker'
+  | 'play'
+  | 'pause'
   | 'sun'
   | 'moon'
   | 'monitor'
+  | 'eye'
+  | 'eye-off'
 
 const PATHS: Record<IconName, ReactSvgContent> = {
   mic: (
@@ -126,6 +131,17 @@ const PATHS: Record<IconName, ReactSvgContent> = {
       <path d="M16 2v4M8 2v4M3 10h18" />
     </>
   ),
+  // Clock face — the duration / answer-window affordance. r=9 matches this
+  // file's `circle` (not Lucide's r=10) so a 2px stroke doesn't crowd the 24px
+  // box; the hands are one polyline — minute up, hour to ~2 o'clock — i.e.
+  // Lucide's 12 6 / 12 12 / 16 14 scaled 0.9 about the centre to clean
+  // coordinates, so the tips land 5 and 4.03 units out, inside the dial.
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3.5 2" />
+    </>
+  ),
   message: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z" />,
   sparkles: (
     <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.4 2.4M15.3 15.3l2.4 2.4M17.7 6.3l-2.4 2.4M8.7 15.3l-2.4 2.4" />
@@ -200,6 +216,17 @@ const PATHS: Record<IconName, ReactSvgContent> = {
       <path d="M19 5a9 9 0 0 1 0 14" />
     </>
   ),
+  // Play / pause — the voice-preview button's two states. The triangle is a
+  // CLOSED path, so it works stroked or filled as-is; pause's two bars are
+  // zero-area strokes and would disappear under fill, hence the FILLED_PATHS
+  // entry below.
+  play: <path d="M8 5.5v13l11-6.5Z" />,
+  pause: (
+    <>
+      <path d="M9.5 5.5v13" />
+      <path d="M14.5 5.5v13" />
+    </>
+  ),
   // Sun — the "Light" theme segment. A disc plus eight radiating rays.
   sun: (
     <>
@@ -209,6 +236,23 @@ const PATHS: Record<IconName, ReactSvgContent> = {
   ),
   // Crescent moon — the "Dark" theme segment.
   moon: <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />,
+  // Eye — the "show password" affordance. Almond outline + pupil.
+  eye: (
+    <>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  // Slashed eye — the "hide password" affordance. A diagonal cut over a partial
+  // eye reads as "hidden" regardless of state.
+  'eye-off': (
+    <>
+      <path d="M2 2 22 22" />
+      <path d="M6.7 6.7A11.9 11.9 0 0 0 2 12s3.5 7 10 7a10.8 10.8 0 0 0 5.3-1.3" />
+      <path d="M9.9 4.2A11 11 0 0 1 12 4c6.5 0 10 7 10 7a12.9 12.9 0 0 1-2.2 3.1" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+    </>
+  ),
   // Desktop monitor — the "System" theme segment (follow OS setting).
   monitor: (
     <>
@@ -223,6 +267,14 @@ const PATHS: Record<IconName, ReactSvgContent> = {
 // purpose-built filled variants for those; everything else just fills its stroke
 // path. Needed by the tab/rail icons (users, calendar, user) and the mic.
 const FILLED_PATHS: Partial<Record<IconName, ReactSvgContent>> = {
+  // Solid pause: the outline's two bars are zero-area lines, which vanish under
+  // fill. Rects of the same visual weight keep the glyph identical either way.
+  pause: (
+    <>
+      <rect x="8" y="5" width="3.2" height="14" rx="1.2" />
+      <rect x="12.8" y="5" width="3.2" height="14" rx="1.2" />
+    </>
+  ),
   // Solid mic: filled capsule head + a solid "cradle" wedge (the u-shaped stand
   // ring, drawn as a closed shape so no open arc self-intersects) + a short
   // filled stem/base. Built purpose-first so the outline's open base tick

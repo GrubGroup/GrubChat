@@ -55,6 +55,14 @@ export interface AnalyzeResponse {
   // on the wire so an older gateway/ai_service without the field degrades to the
   // missingSignals-empty inference in the store.
   is_complete?: boolean
+  // DISPLAY-ONLY expansion of the cuisine lists for the "Noted so far" panel.
+  // `extracted_signals` stays COMPACT (a broad answer is the group key "asian",
+  // which keeps the analyze turn fast and the spoken reply short); these carry the
+  // concrete members that key covers (asian -> chinese, japanese, ...) — exactly
+  // what the orchestrator ranks on — so the panel can show them. Optional so an
+  // older backend without them degrades to rendering the compact list.
+  display_preferred_cuisines?: string[]
+  display_disliked_cuisines?: string[]
 }
 
 // Request body for POST /api/sessions — the host pre-session modal answers.
@@ -98,6 +106,11 @@ export interface EventRecord {
   time_slot?: string | null
   group_id?: number | null
   group_name?: string | null
+  // The booked restaurant's cuisine tags, read through the Event→Restaurant
+  // relation by the gateway's listEvents. Not stored on the Event row itself —
+  // it exists purely so the Events UI can pick a cuisine photo without loading
+  // the whole restaurant catalog. Absent → the neutral fallback pool.
+  cuisine_tags?: string[]
   // Participants who attended the session this event came from (gateway
   // listEvents joins Event.attendees). Absent on legacy rows / mock fixtures
   // that don't supply it.

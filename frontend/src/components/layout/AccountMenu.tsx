@@ -138,7 +138,7 @@ function MenuItem({
           'text-text hover:bg-surface-sunken active:bg-border',
         !disabled &&
           destructive &&
-          'text-error hover:bg-error/[0.08] active:bg-error/[0.15]',
+          'text-error-text hover:bg-error/[0.08] active:bg-error/[0.15]',
       )}
     >
       <Icon name={icon} size={16} />

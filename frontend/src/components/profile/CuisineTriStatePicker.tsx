@@ -29,8 +29,8 @@ export function CuisineTriStatePicker({ liked, disliked, onCycle }: CuisineTriSt
     <div className="flex flex-col gap-4">
       {/* Legend */}
       <p className="text-caption text-text-muted">
-        Tap once to <span className="font-medium text-success">like</span>, twice to{' '}
-        <span className="font-medium text-error">avoid</span>, again to clear.
+        Tap once to <span className="font-medium text-success-text">like</span>, twice to{' '}
+        <span className="font-medium text-error-text">avoid</span>, again to clear.
       </p>
 
       {CUISINE_GROUPS.map((group) => (
@@ -53,9 +53,9 @@ export function CuisineTriStatePicker({ liked, disliked, onCycle }: CuisineTriSt
                     'tap-target inline-flex items-center gap-1.5 rounded-pill border px-3.5 py-1.5 text-body font-medium',
                     'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
                     state === 'like' &&
-                      'border-success bg-success/12 text-success',
+                      'border-success bg-success/12 text-success-text',
                     state === 'avoid' &&
-                      'border-error bg-error/12 text-error',
+                      'border-error bg-error/12 text-error-text',
                     state === 'neutral' &&
                       'border-border bg-surface-sunken text-text-muted hover:border-border-strong',
                   )}

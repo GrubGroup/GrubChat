@@ -250,6 +250,8 @@ export function useVoiceSession(groupId: number, sessionId: number | null): Voic
             extracted_signals: frame.extracted_signals,
             missing_signals: frame.missing_signals,
             is_complete: frame.is_complete,
+            display_preferred_cuisines: frame.display_preferred_cuisines,
+            display_disliked_cuisines: frame.display_disliked_cuisines,
           })
           break
         case 'speech_end':
