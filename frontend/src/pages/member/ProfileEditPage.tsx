@@ -7,6 +7,8 @@ import { updateMe, UserUpdateError } from '@/api/userApi'
 import { useAuthStore } from '@/stores/authStore'
 import { memberColor } from '@/constants/memberColors'
 import { useProfileStore } from '@/stores/profileStore'
+import { usePlacesInput } from '@/hooks/usePlacesInput'
+import { geocodeAddress } from '@/api/sessionApi'
 
 const DIET_OPTIONS = DIETARY_RESTRICTIONS.filter((o) => !isAllergen(o.value))
 const ALLERGEN_OPTIONS = DIETARY_RESTRICTIONS.filter((o) => isAllergen(o.value))
@@ -65,6 +67,82 @@ export function ProfileEditPage() {
   const address = profile?.default_address ?? ''
   const radius = profile?.default_radius ?? 1
 
+  // Location autocomplete — the SAME picker the host session modal uses
+  // (Geoapify-backed usePlacesInput + a suggestions dropdown), so the default
+  // address is chosen the same way and captures real coordinates. usePlacesInput
+  // drives only the suggestion list; the field's text stays bound to the profile
+  // store so the async load + live-edit path keep working. Seeded empty so no
+  // dropdown appears on load — suggestions fetch only once the user types.
+  const places = usePlacesInput('')
+  const [locFocused, setLocFocused] = useState(false)
+  const [geoStatus, setGeoStatus] = useState<'idle' | 'checking' | 'ok' | 'notfound'>('idle')
+
+  // Typing edits the stored label live (coords cleared until re-resolved) and
+  // drives the autocomplete query. Mirrors HostSessionModal.handleAddressChange.
+  const handleAddressChange = (value: string) => {
+    setLocation(value) // store: label live, lat/lon cleared
+    places.setValue(value) // drive the suggestion query
+    if (geoStatus !== 'idle') setGeoStatus('idle')
+  }
+
+  // Pick a suggestion: resolve its address + coordinates from the cached
+  // autocomplete result (no extra request) and persist both onto the profile.
+  const handleSelectSuggestion = (placeId: string) => {
+    const place = places.select(placeId)
+    if (place) {
+      setLocation(place.address, { lat: place.lat, lon: place.lon })
+      setGeoStatus('ok')
+    } else {
+      setGeoStatus('notfound')
+    }
+  }
+
+  // A typed-but-unpicked address is confirmed on blur via the server geocode,
+  // backfilling coordinates when found — the same /geocode fallback the host
+  // modal's "Check" uses, minus the explicit button (a settings form validates
+  // inline). Reads the freshest store value to avoid a stale blur-timer closure.
+  const validateAddressOnBlur = async () => {
+    const cur = useProfileStore.getState().profile
+    const trimmed = (cur?.default_address ?? '').trim()
+    if (!trimmed || cur?.default_lat != null) return // empty, or already has coords
+    setGeoStatus('checking')
+    try {
+      const res = await geocodeAddress(trimmed)
+      if (res.ok && res.lat != null && res.lon != null) {
+        setLocation(trimmed, { lat: res.lat, lon: res.lon })
+        setGeoStatus('ok')
+      } else {
+        setGeoStatus(res.ok ? 'ok' : 'notfound')
+      }
+    } catch {
+      setGeoStatus('notfound')
+    }
+  }
+
+  // Require a resolvable location before saving (parity with the session's start
+  // gate). True when the current address already has coordinates (a picked
+  // suggestion, a prior blur-geocode, or a saved profile); otherwise geocode it
+  // once now and return whether it resolved. Empty counts as invalid.
+  const ensureLocationValid = async (): Promise<boolean> => {
+    const cur = useProfileStore.getState().profile
+    const addr = (cur?.default_address ?? '').trim()
+    if (!addr) return false
+    if (cur?.default_lat != null && cur?.default_lon != null) return true
+    setGeoStatus('checking')
+    try {
+      const res = await geocodeAddress(addr)
+      if (res.ok && res.lat != null && res.lon != null) {
+        setLocation(addr, { lat: res.lat, lon: res.lon })
+        setGeoStatus('ok')
+        return true
+      }
+    } catch {
+      // fall through to the notfound result below
+    }
+    setGeoStatus('notfound')
+    return false
+  }
+
   const dietary = profile?.dietary_restrictions ?? []
   const preferred = profile?.preferred_cuisines ?? []
   const disliked = profile?.disliked_cuisines ?? []
@@ -74,6 +152,14 @@ export function ProfileEditPage() {
   const handleSave = async () => {
     setFormError(null)
     setUsernameError(null)
+
+    // Location must resolve to a real place before we save anything (parity with
+    // the session's start gate). ensureLocationValid geocodes a typed-but-
+    // unresolved address; abort with an error when it's empty or can't be verified.
+    if (!(await ensureLocationValid())) {
+      setFormError('Enter a valid default address before saving.')
+      return
+    }
 
     // 1) Persist identity (User) first so a username conflict aborts before we
     //    save preferences — the user stays on the form with the error shown.
@@ -184,12 +270,53 @@ export function ProfileEditPage() {
           </div>
 
           <Field label="Default address">
-            <Input
-              value={address}
-              onChange={(e) => setLocation(e.target.value)}
-              leftIcon={<Icon name="map-pin" size={16} />}
-              placeholder="e.g. Market Street, San Francisco"
-            />
+            <div className="relative">
+              <Input
+                value={address}
+                onChange={(e) => handleAddressChange(e.target.value)}
+                onFocus={() => setLocFocused(true)}
+                onBlur={() => {
+                  // Delay so a suggestion click (onMouseDown) registers before we
+                  // close the dropdown / kick off validation.
+                  window.setTimeout(() => {
+                    setLocFocused(false)
+                    void validateAddressOnBlur()
+                  }, 150)
+                }}
+                onKeyDown={(e) => {
+                  // Escape dismisses the current matches without leaving the field.
+                  if (e.key === 'Escape') places.clear()
+                }}
+                leftIcon={<Icon name="map-pin" size={16} />}
+                placeholder="e.g. Market Street, San Francisco"
+                error={geoStatus === 'notfound' ? "Couldn't find that place — try another." : undefined}
+                hint={geoStatus === 'ok' ? '✓ Location confirmed' : undefined}
+              />
+              {locFocused && places.suggestions.length > 0 && (
+                <ul
+                  className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-input border border-border bg-surface py-1 shadow-lg"
+                  role="listbox"
+                >
+                  {places.suggestions.map((s) => (
+                    <li key={s.placeId}>
+                      <button
+                        type="button"
+                        // onMouseDown fires before the input's onBlur, so the pick
+                        // isn't lost to the blur-close above.
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          handleSelectSuggestion(s.placeId)
+                        }}
+                        className="flex w-full items-start gap-2 px-3 py-2 text-left text-body text-text hover:bg-surface-sunken"
+                      >
+                        <Icon name="map-pin" size={14} className="mt-0.5 shrink-0 text-text-muted" />
+                        <span>{s.description}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </Field>
 
           <Field label="Max distance">
@@ -270,7 +397,7 @@ export function ProfileEditPage() {
               fullWidth
               className="sm:w-auto"
               onClick={handleSave}
-              isLoading={saving || savingUser}
+              isLoading={saving || savingUser || geoStatus === 'checking'}
             >
               Save changes
             </Button>

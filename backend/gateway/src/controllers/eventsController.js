@@ -24,10 +24,18 @@ const listEvents = async (req, res, next) => {
         group_name: true,
         // Who attended — snapshotted from the session members at close time
         // (closeSession connects them). Surfaced so the Events detail can show a
-        // "Who's going" list with real names. deactivated_at lets the UI grey out
-        // + X an attendee who has since deleted their account (upcoming events only).
+        // "Who's going" list with real names + avatars (avatar_url so the Avatar
+        // matches the profile image shown in chat/roster, not a default). Absent
+        // deactivated_at lets the UI grey out + X an attendee who has since deleted
+        // their account (upcoming events only).
         attendees: {
-          select: { id: true, username: true, display_name: true, deactivated_at: true },
+          select: {
+            id: true,
+            username: true,
+            display_name: true,
+            avatar_url: true,
+            deactivated_at: true,
+          },
         },
         // The booked restaurant's cuisines. The Event row snapshots only the
         // NAME, but the Events UI illustrates each outing with a cuisine photo

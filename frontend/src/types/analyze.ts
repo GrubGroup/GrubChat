@@ -86,6 +86,9 @@ export interface EventAttendee {
   id: number
   username: string
   display_name?: string | null
+  // Profile image, so the Events avatar matches the one shown in chat/roster
+  // (falls back to initials when null — see the Avatar component).
+  avatar_url?: string | null
   // True when this attendee has since deleted (deactivated) their account. The
   // Events UI greys out + marks their name with an X on UPCOMING events only.
   deactivated?: boolean

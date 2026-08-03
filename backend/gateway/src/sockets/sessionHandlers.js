@@ -194,12 +194,35 @@ const registerSessionHandlers = (io, socket) => {
     // session id, so an unverified sender could plant a bogus session card in a
     // group's chat. Once per session, so the round-trip is worth the certainty.
     if (!(await isGroupMember(groupId, userId))) return;
-    io.to(room(groupId)).emit('session:start', {
+    const payload = {
       groupId,
       sessionId: sessionId ?? null,
       startedBy: socket.data.userId ?? null,
       at: new Date().toISOString(),
-    });
+    };
+    io.to(room(groupId)).emit('session:start', payload);
+
+    // Also deliver to every group member's always-joined per-user room (user:{id},
+    // joined on connect in sockets/index.js). A member who has navigated away from
+    // this group (Events / Profile / another group) has LEFT the group room, so the
+    // room emit above never reaches them — yet starting a new session auto-closes
+    // their prior one server-side (createSession), which would otherwise leave their
+    // client bound to a now-closed session until a full reload. The per-user
+    // delivery lets useSessionSync adopt the new session in the background so
+    // re-entry shows the current one. Mirrors the session:picks / session:confirmed
+    // fan-out; a duplicate delivery to a member still in the group room is harmless
+    // (the client handlers are idempotent). Best-effort — never fail the start.
+    try {
+      const members = await prisma.groupMember.findMany({
+        where: { group_id: groupId },
+        select: { user_id: true },
+      });
+      for (const { user_id } of members) {
+        io.to(`user:${user_id}`).emit('session:start', payload);
+      }
+    } catch (err) {
+      console.error('session:start per-user fan-out failed', err);
+    }
   });
 
   // Typing presence — ephemeral, never stored. Relay to OTHERS in the room
