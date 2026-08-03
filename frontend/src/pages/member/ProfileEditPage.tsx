@@ -13,11 +13,16 @@ import { geocodeAddress } from '@/api/sessionApi'
 const DIET_OPTIONS = DIETARY_RESTRICTIONS.filter((o) => !isAllergen(o.value))
 const ALLERGEN_OPTIONS = DIETARY_RESTRICTIONS.filter((o) => isAllergen(o.value))
 
+// Mirrors Onboarding2's BANDS exactly — bands are matched by (min, max) tuple
+// equality, so a band missing here leaves that saved profile with NO chip
+// selected and any save silently reassigns it. "Flexible" is the NO_CAP
+// sentinel (max 0 — see @/utils/formatBudget), not a wide range.
 const BUDGET_BANDS = [
   { label: 'Under $15', min: 0, max: 15 },
   { label: '$15–25', min: 15, max: 25 },
   { label: '$25–40', min: 25, max: 40 },
   { label: '$40+', min: 40, max: 200 },
+  { label: 'Flexible', min: 0, max: 0 },
 ]
 
 // Preferred search radius options (miles) — mirrors the onboarding choices.

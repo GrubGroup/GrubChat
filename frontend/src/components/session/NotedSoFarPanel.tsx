@@ -9,6 +9,7 @@ import {
   selectChatMessages,
 } from '@/stores/chatStore'
 import { useSessionStore, selectIsHost } from '@/stores/sessionStore'
+import { formatBudget } from '@/utils/formatBudget'
 
 // How many cuisine tags to show before collapsing behind a "+N more" toggle. A
 // broad answer ("Asian") is intentionally shown EXPANDED into its member cuisines
@@ -136,15 +137,12 @@ export function NotedSoFarPanel({ groupId }: NotedSoFarPanelProps) {
     })
 
     const { budget_min: bmin, budget_max: bmax } = signals
-    // Price range only — no "pp"/per-person suffix.
-    const budgetValue =
-      bmin != null && bmax != null
-        ? `$${bmin}–${bmax}`
-        : bmax != null
-          ? `Up to $${bmax}`
-          : bmin != null
-            ? `From $${bmin}`
-            : ''
+    // Price range only — no "pp"/per-person suffix. An "I'm flexible" answer is
+    // the NO_CAP sentinel and renders as "Flexible", which also makes the row
+    // read 'confirmed' below: before this it rendered '' and the row showed
+    // "pending", telling the member their budget hadn't registered while the
+    // recommendation had in fact already dropped their saved cap.
+    const budgetValue = formatBudget(bmin, bmax)
     out.push({
       key: 'budget',
       label: 'Budget',

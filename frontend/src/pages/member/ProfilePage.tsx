@@ -10,6 +10,7 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { useSignOut } from '@/hooks/useSignOut'
 import { useAuthStore } from '@/stores/authStore'
 import { memberColor } from '@/constants/memberColors'
+import { formatBudget } from '@/utils/formatBudget'
 import { useProfileStore } from '@/stores/profileStore'
 import { useRestaurantStore } from '@/stores/restaurantStore'
 
@@ -237,7 +238,11 @@ export function ProfilePage() {
             <InfoRow
               icon="wallet"
               title="Typical budget"
-              value={`$${profile?.budget_min ?? 0}–${profile?.budget_max ?? 0} per person`}
+              value={
+                formatBudget(profile?.budget_min, profile?.budget_max, {
+                  perPerson: true,
+                }) || 'Not set'
+              }
             />
             <div className="h-px bg-border" />
             <InfoRow

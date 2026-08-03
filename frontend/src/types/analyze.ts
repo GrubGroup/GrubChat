@@ -12,6 +12,12 @@ export interface ExtractedSignals {
   disliked_cuisines: string[]
   budget_min: number | null
   budget_max: number | null
+  // True when the member said they're flexible on budget — a real ANSWER that
+  // drops their saved profile budget for this session. Server-derived from
+  // `budget_max === 0` (the NO_CAP sentinel; see @/utils/formatBudget), never a
+  // separate stored value, so read the number when in doubt. Null = the budget
+  // question hasn't been answered yet.
+  budget_flexible?: boolean | null
   // Session-scoped Qa signals. occasion is host-only (dropped for non-hosts
   // server-side). The event TIME is NOT here — it lives on Session.scheduled_for.
   occasion: string | null

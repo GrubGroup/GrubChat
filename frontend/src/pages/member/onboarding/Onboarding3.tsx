@@ -6,6 +6,7 @@ import { usePlacesInput } from '@/hooks/usePlacesInput'
 import { geocodeAddress } from '@/api/sessionApi'
 import { useProfileStore } from '@/stores/profileStore'
 import { cn } from '@/utils/cn'
+import { formatBudget } from '@/utils/formatBudget'
 
 // Radius options in miles; label is derived. 1 mi is the default.
 const DISTANCES = [0.5, 1, 2, 5]
@@ -200,8 +201,9 @@ export function LocationStep() {
           </span>
         ))}
         <span className="flex items-center gap-1.5">
-          <Icon name="wallet" size={13} /> Budget: ${profile?.budget_min}–${profile?.budget_max} per
-          person
+          <Icon name="wallet" size={13} /> Budget:{' '}
+          {formatBudget(profile?.budget_min, profile?.budget_max, { perPerson: true }) ||
+            'not set'}
         </span>
         <span className="flex items-center gap-1.5">
           <Icon name="map-pin" size={13} /> {value.trim() || 'No address yet'} · within {radius} mi
