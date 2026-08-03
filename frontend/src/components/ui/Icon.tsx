@@ -45,6 +45,8 @@ export type IconName =
   | 'monitor'
   | 'eye'
   | 'eye-off'
+  | 'leaf'
+  | 'ban'
 
 const PATHS: Record<IconName, ReactSvgContent> = {
   mic: (
@@ -258,6 +260,20 @@ const PATHS: Record<IconName, ReactSvgContent> = {
     <>
       <rect x="2" y="3" width="20" height="14" rx="2" />
       <path d="M8 21h8M12 17v4" />
+    </>
+  ),
+  // Leaf — the vegan / plant-based dietary tag. A leaf blade with a center vein.
+  leaf: (
+    <>
+      <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+      <path d="M2 21c0-3 1.85-5.36 5.08-6" />
+    </>
+  ),
+  // Ban / no-entry — the "avoid" dietary tag (allergen, dislike). Circle + slash.
+  ban: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="m5.6 5.6 12.8 12.8" />
     </>
   ),
 }

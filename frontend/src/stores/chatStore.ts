@@ -242,7 +242,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         const errorNotice: ChatMessage = {
           id: nextId(),
           role: 'system',
-          text: "Couldn't reach your food agent — check your connection and try again.",
+          text: "Couldn't reach your food agent. Check your connection and try again.",
           at: new Date().toISOString(),
         }
         patchChat(groupId, (prev) => ({ messages: [...prev.messages, errorNotice], sending: false }))
@@ -296,7 +296,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       const errorNotice: ChatMessage = {
         id: nextId(),
         role: 'system',
-        text: message ?? "Couldn't reach your food agent — check your connection and try again.",
+        text: message ?? "Couldn't reach your food agent. Check your connection and try again.",
         at: new Date().toISOString(),
       }
       // Clear `sending` and leave signals untouched — same as sendUserMessage's catch.

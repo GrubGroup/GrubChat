@@ -1,48 +1,59 @@
 import { motion, useReducedMotion } from 'framer-motion'
-import { Button, BrandMark, Icon } from '@/components/ui'
+import { Button, BrandMark, Icon, type IconName } from '@/components/ui'
 import { makeFloat } from '@/lib/motion'
 import { BottomTabBar, TabBarSpacer } from '@/components/layout/BottomTabBar'
 import { MobileHeader } from '@/components/layout/MobileHeader'
 import { GroupList } from '@/components/session/GroupList'
 import { GroupsSidebar } from '@/components/session/GroupsSidebar'
+import { RestaurantImage } from '@/components/restaurant/RestaurantImage'
 import { NewGroupModal } from '@/components/session/NewGroupModal'
 import { useCreateGroup } from '@/hooks/useCreateGroup'
 import { useGroupsStore } from '@/stores/groupsStore'
 import { memberColor } from '@/constants/memberColors'
+import { restaurantTint } from '@/constants/restaurantVisuals'
 import { cn } from '@/utils/cn'
 
-// "How it works" steps — emoji tiles, mirroring the no-groups Figma reference.
-const HOW_IT_WORKS: { emoji: string; title: string; body: string }[] = [
+// "How it works" steps — SVG icon tiles, mirroring the no-groups Figma reference.
+const HOW_IT_WORKS: { icon: IconName; title: string; body: string }[] = [
   {
-    emoji: '💬',
+    icon: 'message',
     title: 'Chat with your group',
     body: 'Start a session from any group chat. Everyone gets a private conversation with their own AI food agent.',
   },
   {
-    emoji: '🎤',
+    icon: 'mic',
     title: 'Tell it what you want',
-    body: 'Talk or type — share your mood, budget, dietary needs, and location. The agent remembers everything from your profile.',
+    body: 'Talk or type to share your mood, budget, dietary needs, and location. The agent remembers everything from your profile.',
   },
   {
-    emoji: '🍽️',
+    icon: 'sparkles',
     title: 'One perfect pick',
     body: 'The AI finds restaurants that work for your whole group at once. Vote on the top picks and confirm in seconds.',
   },
 ]
 
-// Scattered member preference chips for the "works for every group" band.
-const PREFERENCE_CHIPS: { userId: number; name: string; pref: string }[] = [
-  { userId: 4, name: 'Maya', pref: '🌱 Vegan' },
-  { userId: 1, name: 'Dev', pref: '🚫 No tree nuts' },
-  { userId: 2, name: 'Sofia', pref: '🅿️ Needs parking' },
-  { userId: 6, name: 'Tomás', pref: '💸 Under $20pp' },
+// Scattered member preference chips for the "works for every group" band. Each
+// carries an SVG icon (no emoji) that reads its preference type at a glance.
+const PREFERENCE_CHIPS: { userId: number; name: string; pref: string; icon: IconName }[] = [
+  { userId: 4, name: 'Maya', pref: 'Vegan', icon: 'leaf' },
+  { userId: 1, name: 'Dev', pref: 'No tree nuts', icon: 'ban' },
+  { userId: 2, name: 'Sofia', pref: 'Needs parking', icon: 'map-pin' },
+  { userId: 6, name: 'Tomás', pref: 'Under $20pp', icon: 'wallet' },
 ]
 
-// Community picks for the social-proof band.
-const COMMUNITY_PICKS: { name: string; score: number; tags: string[] }[] = [
-  { name: 'The Farmhouse Table', score: 94, tags: ['Vegan', 'Nut-free'] },
-  { name: 'Noodle & Co', score: 88, tags: ['Nut-free'] },
-  { name: 'Souvla', score: 85, tags: ['Vegan', 'GF'] },
+// Community picks for the social-proof band. `cuisine` seeds the photo (same
+// cuisine-pool system the real restaurant cards use); `id` keeps each pick's
+// photo stable across renders.
+const COMMUNITY_PICKS: {
+  id: number
+  name: string
+  score: number
+  cuisine: string
+  tags: string[]
+}[] = [
+  { id: 9401, name: 'The Farmhouse Table', score: 94, cuisine: 'american', tags: ['Vegan', 'Nut-free'] },
+  { id: 9402, name: 'Noodle & Co', score: 88, cuisine: 'asian', tags: ['Nut-free'] },
+  { id: 9403, name: 'Souvla', score: 85, cuisine: 'greek', tags: ['Vegan', 'GF'] },
 ]
 
 // Small colored avatar initial, matching the member-identity colors.
@@ -170,8 +181,8 @@ export function GroupsPage() {
           <div className="mx-auto mt-6 grid max-w-2xl gap-8 sm:grid-cols-3">
             {HOW_IT_WORKS.map((s) => (
               <div key={s.title} className="flex flex-col gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-surface-panel text-xl">
-                  {s.emoji}
+                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary-soft/25 text-primary-text">
+                  <Icon name={s.icon} size={20} />
                 </span>
                 <h3 className="text-item-title font-semibold text-text">{s.title}</h3>
                 <p className="text-caption leading-relaxed text-text-muted">{s.body}</p>
@@ -186,7 +197,7 @@ export function GroupsPage() {
             Works for every group
           </p>
           <p className="mt-2 text-center text-caption text-text-muted">
-            Dietary restrictions, budgets, and location preferences — handled automatically.
+            Dietary restrictions, budgets, and location preferences, handled automatically.
           </p>
           <div className="mx-auto mt-6 flex max-w-lg flex-wrap items-center justify-center gap-2.5">
             {PREFERENCE_CHIPS.map((c) => (
@@ -197,7 +208,9 @@ export function GroupsPage() {
                 <MemberDot userId={c.userId} name={c.name} />
                 <div className="leading-tight">
                   <p className="text-caption font-semibold text-text">{c.name}</p>
-                  <p className="text-caption text-text-muted">{c.pref}</p>
+                  <p className="flex items-center gap-1 text-caption text-text-muted">
+                    <Icon name={c.icon} size={12} className="text-text-subtle" /> {c.pref}
+                  </p>
                 </div>
               </div>
             ))}
@@ -215,7 +228,12 @@ export function GroupsPage() {
                 key={p.name}
                 className="overflow-hidden rounded-2xl border border-border bg-surface-raised shadow-sm"
               >
-                <div className="h-28 w-full bg-surface-sunken" />
+                <RestaurantImage
+                  cuisineTags={[p.cuisine]}
+                  identity={p.id}
+                  className="h-28 w-full"
+                  tintClass={restaurantTint(p.id)}
+                />
                 <div className="p-3">
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-caption font-semibold text-text">{p.name}</p>
@@ -238,7 +256,7 @@ export function GroupsPage() {
 
           <div className="mt-8 flex justify-center">
             <Button variant="primary" onClick={openModal}>
-              Get started — it's free
+              Get started, it's free
             </Button>
           </div>
         </section>

@@ -11,10 +11,10 @@ interface LikeStarButtonProps {
   size?: number
 }
 
-// The star toggle shared by the Explore cards and the "Liked places" list. A pill
+// The like toggle shared by the Explore cards and the "Liked places" list. A pill
 // button (not IconButton, whose ghost variant is transparent) so the resting state
-// is a visible sunken circle: liked = solid brand-orange with a white filled star;
-// unliked = sunken circle with a muted outline star.
+// is a visible sunken circle: liked = solid brand-orange with a white filled heart;
+// unliked = sunken circle with a muted outline heart.
 export function LikeStarButton({ liked, pending = false, onToggle, label, size = 18 }: LikeStarButtonProps) {
   return (
     <button
@@ -37,7 +37,7 @@ export function LikeStarButton({ liked, pending = false, onToggle, label, size =
           : 'bg-surface-sunken text-text-muted hover:text-text',
       )}
     >
-      <Icon name="star" size={size} filled={liked} />
+      <Icon name="heart" size={size} filled={liked} />
     </button>
   )
 }

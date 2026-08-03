@@ -1,4 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { AgentAvatar } from './AgentAvatar'
 import { EASE } from '@/lib/motion'
 
 export interface AgentTypingBubbleProps {
@@ -7,7 +8,7 @@ export interface AgentTypingBubbleProps {
 }
 
 // The food agent's "…" typing indicator: mirrors the agent message layout in
-// ChatMessage (🍽 header + raised bubble) but with three bouncing dots instead
+// ChatMessage (agent-avatar header + raised bubble) but with three bouncing dots instead
 // of text, shown while the analyze round-trip is in flight. Distinct from the
 // group-chat TypingIndicator, which stacks human typers' avatars.
 export function AgentTypingBubble({ visible }: AgentTypingBubbleProps) {
@@ -26,9 +27,7 @@ export function AgentTypingBubble({ visible }: AgentTypingBubbleProps) {
           role="status"
         >
           <div className="flex items-center gap-2">
-            <span className="flex h-5 w-5 items-center justify-center rounded-pill bg-surface-inverse text-[10px] text-on-inverse">
-              🍽
-            </span>
+            <AgentAvatar size={20} />
             <span className="text-overline font-semibold uppercase tracking-wide text-text-muted">
               Food agent
             </span>

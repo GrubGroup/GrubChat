@@ -1,11 +1,9 @@
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
-import { motion, useReducedMotion } from 'framer-motion'
-import { Button, Icon, Input, Modal } from '@/components/ui'
-import { VoicePreviewButton } from '@/components/voice/VoicePreviewButton'
 import { motion, useReducedMotion, type Variants } from 'framer-motion'
 import { Button, Icon, Input, Modal, PasswordChecklist } from '@/components/ui'
+import { VoicePreviewButton } from '@/components/voice/VoicePreviewButton'
 import { isPasswordValid } from '@/utils/password'
 import { EASE } from '@/lib/motion'
 import { changeEmail, changePassword, linkSocial } from '@/lib/authClient'
@@ -338,7 +336,7 @@ export function SettingsPage() {
               ) : (
                 <SettingRow
                   label="Email"
-                  value={user?.email ?? '—'}
+                  value={user?.email ?? 'Not set'}
                   actionLabel="Edit"
                   onAction={openEmailEditor}
                   actionDisabled={!canEditCredentials}

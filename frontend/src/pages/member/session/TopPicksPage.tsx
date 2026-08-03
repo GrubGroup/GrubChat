@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router'
 import { motion, useReducedMotion } from 'framer-motion'
 import { GroupsSidebar } from '@/components/session/GroupsSidebar'
+import { PicksLoader } from '@/components/session/PicksLoader'
 import { RankedRestaurantCard } from '@/components/restaurant/RankedRestaurantCard'
 import { RestaurantHeader } from '@/components/restaurant/RestaurantHeader'
 import { MenuList } from '@/components/restaurant/MenuList'
 import { MobileHeader } from '@/components/layout/MobileHeader'
-import { Button, Icon, Spinner } from '@/components/ui'
+import { Button, Icon } from '@/components/ui'
 import { useDismissOnBack } from '@/hooks/useDismissOnBack'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { cn } from '@/utils/cn'
@@ -19,6 +20,7 @@ import {
   selectRecommendationError,
   selectVotes,
   selectIsHost,
+  selectMembers,
 } from '@/stores/sessionStore'
 import { useRestaurantStore } from '@/stores/restaurantStore'
 import { useAuthStore } from '@/stores/authStore'
@@ -54,6 +56,7 @@ export function TopPicksPage() {
   const castVote = useSessionStore((s) => s.castVote)
   const chooseRestaurant = useSessionStore((s) => s.chooseRestaurant)
   const isHost = useSessionStore(selectIsHost(groupId))
+  const members = useSessionStore(selectMembers(groupId))
   const byId = useRestaurantStore((s) => s.byId)
   const restaurantsLoaded = useRestaurantStore((s) => s.loaded)
   const loadRestaurants = useRestaurantStore((s) => s.load)
@@ -178,15 +181,7 @@ export function TopPicksPage() {
               <Icon name="chevron-left" size={14} /> Back
             </button>
           </div>
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-text-muted">
-            <Spinner size="lg" className="text-primary-text" />
-            <div className="flex flex-col items-center gap-1 text-center">
-              <p className="text-body font-medium text-text">Finding the group's picks…</p>
-              <p className="max-w-xs text-caption text-text-muted">
-                Matching everyone's preferences, budget, and location. This can take a moment.
-              </p>
-            </div>
-          </div>
+          <PicksLoader members={members} groupName={groupName} />
         </div>
       </div>
     )

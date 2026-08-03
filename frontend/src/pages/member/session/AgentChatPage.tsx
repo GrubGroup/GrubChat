@@ -7,7 +7,7 @@ import { MobileSessionStrip } from '@/components/session/MobileSessionStrip'
 import { NotedSoFarPanel } from '@/components/session/NotedSoFarPanel'
 import { SessionTopBar } from '@/components/session/SessionTopBar'
 import { VoiceComposer } from '@/components/voice/VoiceComposer'
-import { Button, Icon, Spinner } from '@/components/ui'
+import { BrandReveal, Button, Icon, Spinner } from '@/components/ui'
 import { COLUMN_HEADER_H } from '@/components/layout/AppSidebar'
 import { MobileHeader } from '@/components/layout/MobileHeader'
 import { cn } from '@/utils/cn'
@@ -224,11 +224,7 @@ export function AgentChatPage({ done = false }: AgentChatPageProps) {
   }
   // Still asking the gateway — hold the frame rather than flashing an empty chat.
   if (binding !== 'bound') {
-    return (
-      <div className="flex h-screen items-center justify-center bg-surface">
-        <Spinner size="lg" className="text-primary-text" />
-      </div>
-    )
+    return <BrandReveal label="Connecting you to your agent…" />
   }
 
   return (

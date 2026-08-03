@@ -57,7 +57,7 @@ export function RestaurantDetailModal({
           fullWidth
           variant={liked ? 'primary' : 'accent'}
           disabled={pending}
-          leftIcon={<Icon name="star" size={16} filled={liked} />}
+          leftIcon={<Icon name="heart" size={16} filled={liked} />}
           onClick={onToggleLike}
         >
           {liked ? 'Liked' : 'Like this place'}
