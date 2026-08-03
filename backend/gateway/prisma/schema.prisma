@@ -71,6 +71,10 @@ model Profile {
   dietary_restrictions String[]
   disliked_cuisines    String[]
   preferred_cuisines   String[]
+  // Per-person price range. `budget_max` is a CEILING — the most this diner is
+  // willing to spend, never a target — and 0 is the "no ceiling at all" sentinel
+  // the "Flexible" band saves (see ai_service app/ai/budget.py NO_CAP). A diner
+  // on 0 imposes no budget constraint on a group recommendation.
   budget_min           Int
   budget_max           Int
   // Durable default dining location. `default_address` is the address label the
@@ -102,9 +106,10 @@ model Session {
   scheduled_for DateTime?
   created_at    DateTime  @default(now())
   closed_at     DateTime?
-  // NOTE: no avg_budget column. The averaged group budget is computed on demand
-  // (mean of members' effective budget_max) by the ai_service orchestrator and
-  // is never persisted — see orchestrator_agent._reconcile.
+  // NOTE: no group-budget column, and nothing computes one. A budget is a
+  // per-member CEILING; the ai_service orchestrator scores each candidate
+  // against the members' individual ceilings on demand and never averages them
+  // into a group spend target — see orchestrator_agent._group_budget_fit.
 
   // -- Relations (virtual, no columns) --
   host            User             @relation("SessionHost", fields: [host_user_id], references: [id])
@@ -196,6 +201,10 @@ model Qa {
   location_lat       Float?
   location_lon       Float?
   radius_miles       Float?
+  // This member's session-scoped budget override. NULL means "not answered yet"
+  // (the durable Profile budget stands); 0 is NO_CAP — they answered "I'm
+  // flexible", which DROPS their Profile budget for this session. The two are
+  // deliberately distinct, so do not coalesce a 0 to NULL anywhere.
   budget_min         Int?
   budget_max         Int?
   member_status      String?
