@@ -36,7 +36,11 @@ const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
   secret: config.BETTER_AUTH_SECRET,
   baseURL: config.BETTER_AUTH_URL,
-  trustedOrigins: [config.CORS_ORIGIN],
+  trustedOrigins: [
+  config.CORS_ORIGIN,
+  'https://grubchat.xyz',
+  'https://www.grubchat.xyz',
+].filter(Boolean),
 
   emailAndPassword: { enabled: true },
   socialProviders: {
@@ -78,7 +82,10 @@ const auth = betterAuth({
     // cross-site redirect.
     ...(config.crossSiteCookies && {
       useSecureCookies: true,
-      defaultCookieAttributes: { sameSite: 'none', secure: true },
+      crossSubDomainCookies: {
+        enabled: true,
+        domain: '.grubchat.xyz',
+      },
     }),
   },
 
