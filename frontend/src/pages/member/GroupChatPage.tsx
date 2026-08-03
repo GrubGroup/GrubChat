@@ -106,7 +106,7 @@ export function GroupChatPage() {
   // the captured count is 0 and the card gets pinned to the TOP of the chat. That's
   // the "session card randomly jumps to the top" bug — it shows up on the deployed
   // site (real network latency reorders the two async loads) but not on localhost
-  // (mock mode has no socket; local latency is ~0). A timestamp split is recomputed
+  // (local latency is ~0, so the loads settle in order). A timestamp split is recomputed
   // after history replaces the list, so it's reload-safe. sessionStartIndex stays
   // the "a session card should show" marker (null vs set) below; only its numeric
   // value was unreliable.

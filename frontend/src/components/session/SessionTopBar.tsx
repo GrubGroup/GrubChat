@@ -30,7 +30,7 @@ export function SessionTopBar({ groupId, label = 'Your food agent' }: SessionTop
   const activeSessionId = useSessionStore(selectActiveSessionId(groupId))
   const startedAt = useSessionStore(selectStartedAt(groupId))
   // The timer is now only a FALLBACK: auto-complete generates results the moment
-  // every member finishes (server-side live, simulated in mock). The host-only
+  // every member finishes (server-side). The host-only
   // expiry generation is centralized in the store, shared with the group-chat
   // card timer — see sessionStore.triggerExpiryGeneration.
   const triggerExpiryGeneration = useSessionStore((s) => s.triggerExpiryGeneration)

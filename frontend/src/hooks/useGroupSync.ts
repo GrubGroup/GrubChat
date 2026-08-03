@@ -11,8 +11,8 @@ import { useGroupsStore } from '@/stores/groupsStore'
 // either, we reload the group list so the sidebar reflects it without a manual
 // refresh — mirroring the `session:confirmed → eventListStore.load()` pattern in
 // useSocket. It also listens for `group:preview` to patch a group's last-message
-// preview live when a message arrives in a group the user isn't viewing. No-op in
-// mock mode (getSocket() returns null) and while signed out.
+// preview live when a message arrives in a group the user isn't viewing. No-op
+// while signed out (getSocket() returns null).
 export function useGroupSync() {
   const name = useAuthStore((s) => s.user?.display_name ?? s.user?.username)
   const userId = useAuthStore((s) => s.user?.id)

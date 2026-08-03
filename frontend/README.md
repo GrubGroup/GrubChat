@@ -36,7 +36,7 @@ bun run preview  # Preview the production build
 
 - **Routing** — react-router v8 in declarative mode (`<BrowserRouter>` + `<Routes>` in `App.tsx`). Import from **`react-router`**, not `react-router-dom` — that package was removed in v8. See the route map below.
 - **PascalCase `*.tsx`** for components; **camelCase `*.ts`** for hooks, stores, utils, api modules.
-- **Strict TypeScript** — `noUnusedLocals`, `noUnusedParameters`, `verbatimModuleSyntax`, `erasableSyntaxOnly`, `noFallthroughCasesInSwitch`. Keep imports type-only where required (`import type { … }`).
+- **TypeScript hygiene flags** — `noUnusedLocals`, `noUnusedParameters`, `verbatimModuleSyntax`, `erasableSyntaxOnly`, `noFallthroughCasesInSwitch` (note: full `strict` mode is not enabled). Keep imports type-only where required (`import type { … }`). `tsconfig.app.json` covers `src/` only, so `scripts/` is not type-checked by `bun run build`.
 - **Live-gateway only** — There is no mock layer (the old `VITE_USE_MOCK` switch and `api/mock/` were removed). The app always runs against the live gateway. Auth is mandatory: the `RequireAuth` layout route guards every non-public route on the Better Auth session.
 - **Gateway origin** — `VITE_GATEWAY_URL` (default `http://localhost:4000`) points at the gateway. The Vite dev server proxy forwards `/api` requests to the gateway; `CORS_ORIGIN` in the gateway's `.env` must match the Vite dev origin (`:5173`).
 - **Auth flow** — `lib/authClient.ts` points at the gateway. `signIn`/`signUp`/Google OAuth hit the gateway's `/api/auth/`*, which sets an httpOnly session cookie (first-party via the Vite dev proxy). The app reads the session with `useSession()` and mirrors it into `authStore`; axios uses `withCredentials: true` so the cookie rides along on every request. No client-side JWT.
@@ -51,19 +51,26 @@ bun run preview  # Preview the production build
 /onboarding/cuisines                       Step 2 of 4 — cuisines to like / avoid
 /onboarding/budget                         Step 3 of 4 — usual budget
 /onboarding/location                       Step 4 of 4 — default location, then save
-/groups                                    Your groups (redirects to the most recent one, if any)
+/groups                                    Your groups (on desktop, redirects to the most recent one)
 /groups/:groupId                           Group chat
 /groups/:groupId/sessions/:sessionId       Your private AI agent chat
 /groups/:groupId/sessions/:sessionId/done  Finished — waiting on the rest of the group
 /groups/:groupId/sessions/:sessionId/picks The group's top picks
+/explore                                   Browse the restaurant catalog (a mobile tab root)
 /events  ·  /events/:eventId               Your booked events
 /profile  ·  /profile/edit                 Profile view / edit
+/settings                                  Appearance, agent voice, account
+*                                          Not found
 ```
 
 Four **layout routes** structure the tree: `RootLayout` (mirrors the Better Auth session into
 `authStore`), `PublicOnly` (forwards a signed-in visitor off the public pages), `RequireAuth`
 (bounces a signed-out visitor to `/login`), and `AuthFlowShell`, which keeps the brand panel
 mounted across sign-in / sign-up / onboarding so the right pane cross-slides between them.
+
+`/groups` renders `GroupsIndex`, which redirects to the most recent group on desktop and renders
+the `GroupsPage` list on mobile (or when you have no groups yet) — so `GroupsPage` is a real screen
+without a route of its own.
 
 Group and session ids come from the URL via `useGroupId()` / `useSessionId()`. Session state is
 keyed by **group** — a group has at most one open session — so `:sessionId` is validated against
@@ -86,6 +93,11 @@ a deep link like `/groups/12` works via in-app navigation but 404s on refresh or
 To check: deploy, then hard-refresh a deep link such as `/groups/12/sessions/48`. It should load the
 app, not a 404.
 
+The two backend services deploy separately to Fly.io (`grubgroup-gateway`, `grubgroup-ai`) — see
+`backend/README.md`. Because the frontend and gateway then live on different domains, the gateway
+must run with `CROSS_SITE_COOKIES=true` so the session cookie is issued `SameSite=None; Secure`.
+Point the frontend at it with `VITE_GATEWAY_URL`.
+
 ### Static media
 
 `public/` is copied verbatim into `dist/`, so anything under `public/media/` is served at
@@ -107,34 +119,45 @@ src/
 ├── main.tsx          # App entry point (mounts React inside <BrowserRouter>)
 ├── App.tsx           # The route tree (<Routes>) — layout routes + every path
 ├── index.css         # Tailwind import + @theme design tokens
-├── api/              # HTTP calls to the gateway via axios
+├── assets/           # unset-table.svg (the empty/404 illustration)
+├── api/              # HTTP calls to the gateway via axios (live only — no mock layer)
 │   ├── sessionApi.ts  eventsApi.ts  restaurantsApi.ts  profileApi.ts
-│   ├── authApi.ts  groupsApi.ts  userApi.ts  usersApi.ts  voiceApi.ts
-│   └── (no mock layer)
+│   └── authApi.ts  groupsApi.ts  userApi.ts  usersApi.ts  voiceApi.ts
 ├── pages/            # Full screens (one per route)
 │   ├── auth/         # AuthForm (Better Auth sign-in/up + Google)
-│   ├── public/       # LandingPage
-│   └── member/       # GroupsIndex (→ GroupsPage list/zero-state), GroupChatPage, EventsPage, ProfilePage, ProfileEditPage
+│   ├── public/       # LandingPage, NotFoundPage
+│   └── member/       # GroupsIndex (→ GroupsPage list/zero-state), GroupChatPage, ExplorePage,
+│       │             #   EventsPage, ProfilePage, ProfileEditPage, SettingsPage
 │       ├── onboarding/     # Onboarding1-3 + OnboardingCuisines
 │       └── session/        # AgentChatPage, TopPicksPage
 ├── components/       # Reusable UI pieces
-│   ├── ui/           # Design-system primitives (Button, Input, Card, Modal, …) + index.ts
+│   ├── ui/           # Design-system primitives (Button, Input, Card, Modal, Avatar, Badge, Chip,
+│   │                 #   Icon, Skeleton, Spinner, Toggle, …) + index.ts barrel
 │   ├── layout/       # Route layouts (RootLayout, RequireAuth, PublicOnly, AuthFlowShell) + AppSidebar,
 │   │                 #   BrandPanel, AppSplash, AccountMenu + mobile chrome (BottomTabBar, MobileHeader, MobileActionSheet)
-│   ├── session/      # HostSessionModal, SessionTopBar, SessionTimer, GroupMessageRow, ChatStream, SessionCard,
-│   │                 #   GroupList, GroupDetailPanel, MobileSessionStrip, …
-│   ├── restaurant/   # RankedRestaurantCard (ephemeral voting), MenuList (placeholder), RestaurantHeader, TagRow, MenuItemRow,
-│   │                 #   RestaurantImage (random cuisine-photo banner, shared by Explore/Top picks/Events)
+│   ├── session/      # HostSessionModal, SessionTopBar, SessionTimer, GroupMessageRow, ChatStream, ChatMessage,
+│   │                 #   SessionCard, GroupList, GroupsSidebar, GroupDetailPanel, GroupProgressPanel, MemberRoster,
+│   │                 #   NewGroupModal, NotedSoFarPanel, SegmentedProgress, TypingIndicator, AgentAvatar,
+│   │                 #   AgentTypingBubble, MessagesLoader, PicksLoader, MobileSessionStrip
+│   ├── restaurant/   # RankedRestaurantCard (ephemeral voting), RestaurantExploreCard, RestaurantDetailModal,
+│   │                 #   ExploreFilters, LikedPlacesPanel, LikeStarButton, RestaurantHeader, TagRow,
+│   │                 #   MenuList (placeholder) + MenuItemRow, and RestaurantImage (random cuisine-photo
+│   │                 #   banner, shared by Explore / Top picks / Events)
 │   ├── profile/      # CuisineTriStatePicker, PreferenceTag
 │   └── voice/        # VoiceComposer — one composer, two paths (Web Speech dictation + hands-free server loop);
 │                     #   VoicePreviewButton — audition a TTS voice from Settings
 ├── hooks/            # Routing (useGroupId, useSessionId, useBindSession); sync (useSocket, useGroupSync,
 │                     #   useSessionSync, useSessionCountdown); voice (useVoiceInput, useVoiceSession);
-│                     #   usePlacesInput, useMediaQuery, useIsMobile, useScrollLock, useDismissOnBack, useCreateGroup, useSignOut, …
-├── stores/           # 9 zustand stores: auth, session, groupChat, chat, event, eventList, profile, groups, restaurant
+│                     #   useExploreFilters, useCuisineImage, usePlacesInput, useAnchoredPosition, useMediaQuery,
+│                     #   useIsMobile, useScrollLock, useScrollToBottom, useNewItemIds, useDismissOnBack,
+│                     #   useCreateGroup, useSignOut
+├── stores/           # 11 zustand stores: auth, session, groupChat, chat, event, eventList, profile,
+│                     #   groups, restaurant, theme, voicePref
 ├── lib/              # axios, socket, authClient (Better Auth), env, motion
-├── types/            # Shared TypeScript types (user, profile, session, recommendation, analyze, group, restaurant, voice, …)
-├── utils/            # cn.ts, hours.ts (TS mirror of ai_service app/ai/hours.py), slug.ts (name-42 route slugs), …
+├── types/            # Shared TypeScript types (user, profile, session, recommendation, analyze, group,
+│                     #   groupChat, chat, restaurant, menu, qa, voice, …)
+├── utils/            # cn.ts, hours.ts (TS mirror of ai_service app/ai/hours.py), slug.ts (name-42 route slugs),
+│                     #   distance.ts, formatBudget.ts, price.ts, password.ts, memberName.ts, timeAgo.ts
 └── constants/        # dietary.ts, memberColors.ts, agentChat.ts, mobileNav.ts, theme.ts, voices.ts,
                       #   restaurantVisuals.ts, cuisineImages.ts (cuisine tag → photo pool mapping)
 ```

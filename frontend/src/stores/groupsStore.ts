@@ -1,17 +1,10 @@
 import { create } from 'zustand'
-import { isAxiosError } from 'axios'
 import type { Group, GroupLastMessage } from '@/types'
-import { fetchGroups, createGroup, addGroupMember, removeGroupMember } from '@/api/groupsApi'
+import { fetchGroups, createGroup, removeGroupMember } from '@/api/groupsApi'
 
 // The user's group list, loaded from the gateway (each group carries its latest
 // DB message as last_message, for the sidebar preview). Create + invite hit the
 // real gateway endpoints (the caller is auto-added as a member server-side).
-
-// Result of an invite attempt, so the UI can show success/error inline.
-export interface InviteResult {
-  ok: boolean
-  error?: string
-}
 
 // The group to land in after sign-in: newest last message first, matching how
 // GroupsSidebar sorts its list (message-less groups have no timestamp → 0, so
@@ -31,8 +24,7 @@ interface GroupsState {
   groups: Group[]
   // True once load() has settled at least once (success OR failure). Lets the UI
   // distinguish "no groups" from "not loaded yet" so it never redirects a valid
-  // member off a chat while the list is still in flight. Mock mode is seeded, so
-  // it starts true.
+  // member off a chat while the list is still in flight.
   loaded: boolean
   load: () => Promise<void>
   // Patch one group's last_message from a live socket preview, so the sidebar
@@ -40,7 +32,6 @@ interface GroupsState {
   applyPreview: (groupId: number, last_message: GroupLastMessage) => void
   reset: () => void
   addGroup: (name: string, memberIds?: number[]) => Promise<Group>
-  inviteMember: (groupId: number, username: string) => Promise<InviteResult>
   // Leave a group (remove yourself), then drop it from the list.
   leaveGroup: (groupId: number, userId: number) => Promise<void>
 }
@@ -81,24 +72,6 @@ export const useGroupsStore = create<GroupsState>((set, get) => ({
     const group = await createGroup(trimmed, memberIds)
     await get().load()
     return group
-  },
-
-  // Invite a member by username (POST /api/groups/:id/members). Surfaces the
-  // gateway's error codes as friendly messages; refreshes the list on success.
-  inviteMember: async (groupId, username) => {
-    const name = username.trim()
-    if (!name) return { ok: false, error: 'Enter a username.' }
-    try {
-      await addGroupMember(groupId, { username: name })
-      await get().load()
-      return { ok: true }
-    } catch (err) {
-      const status = isAxiosError(err) ? err.response?.status : undefined
-      if (status === 404) return { ok: false, error: 'No user found with that username.' }
-      if (status === 409) return { ok: false, error: 'That user is already a member.' }
-      if (status === 403) return { ok: false, error: "You're not a member of this group." }
-      return { ok: false, error: 'Could not add member. Try again.' }
-    }
   },
 
   // Leave a group: remove yourself server-side, then drop it from the list.

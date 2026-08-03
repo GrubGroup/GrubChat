@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Avatar, Button, Icon, Input, Modal, SkeletonRow, Spinner } from '@/components/ui'
 import { searchUsers } from '@/api/usersApi'
-import { memberColor } from '@/utils/memberColor'
+import { memberColor } from '@/constants/memberColors'
 import { cn } from '@/utils/cn'
 import type { UserSearchResult } from '@/types'
 

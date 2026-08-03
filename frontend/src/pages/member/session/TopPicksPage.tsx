@@ -56,7 +56,6 @@ export function TopPicksPage() {
   const loadRecommendation = useSessionStore((s) => s.loadRecommendation)
   const votes = useSessionStore(selectVotes(groupId))
   const castVote = useSessionStore((s) => s.castVote)
-  const chooseRestaurant = useSessionStore((s) => s.chooseRestaurant)
   const isHost = useSessionStore(selectIsHost(groupId))
   const members = useSessionStore(selectMembers(groupId))
   const byId = useRestaurantStore((s) => s.byId)
@@ -137,7 +136,6 @@ export function TopPicksPage() {
 
   const handleConfirm = async () => {
     if (activeId == null || confirming) return
-    chooseRestaurant(groupId, activeId)
     const sessionId = activeSessionId ?? session?.id ?? null
     if (sessionId != null) {
       setConfirming(true)

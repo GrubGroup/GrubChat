@@ -13,7 +13,7 @@ import type { Group } from '@/types'
 
 // Resolve the preview line + relative time for a group's row. Prefers a live
 // message from the open chat (so it updates in real time as you chat), then the
-// group's last_message from the DB, then the static mock preview. System lines
+// group's last_message from the DB, then a placeholder. System lines
 // (e.g. "X has left the group") are skipped — they aren't chat previews.
 function usePreview(group: Group): { preview: string; time: string } {
   const live = useGroupChatStore((s) => s.messagesByGroup[group.id])
@@ -111,7 +111,7 @@ export function GroupList() {
     ? sortedGroups.filter((g) => g.name.toLowerCase().includes(q))
     : sortedGroups
 
-  // Load the real group list (with last messages) on mount. No-op in mock mode.
+  // Load the group list (with last messages) on mount.
   useEffect(() => {
     void load()
   }, [load])

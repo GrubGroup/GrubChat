@@ -16,8 +16,6 @@ primary_region = 'sjc'
   # (no error). Changing it requires re-embedding every row:
   #   uv run python -m scripts.backfill_embeddings --all
   EMBEDDING_MODEL = 'perplexity/pplx-embed-v1-0.6b'
-  ENV = 'production'
-  JWT_ALGORITHM = 'HS256'
   LLM_MODEL = 'anthropic/claude-sonnet-5'
   OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 

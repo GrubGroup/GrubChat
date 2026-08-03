@@ -86,8 +86,7 @@ export interface CreateSessionBody {
 }
 
 // A dining-history event as returned by GET /api/events (gateway `listEvents`).
-// The frontend's live Events tab renders these. Distinct from the mock
-// `EventLite` (presentation fixture) — this is the real API row shape.
+// The frontend's Events tab renders these — the real API row shape.
 export interface EventAttendee {
   id: number
   username: string
@@ -118,7 +117,6 @@ export interface EventRecord {
   // the whole restaurant catalog. Absent → the neutral fallback pool.
   cuisine_tags?: string[]
   // Participants who attended the session this event came from (gateway
-  // listEvents joins Event.attendees). Absent on legacy rows / mock fixtures
-  // that don't supply it.
+  // listEvents joins Event.attendees). Absent on legacy rows that don't supply it.
   attendees?: EventAttendee[]
 }

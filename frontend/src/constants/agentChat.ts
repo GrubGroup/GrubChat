@@ -4,8 +4,8 @@
 // (`_QUESTIONS`) and `conversation_agent._MISSING_ORDER`: the sub-agent walks a
 // diner through likes → dislikes → budget → location, one question at a time.
 // The HOST is NOT asked for a location (they set the group location in the
-// pre-session modal), so their flow is likes → dislikes → budget — see
-// `askOrderFor`, mirroring `conversation_agent._ask_order(is_host)`.
+// pre-session modal), so their flow is likes → dislikes → budget, mirroring
+// `conversation_agent._ask_order(is_host)`.
 // Dietary needs are NOT asked here — they're captured once in onboarding
 // (`Profile.dietary_restrictions`) and feed the ranking hard-filter directly, so
 // the session chat never re-asks them. The event's occasion and time are also NOT
@@ -25,16 +25,6 @@ export const AGENT_ASK_ORDER = [
 ] as const;
 
 export type AgentSignalName = (typeof AGENT_ASK_ORDER)[number];
-
-// The host already set the group's location in the pre-session modal, so their
-// sub-agent never asks for one — likes -> dislikes -> budget only. A non-host
-// additionally gets the optional "your spot" location question. Mirrors the
-// backend's `conversation_agent._ask_order(is_host)`.
-export function askOrderFor(isHost: boolean): AgentSignalName[] {
-  return isHost
-    ? AGENT_ASK_ORDER.filter((name) => name !== "location")
-    : [...AGENT_ASK_ORDER];
-}
 
 // The agent's opening line — asks the FIRST question (preferred cuisines). The
 // rest of the conversation is agent-reply-driven (each analyze reply confirms what

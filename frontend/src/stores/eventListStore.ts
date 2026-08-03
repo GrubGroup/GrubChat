@@ -14,8 +14,6 @@ interface EventListState {
   // AND events=[], which reads identically to "no events" but shows nothing).
   error: string | null
   load: () => Promise<void>
-  // Optimistically place a just-created event at the top (session:confirmed).
-  prepend: (event: EventRecord) => void
   // Clear back to the initial state (called on sign-out so one user's events
   // never briefly show for the next).
   reset: () => void
@@ -43,11 +41,4 @@ export const useEventListStore = create<EventListState>((set, get) => ({
   },
 
   reset: () => set({ events: [], loaded: false, loading: false, error: null }),
-
-  // De-dupe by id so a prepend followed by a load() (or a repeat broadcast) can't
-  // double-list the same event.
-  prepend: (event) =>
-    set((s) => ({
-      events: [event, ...s.events.filter((e) => e.id !== event.id)],
-    })),
 }))

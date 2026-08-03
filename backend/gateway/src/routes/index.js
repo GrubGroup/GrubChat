@@ -1,7 +1,8 @@
-// Route aggregator: mounts health, restaurants, sessions, profile, groups,
+// Route aggregator: mounts restaurants, sessions, profile, user, users, groups,
 // events, and voice under /api.
 //
 // Auth endpoints are NOT here — Better Auth owns /api/auth/* directly in app.js.
+// The liveness probe is GET /health, defined in app.js (it's what fly.toml checks).
 import { Router } from 'express';
 import restaurantsRouter from './restaurantsRoutes.js';
 import sessionsRouter from './sessionsRoutes.js';
@@ -16,11 +17,6 @@ import { validateGeocode } from '../controllers/sessionsController.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
 
 const router = Router();
-
-// Liveness probe.
-router.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
-});
 
 // Public: which auth providers an email has (used pre-login by the sign-in form).
 router.get('/auth-methods', getAuthMethods);

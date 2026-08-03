@@ -6,8 +6,8 @@ import type { Restaurant } from './restaurant'
 // (`getLatestRecommendation` and the `POST .../recommendations` proxy that
 // delivers picks into the group chat) carry only `restaurant_id` / `match_score`
 // / `justification` on each item — plus `name` and, on the generate path,
-// `hours` / `is_open` enriched from the pipeline candidates. The mock fixture
-// carries the full row shape. `is_open` is the venue's open/closed state at the
+// `hours` / `is_open` enriched from the pipeline candidates.
+// `is_open` is the venue's open/closed state at the
 // session's chosen event time (null when no time was set → unknown, not closed).
 export interface RecommendationItem {
   id?: number

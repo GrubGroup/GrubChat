@@ -38,6 +38,12 @@ const config = {
   // (addresses save with null coordinates rather than blocking the request).
   geocodioApiKey: process.env.GEOCODIO_API || '',
 
+  // Postgres connection string. Prisma reads DATABASE_URL from the environment
+  // itself (schema.prisma), so this entry exists for the Socket.IO Postgres
+  // adapter (sockets/index.js), which needs the DSN in JS to build its own pool.
+  // Absent → the adapter is skipped and broadcasts stay in-process (single-node).
+  DATABASE_URL: process.env.DATABASE_URL || '',
+
   // Cross-site cookies (prod only). When the frontend and gateway are on
   // DIFFERENT domains (e.g. Render frontend ↔ Fly gateway), the Better Auth
   // session cookie must be SameSite=None; Secure to ride cross-site. Off by

@@ -15,7 +15,7 @@ const expiryGenerating = new Set<number>()
 // user carry a real name (the gateway's create response doesn't include one, and
 // join/progress rows would otherwise be nameless → "User N"/"U1" avatars).
 // Read lazily via getState() — authStore does not import sessionStore, so there's
-// no cycle. Returns undefined name fields when signed out (mock defaults apply).
+// no cycle. Returns undefined name fields when signed out.
 function selfNameFields(userId: number): Pick<SessionMember, 'display_name' | 'username'> {
   const user = useAuthStore.getState().user
   if (!user || user.id !== userId) return {}
@@ -57,7 +57,6 @@ export interface SessionSlice {
   sessionFinalizing: boolean
   phase: SessionPhase
   votes: Record<number, number[]> // restaurantId -> userIds who voted
-  chosenRestaurantId: number | null
 }
 
 // Fresh, independent slice for a group that has no session yet.
@@ -73,7 +72,6 @@ const makeSlice = (): SessionSlice => ({
   sessionFinalizing: false,
   phase: 'joining',
   votes: {},
-  chosenRestaurantId: null,
 })
 
 // Stable frozen reference returned by selectors for a group with no slice yet, so
@@ -142,12 +140,11 @@ interface SessionState {
   // Cast the current user's vote for a restaurant on the results page. Emit-only:
   // the server echoes vote:update back to every member (incl. the sender) and
   // receiveVote applies it — single source of truth, no local double-toggle. Falls
-  // back to a local apply in mock mode (no socket). Ephemeral / never persisted.
+  // back to a local apply when there is no socket. Ephemeral / never persisted.
   castVote: (groupId: number, restaurantId: number) => void
   // Apply a live vote:update echo: single-choice toggle for `userId`. The voter id
   // comes from the socket payload (the gateway's authenticated identity), not local.
   receiveVote: (groupId: number, restaurantId: number, userId: number) => void
-  chooseRestaurant: (groupId: number, restaurantId: number) => void
   close: (groupId: number) => void
   // Apply a live session:host_changed broadcast: the previous host deleted their
   // account, so the gateway handed the session off. Point session.host_user_id at
@@ -200,7 +197,6 @@ export const useSessionStore = create<SessionState>((set, get) => {
         recommendationError: false,
         sessionFinalizing: false,
         votes: {},
-        chosenRestaurantId: null,
       })
     },
 
@@ -259,7 +255,6 @@ export const useSessionStore = create<SessionState>((set, get) => {
           recommendationError: false,
           sessionFinalizing: false,
           votes: {},
-          chosenRestaurantId: null,
         }
       })
     },
@@ -484,7 +479,8 @@ export const useSessionStore = create<SessionState>((set, get) => {
         // the authoritative voter id from the authenticated socket.
         socket.emit('vote:cast', { groupId, restaurantId })
       } else {
-        // Mock mode (no socket): apply locally so the demo still toggles.
+        // No socket (signed out, or not yet connected): apply locally so the UI
+        // still toggles. The server echo is the source of truth when connected.
         get().receiveVote(groupId, restaurantId, get().currentUserId)
       }
     },
@@ -503,7 +499,6 @@ export const useSessionStore = create<SessionState>((set, get) => {
         return { votes: next }
       }),
 
-    chooseRestaurant: (groupId, restaurantId) => patch(groupId, { chosenRestaurantId: restaurantId }),
 
     close: (groupId) =>
       patch(groupId, (prev) => ({
@@ -538,8 +533,6 @@ export const useSessionStore = create<SessionState>((set, get) => {
 // and returning a primitive or the slice's own (stable-until-mutated) reference via
 // EMPTY_SLICE, so absent-group reads never allocate a fresh value (StrictMode-safe).
 // Mirrors groupChatStore's selectGroupMessages(groupId) => (s) => … helpers.
-export const selectSlice = (groupId: number) => (s: SessionState) =>
-  s.byGroup[groupId] ?? EMPTY_SLICE
 export const selectSession = (groupId: number) => (s: SessionState) =>
   (s.byGroup[groupId] ?? EMPTY_SLICE).session
 export const selectActiveSessionId = (groupId: number) => (s: SessionState) =>

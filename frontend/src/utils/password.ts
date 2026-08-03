@@ -28,10 +28,3 @@ export const PASSWORD_RULES: PasswordRule[] = [
 export function isPasswordValid(password: string): boolean {
   return PASSWORD_RULES.every((rule) => rule.test(password))
 }
-
-// The first unmet rule's label, suitable for a single inline error message
-// (e.g. "Password must have: One number."). Null when the password is valid.
-export function firstPasswordError(password: string): string | null {
-  const failing = PASSWORD_RULES.find((rule) => !rule.test(password))
-  return failing ? `Password must include: ${failing.label.toLowerCase()}.` : null
-}

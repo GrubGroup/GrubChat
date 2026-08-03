@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Avatar, BrandMark, Icon } from '@/components/ui'
 import { EASE } from '@/lib/motion'
-import { memberColor } from '@/utils/memberColor'
+import { memberColor } from '@/constants/memberColors'
 import { cn } from '@/utils/cn'
 import type { SessionMember } from '@/types'
 

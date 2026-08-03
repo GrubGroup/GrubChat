@@ -21,13 +21,16 @@
 //      AI_SERVICE_URL (default http://localhost:8000).
 //
 // socket.io-client isn't a gateway dependency; borrow the frontend's copy
-// (v4.8.x, protocol-compatible), exactly as throwaway_socket_relay_check.mjs does.
+// (v4.8.x, protocol-compatible). Run `bun install` in frontend/ first.
 
 const GATEWAY_URL = (process.env.GATEWAY_URL || 'http://localhost:4000').replace(/\/$/, '');
 const AI_SERVICE_URL = (process.env.AI_SERVICE_URL || 'http://localhost:8000').replace(/\/$/, '');
 
-const FRONTEND_CLIENT =
-  '/Users/d.lam/Downloads/codepath/GrubGroup/frontend/node_modules/socket.io-client/build/cjs/index.js';
+// Resolved relative to this file so it works from any clone location.
+const FRONTEND_CLIENT = new URL(
+  '../../../frontend/node_modules/socket.io-client/build/cjs/index.js',
+  import.meta.url,
+).href;
 const { io } = await import(FRONTEND_CLIENT);
 
 const TAG = 'voicerelay';

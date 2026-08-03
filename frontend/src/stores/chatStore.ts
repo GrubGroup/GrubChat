@@ -83,7 +83,7 @@ interface ChatState {
   // Send one member turn to the QA sub-agent (analyze). Async: appends the user
   // message immediately, then the agent reply when it returns — always to the
   // ORIGIN group's slice, even if the user switched groups mid-round-trip.
-  // `sessionId` is the live session; null falls back to the mock/canned path.
+  // `sessionId` is the live session; null routes to the session-less /analyze turn.
   // `source` ('voice' when dictated, 'text' when typed) rides through to the
   // analyze endpoint's `message_source`, which makes the model forgiving of
   // speech-to-text transcription noise.
