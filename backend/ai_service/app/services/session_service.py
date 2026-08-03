@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.ai.agents.conversation_agent import analyze_turn
+from app.ai.agents.conversation_agent import (
+    analyze_turn,
+    apply_profile_cuisine_fallback,
+)
 from app.ai.taxonomy import expand_cuisine_terms
 from app.crud import session as session_crud
+from app.crud import user as user_crud
 from app.db.session import async_session_factory
 from app.models.qa import Qa
 from app.schemas.ai import AnalyzeRequest, ExtractedSignals
@@ -121,6 +125,22 @@ async def analyze_member_turn(
         is_host=is_host,
         host_location_label=host_location_label,
     )
+
+    # "Anything works" -> acknowledge their saved cuisines. When the member
+    # expressed no cuisine preference and none was captured, analyze_turn flags
+    # this instead of looping. We resolve it here (I/O stays out of the agent):
+    # read their durable Profile favorites so the reply can confirm we're falling
+    # back to them ("I'll go with your usual ..."), so a flexible member never has
+    # to re-state a cuisine every session. This does NOT persist a Qa override —
+    # the pipeline already weights the durable Profile at +1, and stacking the +2
+    # session weight would over-represent a member who declined to choose. Lazy on
+    # purpose — the extra read only happens on the flexible turn, not every turn.
+    if result.wants_profile_cuisines and session_id is not None:
+        async with async_session_factory() as db:
+            profile = await user_crud.get_profile_by_user(db, payload.user_id)
+        saved_cuisines = list(profile.preferred_cuisines) if profile else []
+        if saved_cuisines:
+            apply_profile_cuisine_fallback(result, saved_cuisines)
 
     qa_updated = False
     profile_updated = False

@@ -92,7 +92,11 @@ export function HostSessionModal({
     lat: number;
     lon: number;
   } | null>(null);
-  // Whether the autocomplete dropdown is open (suppressed right after a pick/blur).
+  // Whether the autocomplete dropdown is open. Opened on focus AND on each keystroke,
+  // closed on blur/Escape/pick/outside-click — so matches stay visible the whole time
+  // the host is in the field. (Opening on focus, not only on keystroke, is what stops
+  // a stray blur — clicking the list's scrollbar, a focus shuffle — from stranding
+  // loaded suggestions hidden until the next keystroke.) Rendered via AnchoredMenu.
   const [showSuggestions, setShowSuggestions] = useState(false);
   const locationRef = useRef<HTMLInputElement>(null);
 
@@ -129,7 +133,8 @@ export function HostSessionModal({
     }
   };
 
-  // Editing the address invalidates a prior geocode result + picked coords.
+  // Editing the address invalidates a prior geocode result + picked coords, and
+  // (re)opens the dropdown so the fresh matches surface as the host types.
   const handleAddressChange = (value: string) => {
     location.setValue(value);
     setShowSuggestions(true);
@@ -138,9 +143,9 @@ export function HostSessionModal({
   };
 
   // Pick a suggestion: resolve its address + coordinates (from the cached
-  // autocomplete result — no extra request), confirm the field.
+  // autocomplete result — no extra request), confirm the field. select() empties
+  // the suggestion list, so the dropdown closes on its own.
   const handleSelectSuggestion = (placeId: string) => {
-    setShowSuggestions(false);
     const place = location.select(placeId);
     if (place) {
       setSelectedCoords({ lat: place.lat, lon: place.lon });
@@ -267,14 +272,18 @@ export function HostSessionModal({
                 placeholder="Search a place, e.g. Salesforce Tower"
                 value={location.value}
                 onChange={(e) => handleAddressChange(e.target.value)}
+                onFocus={() => setShowSuggestions(true)}
                 onBlur={() => {
-                  // Delay so a suggestion click registers before we close/validate.
+                  // Delay so a suggestion click (onMouseDown) registers before we
+                  // close the dropdown / kick off validation.
                   window.setTimeout(() => {
                     setShowSuggestions(false);
                     if (!selectedCoords) void validateLocation();
                   }, 150);
                 }}
                 onKeyDown={(e) => {
+                  // Escape closes the dropdown without leaving the field; the
+                  // matches re-open on the next focus or keystroke.
                   if (e.key === "Escape") setShowSuggestions(false);
                 }}
                 error={

@@ -25,6 +25,7 @@ import {
 import { useRestaurantStore } from '@/stores/restaurantStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useGroupsStore } from '@/stores/groupsStore'
+import { useGroupChatStore } from '@/stores/groupChatStore'
 import { toSlugId } from '@/utils/slug'
 import { useGroupId } from '@/hooks/useGroupId'
 import { useSessionId } from '@/hooks/useSessionId'
@@ -32,6 +33,7 @@ import { useBindSession } from '@/hooks/useBindSession'
 import { useSocket } from '@/hooks/useSocket'
 import { EASE } from '@/lib/motion'
 import { closeSession } from '@/api/sessionApi'
+import { isAxiosError } from 'axios'
 
 export function TopPicksPage() {
   const reduce = useReducedMotion()
@@ -139,19 +141,37 @@ export function TopPicksPage() {
     const sessionId = activeSessionId ?? session?.id ?? null
     if (sessionId != null) {
       setConfirming(true)
+      let closed = false
       try {
         await closeSession(sessionId, activeId)
-      } catch {
-        // Surface nothing fatal — the confirm is idempotent-ish (409 if already
-        // closed). Fall through to the completion screen regardless.
+        closed = true
+      } catch (err) {
+        // A 409 means the session was ALREADY closed (a retry, or another path won
+        // the race) — still a closed session, so treat it as success. Any other
+        // failure (offline / 5xx) left it open server-side; don't fake a local close.
+        if (isAxiosError(err) && err.response?.status === 409) closed = true
       } finally {
         setConfirming(false)
       }
+      // Close the session on THIS (host) client right away, rather than waiting for
+      // the session:confirmed socket broadcast to round-trip back (useSessionSync).
+      // That broadcast is unreliable on the deployed gateway: the host has already
+      // LEFT the group room to view results (useSocket's unmount emitted group:leave),
+      // and on a multi-instance deploy the per-user-room emit may not cross instances
+      // — so the host often never received it and the inline "Session complete" card
+      // stayed open until a full page reload. This is why it worked on localhost
+      // (single process, in-memory rooms) but not on Render. Mirror exactly what
+      // useSessionSync.handleConfirmed does for every other member: close() flips
+      // closed_at + phase:'complete', clearSessionStart() drops the inline card marker.
+      if (closed) {
+        useSessionStore.getState().close(groupId)
+        useGroupChatStore.getState().clearSessionStart(groupId)
+      }
     }
-    // Return to the group chat — where the confirmation SYSTEM message and the closed
-    // session card appear. Every other member is pulled here too via session:confirmed
-    // (useSessionSync), so the whole group lands in the same place. That state is
-    // derived from the recommendation/roster, so it needs no dedicated URL.
+    // Return to the group chat — where the confirmation SYSTEM message and the (now
+    // closed) session card state appear. Every other member is pulled here too via
+    // session:confirmed (useSessionSync). That state is derived from the
+    // recommendation/roster, so it needs no dedicated URL.
     navigate(`/groups/${groupSlug}`)
   }
 

@@ -343,6 +343,22 @@ const createSession = async (req, res, next) => {
     // orphaned. Members fill their own Qa rows via the sub-agent chat; the host's
     // row carries the event-level signals the pipeline reads as the primary anchor.
     const session = await prisma.$transaction(async (tx) => {
+      // A group has AT MOST ONE open session at a time. Only the host's explicit
+      // restaurant confirm (closeSession) sets closed_at, so a session that ended
+      // by timeout / auto-complete / was simply abandoned would otherwise stay
+      // closed_at:null forever. Those stale "open" rows are what
+      // GET /groups/:id/sessions/current re-binds on reload (the inline card
+      // reappearing after a refresh even though the host already confirmed) and
+      // what keeps a superseded session from disappearing when the group starts a
+      // fresh one. Close them here, in the same transaction as the create, so the
+      // one-open-session invariant holds and both are fixed at the source.
+      if (group_id !== undefined && group_id !== null) {
+        await tx.session.updateMany({
+          where: { group_id, closed_at: null },
+          data: { closed_at: new Date() },
+        });
+      }
+
       const created = await tx.session.create({
         data: {
           host_user_id: req.user.id,
