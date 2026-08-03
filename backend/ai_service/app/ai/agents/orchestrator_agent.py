@@ -75,15 +75,79 @@ def _to_venue_localtime(when: datetime) -> datetime:
 _QA_CUISINE_WEIGHT = 2.0
 
 
+# --- Soft budget scoring ------------------------------------------------------
+# A budget is a CEILING ("I'm willing to spend up to this much"), never a target.
+# Everything below follows from that one sentence, and it is what fixes the bug
+# where one high-budget diner dragged the whole group upmarket: the group's fit
+# is the fit of the member who can LEAST afford the candidate, so a member whose
+# ceiling is above the tightest one has provably zero influence on the ranking.
+#
+# Relative overage at which ONE member's fit halves. Overage is scored as a
+# FRACTION of that member's ceiling, not in dollars: $5 over a $15 ceiling (33%)
+# has to hurt far more than $5 over a $90 ceiling (5.6%), and a flat-dollar
+# tolerance gets that backwards at both ends of a catalog whose real price tiers
+# run $12–$90.
+_OVER_BUDGET_KNEE = 0.25
+
+# The most a candidate can lose off its match score for being unaffordable.
+# Calibrated against TIER_BONUS (max +0.20 for the "between" corridor) so the
+# crossover is statable: at _OVER_BUDGET_KNEE over the tightest ceiling the fit
+# is exactly 0.5, so the penalty is exactly 0.20 and cancels the best possible
+# location bonus. Anything MORE than 25% over the tightest budget therefore
+# loses to an affordable candidate no matter how well located it is.
+_BUDGET_WEIGHT = 0.40
+
+# Multiplier on the tightest ceiling for the retrieval prefilter (see
+# _reconcile). Recall only — the ranking penalty is what enforces budget.
+_RETRIEVAL_HEADROOM = 1.5
+
+
+def _member_budget_fit(price: float | None, cap: int) -> float:
+    """How well `price` fits ONE member's ceiling, in [0, 1].
+
+    Flat 1.0 at or under the cap — a cheaper restaurant can never cost a diner
+    anything, so being cheap is NEVER penalized. This is the whole difference
+    between "willing to spend up to $X" and "wants to eat at $X places", and it
+    is why ``budget_min`` is not read anywhere in this module.
+
+    Past the cap the fit decays as 1/(1+x): strictly monotone and never clipping
+    to 0, so a $45 bistro and a $200 tasting menu stay ORDERED — exactly the
+    range where a frugal group needs the ranking to discriminate.
+    """
+    if price is None or price <= cap:
+        return 1.0
+    return 1.0 / (1.0 + ((price - cap) / cap) / _OVER_BUDGET_KNEE)
+
+
+def _group_budget_fit(price: float | None, caps: list[int]) -> float | None:
+    """The WORST member's fit for this candidate; None when budget doesn't apply.
+
+    Deliberately a min and not a mean. A mean lets high-ceiling members — whose
+    fit is 1.0 at every price the tightest member can reach — dilute the penalty
+    on a restaurant that prices someone out, which is precisely the reported bug
+    in softer clothing: adding wealthy diners to a session would make the group's
+    picks more expensive for everyone else. Under a min, a member whose ceiling
+    is above the tightest ceiling contributes NOTHING to the ranking, at any
+    price. That is the guarantee, not a tuning choice.
+
+    None (score untouched) when the candidate has no price or no member set a
+    ceiling — an all-flexible group is ranked on cuisine/rating/location alone.
+    """
+    if price is None or not caps:
+        return None
+    return round(min(_member_budget_fit(price, cap) for cap in caps), 4)
+
+
 def _reconcile(state: PipelineState) -> ReconciledConstraints:
     """Merge member prefs + Qa signals into hard/soft group constraints.
 
     required_dietary is the UNION of every member's dietary_restrictions and is
-    treated as HARD downstream. Budget uses each member's EFFECTIVE cap (their
-    QA budget override this session, else their Profile budget): price_max is the
-    min of those caps (the most-constrained member gates the group), and
-    avg_budget is their mean (the group's spend sweet-spot, handed to the re-rank
-    so top picks land near it — there is no Session.avg_budget column). Cuisine
+    treated as HARD downstream. Budget is SOFT: each member's EFFECTIVE ceiling
+    (their QA budget override this session, else their Profile budget) is
+    collected into member_budget_caps, and a candidate is scored against them by
+    _group_budget_fit. A member who said "I'm flexible" — or has no budget data —
+    contributes no ceiling and drops out entirely, which is what makes a flexible
+    answer discard their saved Profile budget for the session. Cuisine
     weights reward preferred cuisines and penalize disliked ones, summed across
     members: durable Profile cuisines score +/-1 and session QA cuisines add
     +/-_QA_CUISINE_WEIGHT on top, so a QA override outranks the Profile for this
@@ -100,13 +164,15 @@ def _reconcile(state: PipelineState) -> ReconciledConstraints:
             if tag and tag not in seen_dietary:
                 seen_dietary.add(tag)
                 required_dietary.append(tag)
-        # Skip a 0 effective cap on purpose: budget_max is a required positive
-        # Int on Profile, so 0 is the "no budget data" sentinel (MemberPref's
-        # default), NOT "this diner can spend $0". Including it would set
-        # price_max=0 and filter out every restaurant. Do not "fix" this to
-        # `is not None` — that reintroduces the empty-candidates bug.
-        if member.effective_budget_max:
-            budget_caps.append(member.effective_budget_max)
+        # None means this member imposes NO ceiling — they said "I'm flexible"
+        # this session (Qa.budget_max == NO_CAP, which also discards their saved
+        # Profile budget) or they have no budget data at all. Either way they are
+        # left out of the caps entirely rather than contributing a 0, which would
+        # read as "can spend $0" and price out every restaurant. See
+        # MemberPref.effective_budget_cap.
+        cap = member.effective_budget_cap
+        if cap is not None:
+            budget_caps.append(cap)
         # Cuisine signals are stored COMPACT (group/style keys like "asian"), so
         # this read choke point is where they EXPAND into their concrete member
         # tags (chinese, japanese, thai, ...). expand_cuisine_terms is idempotent,
@@ -129,9 +195,28 @@ def _reconcile(state: PipelineState) -> ReconciledConstraints:
                 cuisine_weights.get(cuisine, 0.0) - _QA_CUISINE_WEIGHT
             )
 
-    price_max: float | None = min(budget_caps) if budget_caps else None
-    avg_budget: float | None = (
-        sum(budget_caps) / len(budget_caps) if budget_caps else None
+    budget_caps.sort()
+
+    # RECALL GUARDRAIL, NOT A CONSTRAINT — the budget POLICY is the soft
+    # _group_budget_fit penalty applied at ranking time. This exists only because
+    # price is NOT part of a restaurant's embedding (see
+    # scripts/seed_restaurants.py::_embedding_source — name, description, cuisine
+    # and dietary tags only), so the retriever's cosine ordering is price-blind:
+    # without a WHERE clause, the _CANDIDATE_LIMIT window can fill up entirely
+    # with places nobody in the group can afford and the affordable ones never
+    # get scored at all.
+    #
+    # Keyed on the TIGHTEST cap so a high-budget member can neither widen nor
+    # narrow retrieval — they are inert here exactly as they are in the ranking.
+    # The _RETRIEVAL_HEADROOM multiplier is what makes budget genuinely soft
+    # rather than a hard gate: the old exact `price_avg <= min(caps)` filter meant
+    # a $15 diner could never even be SHOWN a $16 restaurant, and on a group with
+    # one frugal member it cut the catalog so far that "we couldn't find
+    # restaurants that fit everyone's budget" was a routine outcome. Everything
+    # the headroom admits is then priced by the penalty, so a slightly-over
+    # candidate only wins when it is clearly better on cuisine/rating/location.
+    retrieval_price_ceiling: float | None = (
+        budget_caps[0] * _RETRIEVAL_HEADROOM if budget_caps else None
     )
 
     # `center` is the retrieval anchor + PRIMARY location weight: the host's
@@ -160,8 +245,8 @@ def _reconcile(state: PipelineState) -> ReconciledConstraints:
 
     return ReconciledConstraints(
         required_dietary=required_dietary,
-        price_max=price_max,
-        avg_budget=avg_budget,
+        member_budget_caps=budget_caps,
+        retrieval_price_ceiling=retrieval_price_ceiling,
         center=center,
         radius_miles=radius_miles,
         host_location=center,
@@ -188,10 +273,14 @@ def _build_query_text(
         parts.append(
             f"Must satisfy dietary needs: {', '.join(reconciled.required_dietary)}."
         )
-    if reconciled.price_max is not None:
-        parts.append(f"Budget per person up to {reconciled.price_max:.0f}.")
-    if reconciled.avg_budget is not None:
-        parts.append(f"Group typically spends around {reconciled.avg_budget:.0f} per person.")
+    # Budget is deliberately ABSENT from the embedded query. A restaurant's
+    # vector is built from its name, description, cuisine tags and dietary tags
+    # only (scripts/seed_restaurants.py::_embedding_source) — there is no price
+    # in the corpus for a dollar figure to match against, so a budget sentence is
+    # unanchored tokens diluting the cuisine/dietary signal that IS there. Worse,
+    # the sentence this replaced named the group's AVERAGE spend, which nudged
+    # retrieval toward whatever reads as upmarket. Budget now lives entirely in
+    # the deterministic score, where Restaurant.price_avg actually exists.
     return " ".join(parts)
 
 
@@ -255,7 +344,9 @@ def _build_candidates(
 
     Each candidate keeps its coordinates + hours, is classified into a proximity
     tier (between-host-and-member > host > member > far) against the reconciled
-    anchors, and gets an `is_open` flag evaluated at the session's chosen time.
+    anchors, gets a soft `budget_fit` against the group's ceilings (see
+    _group_budget_fit — NEVER a filter), and gets an `is_open` flag evaluated at
+    the session's chosen time.
     A candidate that parses as CLOSED at that time is HARD-FILTERED OUT (D4) —
     unknown/unparseable/null hours parse as open, so only confidently-closed
     venues are dropped. With no event time set, hours are not filtered at all.
@@ -302,6 +393,9 @@ def _build_candidates(
                 dietary_tags=list(restaurant.dietary_tags or []),
                 price_avg=restaurant.price_avg,
                 avg_rating=restaurant.avg_rating,
+                budget_fit=_group_budget_fit(
+                    restaurant.price_avg, reconciled.member_budget_caps
+                ),
                 distance=distance,
                 lat=restaurant.lat,
                 long=restaurant.long,
@@ -313,10 +407,35 @@ def _build_candidates(
     return candidates
 
 
-def _blend_proximity(base_score: float, tier: str | None) -> float:
-    """Add the proximity-tier bonus to a base match score, clamped to [0, 1]."""
+def _adjusted_score(
+    base_score: float, tier: str | None, budget_fit: float | None
+) -> float:
+    """base + proximity bonus - budget penalty, UNCLAMPED. The true ordering.
+
+    The budget term is SUBTRACTIVE AND NEVER ADDITIVE — there is no bonus for
+    being expensive. That is the structural reason a high-budget member cannot
+    pull the group upmarket, independent of how the constants are tuned: the best
+    a candidate can do on budget is "costs nobody anything" (fit 1.0, penalty 0).
+
+    A `budget_fit` of None (no price, or nobody set a ceiling) is a no-op.
+
+    Unclamped ON PURPOSE, and this is what callers must SORT on. A strong LLM
+    score plus the "between" bonus can exceed 1.0, and clamping before the
+    comparison would collapse an affordable candidate and an unaffordable one to
+    an identical 1.0 — silently discarding the budget penalty in exactly the
+    high-scoring region where the top picks are decided. Clamp only when storing
+    the score (_blend_score), never when ordering.
+    """
     bonus = TIER_BONUS.get(tier or "far", 0.0)
-    return round(max(0.0, min(1.0, base_score + bonus)), 4)
+    penalty = _BUDGET_WEIGHT * (1.0 - budget_fit) if budget_fit is not None else 0.0
+    return base_score + bonus - penalty
+
+
+def _blend_score(
+    base_score: float, tier: str | None, budget_fit: float | None
+) -> float:
+    """The STORED/displayed match score: _adjusted_score clamped to [0, 1]."""
+    return round(max(0.0, min(1.0, _adjusted_score(base_score, tier, budget_fit))), 4)
 
 
 async def orchestrate(state: PipelineState) -> PipelineState:
@@ -324,9 +443,10 @@ async def orchestrate(state: PipelineState) -> PipelineState:
 
     Returns the same PipelineState mutated with `reconciled`, `candidates`, and
     `ranked`. `ranked` items match the RecommendationItem shape exactly
-    (restaurant_id, match_score, justification). Beyond cuisine/budget/embedding
-    fit, candidates are scored by PROXIMITY (between-host-and-member > host >
-    member) and hard-filtered by open/closed at the session's chosen time.
+    (restaurant_id, match_score, justification). Beyond cuisine/embedding fit,
+    candidates are scored by PROXIMITY (between-host-and-member > host > member),
+    penalized by BUDGET (soft — how far past the group's tightest ceiling the
+    price runs), and hard-filtered by open/closed at the session's chosen time.
     """
     reconciled = _reconcile(state)
     state.reconciled = reconciled
@@ -338,7 +458,10 @@ async def orchestrate(state: PipelineState) -> PipelineState:
         query_embedding,
         limit=_CANDIDATE_LIMIT,
         required_dietary_tags=reconciled.required_dietary or None,
-        price_max=reconciled.price_max,
+        # The retriever's `price_max` parameter is a plain SQL bound; what we
+        # hand it is the recall guardrail, not anyone's stated budget. See
+        # ReconciledConstraints.retrieval_price_ceiling.
+        price_max=reconciled.retrieval_price_ceiling,
         center=reconciled.center,
         radius_miles=reconciled.radius_miles,
     )
@@ -350,14 +473,44 @@ async def orchestrate(state: PipelineState) -> PipelineState:
         state.ranked = []
         return state
 
-    # Only the strongest-by-similarity survivors go to the LLM. Candidates keep the
-    # retriever's cosine order (best first), so this is the top-_RERANK_LIMIT slice.
-    # Shrinking the payload the model reads and the array it must write back is the
-    # main "view results" latency win — the frontend only shows the top 5 anyway.
-    rerank_candidates = candidates[:_RERANK_LIMIT]
+    # Only the strongest survivors go to the LLM. Shrinking the payload the model
+    # reads and the array it must write back is the main "view results" latency
+    # win — the frontend only shows the top 5 anyway.
+    #
+    # When the group set ceilings, the slice is re-ordered by the BUDGET term
+    # before it is cut, instead of taking raw cosine order. Retrieval is
+    # budget-SOFT now (the ceiling carries _RETRIEVAL_HEADROOM slack) and cosine
+    # order is price-blind, so a plain `candidates[:_RERANK_LIMIT]` could hand the
+    # model twenty candidates that all run past the group's tightest budget while
+    # the affordable ones sat at cosine rank 21 and were never ranked at all.
+    # Cosine stays the dominant term (it is the base score); budget only
+    # reshuffles around the cut. Same `1.0 - distance` proxy the no-LLM fallback
+    # below uses.
+    #
+    # Deliberately NOT keyed on the full _adjusted_score: the proximity tier must
+    # keep applying only to the final LLM-scored blend, as it always has. Folding
+    # it in here would let location decide slice MEMBERSHIP — an irreversible
+    # admit/reject the model never gets to weigh in on — and would change results
+    # for groups with no budget ceilings at all, which this change must not touch.
+    if reconciled.member_budget_caps:
+        rerank_candidates = sorted(
+            candidates,
+            key=lambda c: max(0.0, 1.0 - (c.distance if c.distance is not None else 1.0))
+            - (
+                _BUDGET_WEIGHT * (1.0 - c.budget_fit)
+                if c.budget_fit is not None
+                else 0.0
+            ),
+            reverse=True,
+        )[:_RERANK_LIMIT]
+    else:
+        rerank_candidates = candidates[:_RERANK_LIMIT]
 
     messages = build_group_rerank_messages(
-        reconciled=reconciled.model_dump(),
+        # retrieval_price_ceiling is withheld from the model on purpose: it is a
+        # recall guardrail, and showing it invites the model to read it as a
+        # budget the group agreed to (the failure this whole change removes).
+        reconciled=reconciled.model_dump(exclude={"retrieval_price_ceiling"}),
         candidates=[c.model_dump() for c in rerank_candidates],
     )
     # NOTE: do NOT pass response_format={"type": "json_object"} here. The active
@@ -384,34 +537,55 @@ async def orchestrate(state: PipelineState) -> PipelineState:
         messages, temperature=0.2, max_tokens=900, extra_body=extra_body
     )
 
-    # valid_ids / tier_by_id come from the SAME sliced list the model saw, so an id
-    # it couldn't have been given is rejected and every returned id has a tier.
+    # valid_ids / tier_by_id / fit_by_id come from the SAME sliced list the model
+    # saw, so an id it couldn't have been given is rejected and every returned id
+    # has a tier and a budget fit.
     valid_ids = {c.id for c in rerank_candidates}
     ranked = _parse_ranked(raw or "", valid_ids)
 
-    # Blend the proximity bonus into the LLM's scores and RE-SORT, so the
-    # between-host-and-member geometry the prompt was told about is also enforced
-    # deterministically (the LLM sees the tiers but we don't rely on it alone).
+    # Blend the proximity bonus and the budget penalty into the LLM's scores and
+    # RE-SORT, so the geometry and the group's ceilings the prompt was told about
+    # are also enforced deterministically (the model sees both but we don't rely
+    # on it alone — an LLM that ignores the budget guidance cannot promote an
+    # unaffordable pick past this).
     tier_by_id = {c.id: c.proximity_tier for c in rerank_candidates}
+    fit_by_id = {c.id: c.budget_fit for c in rerank_candidates}
     if ranked:
-        for item in ranked:
-            item.match_score = _blend_proximity(
-                item.match_score, tier_by_id.get(item.restaurant_id)
+        # SORT on the unclamped adjustment, STORE the clamped one. A confident
+        # LLM score plus the "between" bonus can exceed 1.0, and two candidates
+        # that both saturate at a stored 1.0 would otherwise tie — with the stable
+        # sort silently handing the win back to the model's own order and
+        # discarding the budget penalty exactly where the top picks are decided.
+        order = {
+            item.restaurant_id: _adjusted_score(
+                item.match_score,
+                tier_by_id.get(item.restaurant_id),
+                fit_by_id.get(item.restaurant_id),
             )
-        ranked.sort(key=lambda item: item.match_score, reverse=True)
+            for item in ranked
+        }
+        for item in ranked:
+            item.match_score = _blend_score(
+                item.match_score,
+                tier_by_id.get(item.restaurant_id),
+                fit_by_id.get(item.restaurant_id),
+            )
+        ranked.sort(key=lambda item: order[item.restaurant_id], reverse=True)
     else:
         # Fallback: no usable LLM output -> rank by embedding distance, then apply
-        # the same proximity blend so the geometry still shapes the order.
+        # the same blend so geometry and budget still shape the order.
         ordered = sorted(
             candidates, key=lambda c: (c.distance if c.distance is not None else 1.0)
         )
         ranked = [
             RankedItem(
                 restaurant_id=c.id,
-                match_score=_blend_proximity(
-                    max(0.0, 1.0 - (c.distance or 0.0)), c.proximity_tier
+                match_score=_blend_score(
+                    max(0.0, 1.0 - (c.distance or 0.0)),
+                    c.proximity_tier,
+                    c.budget_fit,
                 ),
-                justification="Ranked by embedding similarity + proximity (LLM re-rank unavailable).",
+                justification="Ranked by embedding similarity + proximity + budget fit (LLM re-rank unavailable).",
             )
             for c in ordered
         ]

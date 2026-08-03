@@ -406,8 +406,8 @@ async def _create_session(members: list[dict], label: str) -> tuple[int, list[in
         db.add(group)
         await db.flush()
 
-        # No avg_budget column — the orchestrator computes the averaged group
-        # budget on demand from member budgets.
+        # No group-budget column — budget is a per-member ceiling the
+        # orchestrator scores against on demand.
         session = Session(
             host_user_id=user_ids[0],
             group_id=group.id,
