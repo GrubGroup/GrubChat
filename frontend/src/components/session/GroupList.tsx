@@ -70,17 +70,17 @@ function GroupRow({ group, divider }: { group: Group; divider: boolean }) {
           : 'border border-transparent hover:bg-surface-raised/60',
       )}
     >
-      <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[11px] border border-border bg-surface-raised text-[15px]">
-        {group.emoji}
+      <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[11px] border border-border bg-surface-raised text-text-muted">
+        <Icon name="message" size={16} />
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 md:gap-px">
         <div className="flex items-center gap-1.5">
-          <span className="min-w-0 flex-1 truncate text-item-title-touch font-semibold text-text md:text-item-title">
+          <span className="min-w-0 flex-1 truncate text-section-title font-semibold text-text md:text-item-title">
             {group.name}
           </span>
-          <span className="shrink-0 text-caption-touch font-medium text-text-muted md:text-caption">{time}</span>
+          <span className="shrink-0 text-body font-medium text-text-muted md:text-caption">{time}</span>
         </div>
-        <p className="truncate text-caption-touch font-medium text-text-muted md:text-caption">{preview}</p>
+        <p className="truncate text-body font-medium text-text-muted md:text-caption">{preview}</p>
       </div>
     </Link>
   )
@@ -118,9 +118,13 @@ export function GroupList() {
 
   return (
     <>
-      {/* Search (visual entry point; filters the list below) */}
-      <div className="px-2.5 py-1.5">
-        <div className="flex items-center gap-2 rounded-[10px] border border-border bg-surface-raised px-2.5 py-2">
+      {/* Search (visual entry point; filters the list below). MOBILE matches the
+          Explore search field — `h-9`, `text-body`, darker `surface-sunken` fill,
+          `/75` placeholder, and `pt-3.5` breathing it off the header. The `md:`
+          variants restore the ORIGINAL desktop sidebar bar exactly: compact
+          `text-caption`, `py-2`, lighter `surface-raised`, tighter `pt-1.5`. */}
+      <div className="px-2.5 pb-1.5 pt-3.5 md:pt-1.5">
+        <div className="flex h-9 items-center gap-2 rounded-[10px] border border-border bg-surface-sunken px-3 md:h-auto md:bg-surface-raised md:px-2.5 md:py-2">
           <span className="text-text-muted">
             <Icon name="search" size={14} />
           </span>
@@ -129,7 +133,7 @@ export function GroupList() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search"
             aria-label="Search groups"
-            className="min-w-0 flex-1 bg-transparent text-caption font-medium text-text placeholder:text-text-muted focus:outline-none"
+            className="min-w-0 flex-1 bg-transparent text-body font-medium text-text placeholder:text-text-muted/75 focus:outline-none md:text-caption md:placeholder:text-text-muted"
           />
         </div>
       </div>

@@ -177,8 +177,13 @@ export function GroupDetailPanel({
       onLeft?.()
     } catch {
       setError('Could not leave the group. Try again.')
-      setLeaving(false)
       setConfirmingLeave(false)
+    } finally {
+      // Reset on BOTH paths. On success the panel usually unmounts via the
+      // redirect (making this a no-op), but if it lingers for any reason the
+      // button must not stay stuck spinning — that was half of the "leaving
+      // hangs forever" bug.
+      setLeaving(false)
     }
   }
 
@@ -192,8 +197,8 @@ export function GroupDetailPanel({
     <>
           {/* Group identity: emoji avatar, name, count + created date */}
           <div className="flex flex-col items-center gap-2.5 border-b border-border bg-surface-panel px-5 py-7 text-center">
-            <span className="flex h-20 w-20 items-center justify-center rounded-pill bg-surface-raised text-4xl shadow-sm ring-1 ring-border-strong">
-              {detail?.emoji ?? '💬'}
+            <span className="flex h-20 w-20 items-center justify-center rounded-pill bg-surface-raised text-text-muted shadow-sm ring-1 ring-border-strong">
+              <Icon name="message" size={34} />
             </span>
             <p className="font-display text-panel-title font-bold text-text">{detail?.name ?? 'Group'}</p>
             <p className="text-caption text-text-muted">
@@ -341,7 +346,9 @@ export function GroupDetailPanel({
       type="button"
       onClick={() => (hostLocked ? setShowHostLock(true) : setConfirmingLeave(true))}
       className={cn(
-        'flex w-full items-center justify-center gap-2 rounded-input bg-error/10 py-2.5',
+        // h-11 matches the composer bar's controls across the divider, so the two
+        // bottom bars read as one aligned row rather than two mismatched footers.
+        'flex h-11 w-full items-center justify-center gap-2 rounded-input bg-error/10',
         'text-body font-semibold text-error-text hover:bg-error/15',
       )}
     >
@@ -389,8 +396,9 @@ export function GroupDetailPanel({
 
         <div className="flex flex-1 flex-col overflow-y-auto">{body}</div>
 
-        {/* Leave group */}
-        <div className="border-t border-border p-4">{leaveButton}</div>
+        {/* Leave group — same px-4/pt-3/pb-3 as the chat composer bar so the two
+            bottom bars are the same height and their top borders line up. */}
+        <div className="border-t border-border px-4 pb-3 pt-3">{leaveButton}</div>
       </aside>
     </div>
 

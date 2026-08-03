@@ -336,7 +336,7 @@ export function SettingsPage() {
               ) : (
                 <SettingRow
                   label="Email"
-                  value={user?.email ?? '—'}
+                  value={user?.email ?? 'Not set'}
                   actionLabel="Edit"
                   onAction={openEmailEditor}
                   actionDisabled={!canEditCredentials}

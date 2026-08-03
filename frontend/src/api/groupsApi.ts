@@ -1,22 +1,18 @@
 import type { Group, GroupDetail, Session } from '@/types'
 import { api } from '@/lib/axios'
 
-// Emoji is UI-only (the backend has no emoji column), so default it to a generic
-// speech bubble when the gateway doesn't supply one.
-const withEmoji = (g: Group): Group => ({ ...g, emoji: g.emoji ?? '💬' })
-
 // The gateway returns groups the caller belongs to, each with its latest message
 // (last_message) for the sidebar preview.
 export async function fetchGroups(): Promise<Group[]> {
   const { data } = await api.get<Group[]>('/groups')
-  return data.map(withEmoji)
+  return data
 }
 
 // Create a group. The gateway auto-adds the caller as the first member;
 // member_ids (integer user ids) seed additional members at creation.
 export async function createGroup(name: string, member_ids?: number[]): Promise<Group> {
   const { data } = await api.post<Group>('/groups', { name, ...(member_ids ? { member_ids } : {}) })
-  return withEmoji(data)
+  return data
 }
 
 // Add a member to a group by username (the person shares their username) or by
@@ -37,7 +33,7 @@ export async function removeGroupMember(groupId: number, userId: number): Promis
 // Group detail with its member list (joined to User).
 export async function fetchGroup(groupId: number): Promise<GroupDetail> {
   const { data } = await api.get<GroupDetail>(`/groups/${groupId}`)
-  return { ...withEmoji(data), members: data.members ?? [] }
+  return { ...data, members: data.members ?? [] }
 }
 
 // The group's current OPEN session, or null when none is in progress. Used to

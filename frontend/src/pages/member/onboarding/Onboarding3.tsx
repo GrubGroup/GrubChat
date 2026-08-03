@@ -225,7 +225,7 @@ export function LocationStep() {
           onClick={handleDone}
           isLoading={saving || geoStatus === 'checking'}
         >
-          Done — let's eat
+          Done, let's eat
         </Button>
       </div>
     </>

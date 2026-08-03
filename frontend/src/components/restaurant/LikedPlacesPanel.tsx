@@ -24,7 +24,7 @@ export function LikedPlacesPanel({ liked, pending, onToggleLike }: LikedPlacesPa
 
       {liked.length === 0 ? (
         <p className="px-4 py-6 text-body text-text-muted">
-          No liked places yet — tap ★ on a card to save it.
+          No liked places yet. Tap ♥ on a card to save it.
         </p>
       ) : (
         <>
@@ -39,7 +39,7 @@ export function LikedPlacesPanel({ liked, pending, onToggleLike }: LikedPlacesPa
               <div className="min-w-0 flex-1">
                 <p className="truncate text-item-title font-semibold text-text">{r.name}</p>
                 <p className="flex items-center gap-1 text-caption text-primary">
-                  <Icon name="star" size={11} filled /> You liked this
+                  <Icon name="heart" size={11} filled /> You liked this
                 </p>
               </div>
               <LikeStarButton

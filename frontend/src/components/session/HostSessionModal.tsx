@@ -288,10 +288,16 @@ export function HostSessionModal({
                 }}
                 error={
                   geoStatus === "notfound"
-                    ? "Couldn't find that place — try another."
+                    ? "Couldn't find that place. Try another."
                     : undefined
                 }
-                hint={geoStatus === "ok" ? "✓ Location confirmed" : undefined}
+                hint={
+                  geoStatus === "ok" ? (
+                    <span className="flex items-center gap-1 text-success-text">
+                      <Icon name="check" size={13} /> Location confirmed
+                    </span>
+                  ) : undefined
+                }
               />
               <AnchoredMenu
                 open={showSuggestions && location.suggestions.length > 0}
@@ -412,7 +418,7 @@ export function HostSessionModal({
               // pr-11 keeps the typed value clear of the inset chevron affordance.
               className="pr-11"
               placeholder="e.g. 20 minutes"
-              hint="Type any duration — 20 minutes, 45 min, 2 hours"
+              hint="Type any duration: 20 minutes, 45 min, 2 hours"
               value={timeLimitText}
               onChange={(e) => {
                 setTimeLimitText(e.target.value);

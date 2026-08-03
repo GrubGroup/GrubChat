@@ -1,4 +1,5 @@
 import type { ChatMessage as ChatMessageType } from '@/types'
+import { AgentAvatar } from './AgentAvatar'
 import { cn } from '@/utils/cn'
 
 export interface ChatMessageProps {
@@ -26,9 +27,7 @@ export function ChatMessage({ message, isNew = false }: ChatMessageProps) {
     content = (
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-2">
-          <span className="flex h-5 w-5 items-center justify-center rounded-pill bg-surface-inverse text-[10px] text-on-inverse">
-            🍽
-          </span>
+          <AgentAvatar size={20} />
           <span className="text-overline font-semibold uppercase tracking-wide text-text-muted">
             Food agent
           </span>

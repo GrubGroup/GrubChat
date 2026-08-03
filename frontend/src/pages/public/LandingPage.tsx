@@ -1,6 +1,15 @@
-import { useRef, type ReactNode } from 'react'
-import { motion, useReducedMotion, useScroll, useTransform, type MotionValue } from 'framer-motion'
+import { useRef, useState, type ReactNode } from 'react'
+import {
+  motion,
+  useReducedMotion,
+  useScroll,
+  useTransform,
+  useMotionValueEvent,
+  type MotionValue,
+} from 'framer-motion'
 import { Button, Icon, MicPop, Wordmark, type IconName } from '@/components/ui'
+import { AgentAvatar } from '@/components/session/AgentAvatar'
+import { RestaurantImage } from '@/components/restaurant/RestaurantImage'
 import { EASE, viewport, useFadeUp, makeFloat } from '@/lib/motion'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { useNavigate } from 'react-router'
@@ -74,6 +83,7 @@ export function LandingPage() {
       <Hero toSignUp={toSignUp} float={float} reduce={!!reduce} />
       <SocialBand />
       <HowItWorks />
+      <ConversationScroll />
       <FeatureShowcase />
       <ProductInUse />
       <EmotionalBenefit />
@@ -292,7 +302,7 @@ function HeroCluster({ float, reduce }: { float: (d: number, dist?: number) => o
           <div className="flex flex-col gap-2">
             <ChatBubble>somewhere vegan-friendly?</ChatBubble>
             <ChatBubble>under $25 each pls 🙏</ChatBubble>
-            <ChatBubble me>I'm vegan though — walkable?</ChatBubble>
+            <ChatBubble me>I'm vegan though. walkable?</ChatBubble>
           </div>
           <div className="mt-3 flex items-center gap-2 rounded-pill bg-surface-sunken py-1.5 pl-3 pr-1.5">
             <span className="flex-1 text-[12px] text-text-muted">Message the group…</span>
@@ -328,11 +338,16 @@ function HeroCluster({ float, reduce }: { float: (d: number, dist?: number) => o
         className="bottom-2 right-0 w-[56%]"
       >
         <div className="overflow-hidden rounded-[18px] bg-surface-raised shadow-[0_36px_80px_var(--shadow-tint-strong)]">
-          <div className="relative h-28 bg-gradient-to-br from-member-terracotta to-primary">
+          <RestaurantImage
+            cuisineTags={['mexican']}
+            identity={8801}
+            className="h-28 w-full"
+            tintClass="bg-gradient-to-br from-member-terracotta to-primary"
+          >
             <span className="absolute left-3 top-3 rounded-pill bg-surface-raised px-2.5 py-1 text-[11px] font-bold text-primary-text">
               98% match
             </span>
-          </div>
+          </RestaurantImage>
           <div className="p-4">
             <div className="flex items-center justify-between">
               <span className="text-[16px] font-bold">Verde Cocina</span>
@@ -352,7 +367,7 @@ function HeroCluster({ float, reduce }: { float: (d: number, dist?: number) => o
         </div>
       </FloatCard>
 
-      {/* Shared cart chip (bottom-left) */}
+      {/* Group consensus chip (bottom-left) */}
       <FloatCard
         float={reduce ? {} : float(1.8, 8)}
         delay={0.5}
@@ -361,8 +376,10 @@ function HeroCluster({ float, reduce }: { float: (d: number, dist?: number) => o
       >
         <div className="rounded-2xl bg-surface-raised p-3.5 shadow-[0_24px_56px_var(--shadow-tint-medium)]">
           <div className="flex items-center gap-2">
-            <Icon name="wallet" size={15} />
-            <span className="text-[12.5px] font-bold">Group cart · 4</span>
+            <span className="flex h-6 w-6 items-center justify-center rounded-pill bg-success/15 text-success-text">
+              <Icon name="check" size={13} />
+            </span>
+            <span className="text-[12.5px] font-bold">Everyone agreed</span>
           </div>
           <div className="mt-2.5 flex items-center justify-between">
             <div className="flex -space-x-1.5">
@@ -370,7 +387,7 @@ function HeroCluster({ float, reduce }: { float: (d: number, dist?: number) => o
                 <MemberDot key={n} i={i} initials={n} size={22} ring="ring-surface-raised" />
               ))}
             </div>
-            <span className="text-[14px] font-bold">$86</span>
+            <span className="text-[14px] font-bold text-primary-text">98% match</span>
           </div>
         </div>
       </FloatCard>
@@ -448,7 +465,7 @@ const STEPS: { n: string; icon: IconName; eyebrow: string; title: string; body: 
     icon: 'mic',
     eyebrow: 'PLAN',
     title: 'Tell it what you want',
-    body: 'Talk or type — mood, budget, dietary needs, location. Your agent already knows your profile.',
+    body: 'Talk or type your mood, budget, dietary needs, and location. Your agent already knows your profile.',
   },
   {
     n: '03',
@@ -557,6 +574,15 @@ function HowItWorksPinned() {
   const s3 = useStepMotion(scrollYProgress, PIN_STARTS[2], true)
   const motions = [s1, s2, s3]
 
+  // Progress stepper — three lines that fill left→right as each step's window
+  // plays. Declared at the top level (not in .map) to keep the hook count
+  // stable; each fill drives a scaleX. They live inside the fading stage below,
+  // so the whole stepper disappears with the cards once the pin releases.
+  const fill1 = useTransform(scrollYProgress, [PIN_STARTS[0], PIN_STARTS[0] + 0.27], [0, 1])
+  const fill2 = useTransform(scrollYProgress, [PIN_STARTS[1], PIN_STARTS[1] + 0.27], [0, 1])
+  const fill3 = useTransform(scrollYProgress, [PIN_STARTS[2], PIN_STARTS[2] + 0.27], [0, 1])
+  const fills = [fill1, fill2, fill3]
+
   // After step 3, fade the whole solo stage (numeral + card deck + glow) out so
   // no empty ghost cards linger at the tail — hands off to the finale grid.
   const stageOpacity = useTransform(scrollYProgress, [0.9, 1], [1, 0])
@@ -620,6 +646,22 @@ function HowItWorksPinned() {
                 ))}
               </div>
             </div>
+
+            {/* Progress stepper — three lines fill 1→2→3 as the steps play; it
+                fades out with the stage once the pin releases. */}
+            <div className="mx-auto mt-32 flex max-w-[280px] items-center gap-2" aria-hidden>
+              {fills.map((fill, i) => (
+                <span
+                  key={i}
+                  className="h-1 flex-1 overflow-hidden rounded-pill bg-surface-sunken"
+                >
+                  <motion.span
+                    style={{ scaleX: fill }}
+                    className="block h-full origin-left rounded-pill bg-primary"
+                  />
+                </span>
+              ))}
+            </div>
           </motion.div>
         </div>
       </div>
@@ -656,6 +698,281 @@ function HowItWorksPinned() {
               <p className="mt-3 text-[15px] leading-relaxed text-text-muted">{s.body}</p>
             </div>
           ))}
+        </motion.div>
+      </div>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// §4b Conversation scroll — a scroll-driven replay of a real session. As the
+// visitor scrolls a tall pinned track, the chat between a diner and their AI
+// food agent types itself out one turn at a time (agent turns show a "…" typing
+// beat before the reply lands), ending on a green checkmark: the group agreed.
+// Desktop + motion-allowed only; mobile / reduced-motion falls back to the full
+// static transcript (also the no-JS baseline — every bubble is in the DOM).
+
+type Turn = { from: 'me' | 'agent'; text: string; typing?: boolean }
+
+const CONVO: Turn[] = [
+  { from: 'me', text: 'somewhere vegan-friendly for 4 tonight?' },
+  { from: 'agent', text: 'On it. Any budget or distance in mind?', typing: true },
+  { from: 'me', text: 'under $25 each, walkable from the office' },
+  { from: 'agent', text: 'Cross-checking everyone’s profiles. one has a shellfish allergy, noted.', typing: true },
+  { from: 'agent', text: 'Verde Cocina fits all four. 98% match, 0.6 mi away.', typing: true },
+]
+
+function ConversationScroll() {
+  const reduce = useReducedMotion()
+  const isDesktop = useMediaQuery('(min-width: 640px)')
+  if (reduce || !isDesktop) return <ConversationScrollStatic />
+  return <ConversationScrollPinned />
+}
+
+// One chat turn, revealed by scroll. Scrolling past the turn's `start` threshold
+// *triggers* a self-playing entrance (rather than scrubbing opacity by scroll
+// position, which made bubbles track the scrollbar / snap in). Agent turns play a
+// real "…" typing beat, then the bubble springs in; `me` turns just rise in.
+// Scrolling back up past the threshold resets it so the sequence replays.
+function ConvoTurn({
+  progress,
+  start,
+  turn,
+}: {
+  progress: MotionValue<number>
+  start: number
+  turn: Turn
+}) {
+  const me = turn.from === 'me'
+  const reduce = useReducedMotion()
+
+  // `phase`: 'hidden' before the threshold, 'typing' during the agent's typing
+  // beat, 'shown' once the bubble has landed. `me` turns skip straight to 'shown'.
+  const [phase, setPhase] = useState<'hidden' | 'typing' | 'shown'>('hidden')
+
+  useMotionValueEvent(progress, 'change', (p) => {
+    if (p < start) {
+      if (phase !== 'hidden') setPhase('hidden')
+      return
+    }
+    // Crossed the threshold going down: kick off the entrance once.
+    if (phase === 'hidden') {
+      if (turn.typing && !reduce) {
+        setPhase('typing')
+        // Hold the typing dots briefly, then reveal the reply.
+        setTimeout(() => setPhase('shown'), 650)
+      } else {
+        setPhase('shown')
+      }
+    }
+  })
+
+  return (
+    <div className={cn('flex flex-col gap-1.5', me ? 'items-end' : 'items-start')}>
+      <div className="flex items-center gap-2">
+        {me ? (
+          <span className="text-overline font-semibold uppercase tracking-wide text-text-muted">You</span>
+        ) : (
+          <>
+            <AgentAvatar size={20} />
+            <span className="text-overline font-semibold uppercase tracking-wide text-text-muted">
+              Your food agent
+            </span>
+          </>
+        )}
+      </div>
+
+      <div className="relative">
+        {/* typing "…" beat, agent turns only */}
+        {turn.typing && (
+          <motion.div
+            initial={false}
+            animate={{ opacity: phase === 'typing' ? 1 : 0 }}
+            transition={{ duration: 0.2 }}
+            className="absolute left-0 top-0 w-fit rounded-2xl border border-border bg-surface-raised px-4 py-3 shadow-sm"
+            aria-hidden
+          >
+            <span className="flex items-center gap-1">
+              {[0, 150, 300].map((d) => (
+                <span
+                  key={d}
+                  className="h-1.5 w-1.5 animate-bounce rounded-pill bg-text-muted"
+                  style={{ animationDelay: `${d}ms` }}
+                />
+              ))}
+            </span>
+          </motion.div>
+        )}
+        <motion.span
+          initial={false}
+          animate={{
+            opacity: phase === 'shown' ? 1 : 0,
+            y: phase === 'shown' ? 0 : 14,
+            scale: phase === 'shown' ? 1 : 0.96,
+          }}
+          transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+          className={cn(
+            'block max-w-[19rem] origin-bottom rounded-2xl px-4 py-2.5 text-[14px] leading-snug',
+            me ? 'bg-surface-inverse text-on-inverse' : 'border border-border bg-surface-raised text-text shadow-sm',
+          )}
+        >
+          {turn.text}
+        </motion.span>
+      </div>
+    </div>
+  )
+}
+
+function ConversationScrollPinned() {
+  const trackRef = useRef<HTMLDivElement>(null)
+  const { scrollYProgress } = useScroll({
+    target: trackRef,
+    offset: ['start start', 'end end'],
+  })
+
+  // Turns are dealt across the first ~78% of the track; the checkmark card
+  // resolves over the tail so it lands as the pin releases.
+  const step = 0.14
+  const checkStart = CONVO.length * step
+
+  // Triggered entrance (matches the message bubbles): the resolution card
+  // springs in once scroll crosses its threshold and then *stays* — it doesn't
+  // fade back out as you keep scrolling past. Reset only if you scroll back up
+  // above the threshold, so it replays on the next pass down.
+  const [checkShown, setCheckShown] = useState(false)
+  useMotionValueEvent(scrollYProgress, 'change', (p) => {
+    if (p >= checkStart && !checkShown) setCheckShown(true)
+    else if (p < checkStart && checkShown) setCheckShown(false)
+  })
+
+  return (
+    <section className="bg-surface">
+      <div ref={trackRef} className="relative h-[320vh]">
+        <div className="sticky top-[72px] flex min-h-[calc(100vh-72px)] items-center overflow-hidden px-6 py-12 lg:px-8">
+          <div className="mx-auto grid w-full max-w-[1100px] items-center gap-12 lg:grid-cols-[0.9fr_1fr]">
+            {/* Left — framing copy (static; the motion lives in the transcript) */}
+            <div className="text-center lg:text-left">
+              <span className="text-[12px] font-semibold tracking-[0.15em] text-primary-text">
+                A REAL CONVERSATION
+              </span>
+              <h2 className="mt-3 font-display text-[32px] font-extrabold leading-[1.05] sm:text-[40px]">
+                Just talk. Your agent
+                <br />
+                does the rest.
+              </h2>
+              <p className="mx-auto mt-4 max-w-md text-[16px] leading-relaxed text-text-muted lg:mx-0">
+                Keep scrolling to watch a session play out. Preferences in, one
+                spot the whole group agrees on out.
+              </p>
+            </div>
+
+            {/* Right — the chat card, typing itself out on scroll */}
+            <div className="mx-auto w-full max-w-[420px] rounded-[24px] border border-border bg-surface-panel p-5 shadow-[0_36px_80px_var(--shadow-tint-strong)]">
+              <div className="mb-4 flex items-center gap-2 border-b border-border/60 pb-3">
+                <div className="flex -space-x-1.5">
+                  {['MA', 'PR', 'TO', 'DE'].map((n, i) => (
+                    <MemberDot key={n} i={i} initials={n} size={24} ring="ring-surface-panel" />
+                  ))}
+                </div>
+                <span className="text-[13px] font-bold">Dinner crew · 4</span>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                {CONVO.map((turn, i) => (
+                  <ConvoTurn key={i} progress={scrollYProgress} start={i * step} turn={turn} />
+                ))}
+
+                {/* Resolution — the green checkmark: the group agreed */}
+                <motion.div
+                  initial={false}
+                  animate={{
+                    opacity: checkShown ? 1 : 0,
+                    y: checkShown ? 0 : 20,
+                    scale: checkShown ? 1 : 0.92,
+                  }}
+                  transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+                  className="mt-1 flex items-center gap-3 rounded-2xl border border-success/30 bg-success/10 px-4 py-3"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill bg-success text-on-inverse">
+                    <Icon name="check" size={18} />
+                  </span>
+                  <div>
+                    <p className="text-[14px] font-bold text-text">Verde Cocina · everyone’s in</p>
+                    <p className="text-[12.5px] text-text-muted">98% match · booked in 30 seconds</p>
+                  </div>
+                </motion.div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// Static fallback (mobile / reduced-motion / no-JS): the full transcript, all
+// bubbles visible, with the same checkmark resolution.
+function ConversationScrollStatic() {
+  const fadeUp = useFadeUp()
+  return (
+    <section className="bg-surface px-6 py-20 lg:px-8 lg:py-24">
+      <div className="mx-auto max-w-[560px]">
+        <SectionHeader eyebrow="A REAL CONVERSATION" title="Just talk. Your agent does the rest." />
+        <motion.div
+          initial="hidden"
+          whileInView="show"
+          viewport={viewport}
+          variants={fadeUp}
+          className="mt-10 rounded-[24px] border border-border bg-surface-panel p-5 shadow-lg"
+        >
+          <div className="mb-4 flex items-center gap-2 border-b border-border/60 pb-3">
+            <div className="flex -space-x-1.5">
+              {['MA', 'PR', 'TO', 'DE'].map((n, i) => (
+                <MemberDot key={n} i={i} initials={n} size={24} ring="ring-surface-panel" />
+              ))}
+            </div>
+            <span className="text-[13px] font-bold">Dinner crew · 4</span>
+          </div>
+          <div className="flex flex-col gap-4">
+            {CONVO.map((turn, i) => {
+              const me = turn.from === 'me'
+              return (
+                <div key={i} className={cn('flex flex-col gap-1.5', me ? 'items-end' : 'items-start')}>
+                  <div className="flex items-center gap-2">
+                    {me ? (
+                      <span className="text-overline font-semibold uppercase tracking-wide text-text-muted">You</span>
+                    ) : (
+                      <>
+                        <AgentAvatar size={20} />
+                        <span className="text-overline font-semibold uppercase tracking-wide text-text-muted">
+                          Your food agent
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  <span
+                    className={cn(
+                      'block max-w-[19rem] rounded-2xl px-4 py-2.5 text-[14px] leading-snug',
+                      me
+                        ? 'bg-surface-inverse text-on-inverse'
+                        : 'border border-border bg-surface-raised text-text shadow-sm',
+                    )}
+                  >
+                    {turn.text}
+                  </span>
+                </div>
+              )
+            })}
+            <div className="mt-1 flex items-center gap-3 rounded-2xl border border-success/30 bg-success/10 px-4 py-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill bg-success text-on-inverse">
+                <Icon name="check" size={18} />
+              </span>
+              <div>
+                <p className="text-[14px] font-bold text-text">Verde Cocina · everyone’s in</p>
+                <p className="text-[12.5px] text-text-muted">98% match · booked in 30 seconds</p>
+              </div>
+            </div>
+          </div>
         </motion.div>
       </div>
     </section>
@@ -708,7 +1025,12 @@ function FeatureShowcase() {
               </div>
               <Icon name="arrow-right" size={26} className="hidden text-primary-text sm:block" />
               <div className="overflow-hidden rounded-2xl bg-surface-raised text-text shadow-xl sm:ml-2 sm:w-64">
-                <div className="h-20 bg-gradient-to-br from-member-terracotta to-primary" />
+                <RestaurantImage
+                  cuisineTags={['mexican']}
+                  identity={8807}
+                  className="h-20 w-full"
+                  tintClass="bg-gradient-to-br from-member-terracotta to-primary"
+                />
                 <div className="p-3.5">
                   <span className="rounded-pill bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary-text">
                     96% match
@@ -719,20 +1041,20 @@ function FeatureShowcase() {
               </div>
             </div>
             <p className="relative mt-6 max-w-md text-[14px] leading-relaxed text-on-inverse/60">
-              Everyone's needs, reconciled automatically — vegan, halal, budget, a two-mile radius.
+              Everyone's needs, reconciled automatically: vegan, halal, budget, a two-mile radius.
             </p>
           </motion.div>
 
           {/* Supporting cards */}
           <div className="grid gap-6">
-            <FeatureCard i={0} icon="wallet" title="Shared group cart" body="Everyone's picks merge into one order — split fairly, checkout once.">
+            <FeatureCard i={0} icon="check" title="One pick, everyone happy" body="The orchestrator reconciles every profile into a single spot that works for the whole group.">
               <div className="mt-4 flex -space-x-2">
                 {['MA', 'PR', 'TO', 'DE'].map((n, i) => (
                   <MemberDot key={n} i={i} initials={n} size={26} ring="ring-surface-raised" />
                 ))}
               </div>
             </FeatureCard>
-            <FeatureCard i={1} icon="party" title="Vote to decide" body="Top three picks, one tap each — the group settles it fast.">
+            <FeatureCard i={1} icon="party" title="Vote to decide" body="Top three picks, one tap each. The group settles it fast.">
               <div className="mt-4 flex flex-col gap-2">
                 {votes.map(([name, pct, lead]) => (
                   <div key={name}>
@@ -820,8 +1142,16 @@ function FeatureCard({
 // §6 Product in use — the one dark tentpole
 function ProductInUse() {
   const fadeUp = useFadeUp()
-  const cards = ['Verde Cocina', 'Casa Verde', "Nonna's", 'Sakura', 'Olive & Ash', 'Fuego']
-  const pcts = ['98%', '94%', '91%', '88%', '85%', '82%']
+  // Each card: name + match % + a cuisine (seeds a real food photo from the same
+  // pool the app's restaurant cards use) + a stable id (keeps the photo put).
+  const cards: { id: number; name: string; pct: string; cuisine: string; tint: string }[] = [
+    { id: 8801, name: 'Verde Cocina', pct: '98%', cuisine: 'mexican', tint: 'bg-member-terracotta' },
+    { id: 8802, name: 'Casa Verde', pct: '94%', cuisine: 'mediterranean', tint: 'bg-primary' },
+    { id: 8803, name: "Nonna's", pct: '91%', cuisine: 'italian', tint: 'bg-member-amber' },
+    { id: 8804, name: 'Sakura', pct: '88%', cuisine: 'japanese', tint: 'bg-member-pink' },
+    { id: 8805, name: 'Olive & Ash', pct: '85%', cuisine: 'american', tint: 'bg-member-green' },
+    { id: 8806, name: 'Fuego', pct: '82%', cuisine: 'latin_american', tint: 'bg-member-blue' },
+  ]
   return (
     <section id="discover" className="scroll-mt-[72px] relative overflow-hidden bg-surface-inverse px-6 py-20 text-on-inverse lg:px-8 lg:py-24">
       <div className="absolute left-1/2 top-40 h-96 w-[42rem] -translate-x-1/2 rounded-pill bg-primary/15 blur-[160px]" />
@@ -841,15 +1171,20 @@ function ProductInUse() {
             <span className="ml-3 text-[13px] font-semibold text-text">Discover · 12 spots your group will love</span>
           </div>
           <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3">
-            {cards.map((name, i) => (
-              <div key={name} className="overflow-hidden rounded-xl bg-surface">
-                <div className={cn('relative h-20', ['bg-member-terracotta', 'bg-primary', 'bg-member-amber', 'bg-member-pink', 'bg-member-green', 'bg-member-blue'][i])}>
+            {cards.map((c) => (
+              <div key={c.name} className="overflow-hidden rounded-xl bg-surface">
+                <RestaurantImage
+                  cuisineTags={[c.cuisine]}
+                  identity={c.id}
+                  className="h-20 w-full"
+                  tintClass={c.tint}
+                >
                   <span className="absolute left-2 top-2 rounded-pill bg-surface-raised px-1.5 py-0.5 text-[10px] font-bold text-primary-text">
-                    {pcts[i]}
+                    {c.pct}
                   </span>
-                </div>
+                </RestaurantImage>
                 <div className="p-2.5 text-text">
-                  <p className="text-[12px] font-bold">{name}</p>
+                  <p className="text-[12px] font-bold">{c.name}</p>
                   <p className="flex items-center gap-1 text-[11px] text-text-muted">
                     <Icon name="star" size={10} className="text-primary-text" filled /> 4.8 · $$
                   </p>
@@ -941,7 +1276,7 @@ function FinalCta({ toSignUp }: { toSignUp: () => void }) {
           Start a session
         </Button>
         <p className="relative mt-4 text-[13px] font-medium text-on-inverse/60">
-          Free to start · Guest mode, no account needed.
+          Free to start · Create an account to host or join a session.
         </p>
       </motion.div>
     </section>

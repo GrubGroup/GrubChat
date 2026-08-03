@@ -5,10 +5,11 @@ import type { Session } from '@/types'
 import { EASE } from '@/lib/motion'
 import { GroupsSidebar } from '@/components/session/GroupsSidebar'
 import { GroupMessageRow } from '@/components/session/GroupMessageRow'
+import { MessagesLoader } from '@/components/session/MessagesLoader'
 import { SessionCard } from '@/components/session/SessionCard'
 import { GroupDetailPanel } from '@/components/session/GroupDetailPanel'
 import { HostSessionModal } from '@/components/session/HostSessionModal'
-import { Icon, IconButton, Spinner } from '@/components/ui'
+import { Icon, IconButton } from '@/components/ui'
 import { AppSplash } from '@/components/layout/AppSplash'
 import { COLUMN_HEADER_H } from '@/components/layout/AppSidebar'
 import { MobileActionSheet } from '@/components/layout/MobileActionSheet'
@@ -33,7 +34,7 @@ import {
 } from '@/stores/sessionStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useGroupId } from '@/hooks/useGroupId'
-import { useGroupsStore, mostRecentGroup } from '@/stores/groupsStore'
+import { useGroupsStore } from '@/stores/groupsStore'
 import {
   useGroupChatStore,
   selectGroupMessages,
@@ -263,12 +264,17 @@ export function GroupChatPage() {
     if (sessionPath) navigate(`${sessionPath}/picks`)
   }
 
-  // After leaving, the group is gone from the (refreshed) list. Jump to the next
-  // most-recent group, or /groups when none remain.
+  // After leaving, return to the groups page. We deliberately DON'T jump straight
+  // into a neighbor group's chat here: the store's list refresh has already
+  // dropped this group, which fires the membership guard below (`<Navigate
+  // to="/groups">`). Racing that with an imperative navigate to a *different*
+  // chat could strand the user on a room whose history loader never resolves —
+  // the "keeps loading, won't go back" bug. Sending both to /groups makes the
+  // redirect deterministic; on desktop GroupsIndex forwards to the latest group
+  // the user still belongs to, which loads through the normal join path.
   const handleLeft = () => {
     setEditing(false)
-    const next = mostRecentGroup(useGroupsStore.getState().groups)
-    navigate(next ? `/groups/${toSlugId(next.name, next.id)}` : '/groups')
+    navigate('/groups')
   }
 
   // Bounce a user who isn't a member of the group the URL names — but only once
@@ -328,8 +334,8 @@ export function GroupChatPage() {
             {/* Same rounded emoji badge as the group's sidebar row, so the header
                 matches the chat's list image — larger here, with the name + member
                 count stacked beside it. */}
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[13px] border border-border bg-surface-raised text-xl">
-              {group?.emoji}
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[13px] border border-border bg-surface-raised text-text-muted">
+              <Icon name="message" size={20} />
             </span>
             <div className="flex min-w-0 flex-col">
               <span className="truncate font-display text-item-title font-bold text-text">{groupName}</span>
@@ -371,9 +377,8 @@ export function GroupChatPage() {
             column growing and pushing the composer below the viewport. */}
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 md:p-5">
           {loadingHistory ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 text-text-muted">
-              <Spinner size="md" />
-              <span className="text-caption">Loading messages…</span>
+            <div className="flex flex-1 flex-col items-center justify-center px-2">
+              <MessagesLoader />
             </div>
           ) : (
           <>

@@ -44,7 +44,7 @@ export function openingAgentMessage(name?: string | null): string {
   const who = name?.trim() ? name.trim().split(" ")[0] : "there";
   return (
     `Hi ${who}! I'm your food agent for this session. ` +
-    `First — what sounds good today? A cuisine, a vibe, or a kind of spot.`
+    `First, what sounds good today? A cuisine, a vibe, or a kind of spot.`
   );
 }
 

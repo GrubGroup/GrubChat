@@ -80,7 +80,7 @@ export function RestaurantExploreCard({
       >
         {liked ? (
           <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-pill bg-primary px-2.5 py-0.5 text-caption font-semibold text-on-primary">
-            <Icon name="star" size={11} filled /> Liked
+            <Icon name="heart" size={11} filled /> Liked
           </span>
         ) : popular ? (
           <span className="absolute left-3 top-3 inline-flex items-center rounded-pill bg-surface-inverse px-2.5 py-0.5 text-caption font-semibold text-white">
@@ -95,7 +95,7 @@ export function RestaurantExploreCard({
           <div className="min-w-0">
             <h3 className="truncate font-display text-item-title font-semibold text-text">{r.name}</h3>
             <p className={cn('mt-0.5 text-caption', liked ? 'text-primary' : 'text-text-muted')}>
-              {liked ? 'Your agent factors this into picks' : 'Tap ★ to like — feeds your picks'}
+              {liked ? 'Your agent factors this into picks' : 'Tap ♥ to like. Feeds your picks'}
             </p>
           </div>
           <LikeStarButton
