@@ -105,7 +105,7 @@ export function LocationStep() {
           Back
         </Button>
         <Button variant="primary" fullWidth onClick={handleDone} isLoading={saving}>
-          Done — let's eat
+          Done, let's eat
         </Button>
       </div>
     </>
