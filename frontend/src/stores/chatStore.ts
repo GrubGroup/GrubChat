@@ -43,6 +43,7 @@ const emptySignals = (): ExtractedSignals => ({
   disliked_cuisines: [],
   budget_min: null,
   budget_max: null,
+  budget_flexible: null,
   occasion: null,
   location_mode: null,
   location_label: null,

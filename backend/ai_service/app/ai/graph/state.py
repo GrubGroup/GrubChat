@@ -41,9 +41,30 @@ class MemberPref(BaseModel):
     qa_location_lon: float | None = None
 
     @property
-    def effective_budget_max(self) -> int:
-        """QA budget cap if the member set one this session, else the Profile's."""
-        return self.qa_budget_max if self.qa_budget_max is not None else self.budget_max
+    def effective_budget_cap(self) -> int | None:
+        """This member's per-person price CEILING for the session, or None.
+
+        Precedence: the QA cap they set this session, else their durable Profile
+        cap. None means "this member imposes no ceiling" and comes from two
+        cases that are deliberately treated identically:
+
+          * They said "I'm flexible" on budget this session. That writes
+            ``Qa.budget_max = NO_CAP`` (0), which is what DROPS their saved
+            Profile budget for this session — the whole point of answering
+            flexible. Because the QA value wins whenever it is non-NULL, a
+            stored 0 shadows the Profile rather than falling through to it.
+          * They have no budget data at all (a guest with no Profile row, whose
+            MemberPref budget_max defaults to 0).
+
+        Do NOT "fix" this to return 0 as a real cap: a $0 ceiling filters out
+        every restaurant and empties the candidate list.
+
+        ``budget_min`` is deliberately never surfaced here. A floor would mean
+        "I only want expensive places", which is the exact behavior this models
+        away from — see ``orchestrator_agent._member_budget_fit``.
+        """
+        cap = self.qa_budget_max if self.qa_budget_max is not None else self.budget_max
+        return cap if cap and cap > 0 else None
 
     @property
     def location(self) -> tuple[float, float] | None:
@@ -74,11 +95,24 @@ class ReconciledConstraints(BaseModel):
     """Merged group constraints produced by the orchestrator's reconcile step."""
 
     required_dietary: list[str] = Field(default_factory=list)
-    price_max: float | None = None
-    # Mean of members' effective budget_max — the group's budget "sweet spot",
-    # computed in code (there is no Session.avg_budget column) and handed to the
-    # re-rank step so top picks land near what the group typically spends.
-    avg_budget: float | None = None
+    # Every constraining member's per-person price CEILING, ascending. A member
+    # who said "I'm flexible" — or who has no budget data — contributes nothing,
+    # so an empty list means budget does not shape the ranking at all. Budget is
+    # SOFT: these caps drive a per-candidate `budget_fit` penalty, not a filter.
+    member_budget_caps: list[int] = Field(default_factory=list)
+    # RECALL GUARDRAIL for the pgvector prefilter — NOT a group promise, which is
+    # why it is not named `price_max` and is excluded from the re-rank payload.
+    # See orchestrator_agent._reconcile for why a ceiling still exists and why it
+    # is keyed on the TIGHTEST cap with headroom.
+    #
+    # There is deliberately NO `avg_budget` here any more. A single "the group
+    # spends around $N" scalar is by definition a TARGET, and under ceiling
+    # semantics there is no target: the mean of the caps is >= the tightest cap
+    # BY CONSTRUCTION, so telling the re-rank to aim for it always resolved to
+    # "spend the most frugal member's entire ceiling" and let one high-budget
+    # member drag the whole group upmarket. Do not reintroduce it in any form
+    # (mean of caps, mean of midpoints, or a clamped variant).
+    retrieval_price_ceiling: float | None = None
     # `center` is the retrieval anchor + PRIMARY location weight: the host's
     # location when set, else a member's (see orchestrator._reconcile). It also
     # seeds the bounding-box prefilter.
@@ -103,6 +137,12 @@ class CandidateRestaurant(BaseModel):
     dietary_tags: list[str] = Field(default_factory=list)
     price_avg: float | None = None
     avg_rating: float | None = None
+    # SOFT budget fit in [0, 1]: 1.0 when every constraining member can afford
+    # this candidate, falling as the price runs past the TIGHTEST member's
+    # ceiling. None when the candidate has no price or no member set a ceiling —
+    # both mean "budget has nothing to say here", so the score is untouched.
+    # Shown to the re-rank prompt and blended deterministically in _blend_score.
+    budget_fit: float | None = None
     # Cosine distance from the reconciled query embedding (lower = closer).
     distance: float | None = None
     # Geo + hours, carried through so the orchestrator can score proximity to the

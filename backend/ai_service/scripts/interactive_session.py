@@ -59,6 +59,7 @@ from typing import Any
 import app.ai.agents.conversation_agent as conversation_agent
 from app.ai.agents.conversation_agent import analyze_turn
 from app.ai.agents.preference_agent import normalize_member
+from app.ai.budget import is_no_cap
 from app.ai.graph.state import MemberPref, PipelineState
 from app.schemas.ai import ConversationTurn, ExtractedSignals
 
@@ -445,7 +446,11 @@ def _render_noted(ink: Ink, signals: ExtractedSignals, answered: set[str]) -> No
     pref = _fmt_tags(signals.preferred_cuisines) if signals.preferred_cuisines else "open"
     dis = _fmt_tags(signals.disliked_cuisines) if signals.disliked_cuisines else "nothing"
     bmin, bmax = signals.budget_min, signals.budget_max
-    if bmin and bmax:
+    # NO_CAP (0) first: an "I'm flexible" answer is a real answer, not an absent
+    # one, and it must not render as "$0" or as pending.
+    if is_no_cap(bmax):
+        budget = "flexible (no ceiling)"
+    elif bmin and bmax:
         budget = f"${bmin}–{bmax}"
     elif bmax:
         budget = f"up to ${bmax}"
@@ -609,12 +614,15 @@ async def _run_interactive_member(
     _kv(ink, "preferred (profile)", str(pref.preferred_cuisines))
     _kv(ink, "qa_preferred (override)", _fmt_tags(pref.qa_preferred_cuisines))
     _kv(ink, "qa_disliked (override)", _fmt_tags(pref.qa_disliked_cuisines))
-    _kv(ink, "effective budget_max", f"${pref.effective_budget_max}")
-    if not pref.effective_budget_max:
+    cap = pref.effective_budget_cap
+    _kv(ink, "effective budget ceiling", f"${cap}" if cap is not None else "none")
+    if cap is None:
         _note(
             ink,
-            "no personal budget cap — reconcile ignores a 0 cap and uses the "
-            "other members' caps instead.",
+            "no personal budget ceiling — the member said 'I'm flexible' this "
+            "session (which also drops their saved Profile budget) or has no "
+            "budget data. Reconcile leaves them out of the caps entirely, so "
+            "they neither constrain nor loosen the group's budget scoring.",
         )
     print(f"    {ink.agent('✔ END OF SUB-AGENT CONVERSATION for ' + name)}")
     return pref
@@ -671,7 +679,8 @@ async def _run_scripted_member(
     _kv(ink, "preferred (profile)", str(pref.preferred_cuisines))
     _kv(ink, "qa_preferred (override)", _fmt_tags(pref.qa_preferred_cuisines))
     _kv(ink, "qa_disliked (override)", _fmt_tags(pref.qa_disliked_cuisines))
-    _kv(ink, "effective budget_max", f"${pref.effective_budget_max}")
+    cap = pref.effective_budget_cap
+    _kv(ink, "effective budget ceiling", f"${cap}" if cap is not None else "none")
     print(f"    {ink.agent('✔ END OF SUB-AGENT CONVERSATION for ' + name)}")
     return pref
 

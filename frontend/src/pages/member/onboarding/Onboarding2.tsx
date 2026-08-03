@@ -3,12 +3,18 @@ import { Button, Icon } from '@/components/ui'
 import { useProfileStore } from '@/stores/profileStore'
 import { cn } from '@/utils/cn'
 
+// A budget is a CEILING, so `max` is what the recommendation reads. "Flexible"
+// stores the NO_CAP sentinel (max 0 — see @/utils/formatBudget), NOT a wide
+// range: it used to be { 0, 200 }, which is indistinguishable from "$40+" at the
+// point where the group picks are ranked, so choosing "Flexible" made someone
+// look like a $200-a-head diner and dragged the whole group's picks upmarket.
+// Kept in sync with ProfileEditPage's BUDGET_BANDS.
 const BANDS = [
   { label: 'Under $15', min: 0, max: 15 },
   { label: '$15–25', min: 15, max: 25 },
   { label: '$25–40', min: 25, max: 40 },
   { label: '$40+', min: 40, max: 200 },
-  { label: 'Flexible', min: 0, max: 200 },
+  { label: 'Flexible', min: 0, max: 0 },
 ]
 
 // Onboarding step 3 of 4 content (usual budget). Rendered inside AuthFlowShell.

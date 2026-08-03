@@ -192,8 +192,8 @@ async def _create_throwaway_session() -> tuple[int, list[int], int]:
         db.add(group)
         await db.flush()
 
-        # Session (host = first user). No avg_budget column — the orchestrator
-        # computes the averaged group budget on demand from member budgets.
+        # Session (host = first user). No group-budget column — budget is a
+        # per-member ceiling the orchestrator scores against on demand.
         # scheduled_for drives the open/closed hard filter (Mon 7pm here).
         session = Session(
             host_user_id=user_ids[0],
@@ -314,8 +314,9 @@ async def _resolve_and_print(result: dict) -> None:
     if not items:
         print(
             "      (empty) — the pipeline ran end-to-end but produced no picks. "
-            "Most likely no restaurants matched the hard dietary/geo/budget "
-            "filters, or embeddings were unavailable so retrieval found nothing."
+            "Most likely no restaurants matched the hard dietary/geo/hours "
+            "filters (budget is soft — it only reweights), or embeddings were "
+            "unavailable so retrieval found nothing."
         )
         return
 

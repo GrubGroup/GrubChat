@@ -85,6 +85,16 @@ class ExtractedSignals(BaseModel):
     disliked_cuisines: list[str] = Field(default_factory=list)
     budget_min: int | None = None
     budget_max: int | None = None
+    # True when the member declared NO price ceiling ("I'm flexible" on budget),
+    # which drops their durable Profile budget for this session.
+    #
+    # DERIVED, never a second source of truth: only budget_min/budget_max persist
+    # (Qa has no flexible column), so this is always recomputed from
+    # budget_max == NO_CAP — in conversation_agent._reconcile and again in
+    # session_service._merge_prior_qa when a stored row is rehydrated. It exists
+    # so the UI and the next turn's CURRENT_SIGNALS read a named boolean instead
+    # of having to decode a sentinel. Null means "budget not answered yet".
+    budget_flexible: bool | None = None
     # Session-scoped Qa signals (QaSignals shape). occasion is host-only; the
     # host's event TIME is no longer a signal here — it lives on
     # Session.scheduled_for (set in the pre-session modal, not the chat turn).

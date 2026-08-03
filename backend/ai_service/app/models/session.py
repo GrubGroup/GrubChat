@@ -22,5 +22,9 @@ class Session(SQLModel, table=True):
     scheduled_for: datetime | None = None
     created_at: datetime = Field(default_factory=utcnow)
     closed_at: datetime | None = None
-    # No avg_budget column: the averaged group budget is computed on demand from
-    # members' effective budget_max by the orchestrator, never persisted.
+    # No group-budget column, and nothing computes one either. A budget is a
+    # per-member CEILING; the orchestrator scores each candidate against the
+    # members' individual ceilings on demand (orchestrator_agent._group_budget_fit)
+    # and never reduces them to a single group number — an averaged "group
+    # budget" is a spend TARGET, which let one high-budget member drag everyone
+    # else's picks upmarket.
