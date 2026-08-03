@@ -1,5 +1,12 @@
-import { useRef, type ReactNode } from 'react'
-import { motion, useReducedMotion, useScroll, useTransform, type MotionValue } from 'framer-motion'
+import { useRef, useState, type ReactNode } from 'react'
+import {
+  motion,
+  useReducedMotion,
+  useScroll,
+  useTransform,
+  useMotionValueEvent,
+  type MotionValue,
+} from 'framer-motion'
 import { Button, Icon, MicPop, Wordmark, type IconName } from '@/components/ui'
 import { AgentAvatar } from '@/components/session/AgentAvatar'
 import { RestaurantImage } from '@/components/restaurant/RestaurantImage'
@@ -331,11 +338,16 @@ function HeroCluster({ float, reduce }: { float: (d: number, dist?: number) => o
         className="bottom-2 right-0 w-[56%]"
       >
         <div className="overflow-hidden rounded-[18px] bg-surface-raised shadow-[0_36px_80px_var(--shadow-tint-strong)]">
-          <div className="relative h-28 bg-gradient-to-br from-member-terracotta to-primary">
+          <RestaurantImage
+            cuisineTags={['mexican']}
+            identity={8801}
+            className="h-28 w-full"
+            tintClass="bg-gradient-to-br from-member-terracotta to-primary"
+          >
             <span className="absolute left-3 top-3 rounded-pill bg-surface-raised px-2.5 py-1 text-[11px] font-bold text-primary-text">
               98% match
             </span>
-          </div>
+          </RestaurantImage>
           <div className="p-4">
             <div className="flex items-center justify-between">
               <span className="text-[16px] font-bold">Verde Cocina</span>
@@ -562,6 +574,15 @@ function HowItWorksPinned() {
   const s3 = useStepMotion(scrollYProgress, PIN_STARTS[2], true)
   const motions = [s1, s2, s3]
 
+  // Progress stepper — three lines that fill left→right as each step's window
+  // plays. Declared at the top level (not in .map) to keep the hook count
+  // stable; each fill drives a scaleX. They live inside the fading stage below,
+  // so the whole stepper disappears with the cards once the pin releases.
+  const fill1 = useTransform(scrollYProgress, [PIN_STARTS[0], PIN_STARTS[0] + 0.27], [0, 1])
+  const fill2 = useTransform(scrollYProgress, [PIN_STARTS[1], PIN_STARTS[1] + 0.27], [0, 1])
+  const fill3 = useTransform(scrollYProgress, [PIN_STARTS[2], PIN_STARTS[2] + 0.27], [0, 1])
+  const fills = [fill1, fill2, fill3]
+
   // After step 3, fade the whole solo stage (numeral + card deck + glow) out so
   // no empty ghost cards linger at the tail — hands off to the finale grid.
   const stageOpacity = useTransform(scrollYProgress, [0.9, 1], [1, 0])
@@ -624,6 +645,22 @@ function HowItWorksPinned() {
                   </motion.div>
                 ))}
               </div>
+            </div>
+
+            {/* Progress stepper — three lines fill 1→2→3 as the steps play; it
+                fades out with the stage once the pin releases. */}
+            <div className="mx-auto mt-32 flex max-w-[280px] items-center gap-2" aria-hidden>
+              {fills.map((fill, i) => (
+                <span
+                  key={i}
+                  className="h-1 flex-1 overflow-hidden rounded-pill bg-surface-sunken"
+                >
+                  <motion.span
+                    style={{ scaleX: fill }}
+                    className="block h-full origin-left rounded-pill bg-primary"
+                  />
+                </span>
+              ))}
             </div>
           </motion.div>
         </div>
@@ -692,10 +729,11 @@ function ConversationScroll() {
   return <ConversationScrollPinned />
 }
 
-// One chat turn, revealed by scroll. Agent turns play a "…" typing beat inside
-// the first slice of their window, then swap to the text bubble. `me` turns just
-// rise in. All transforms are declared unconditionally so the hook count is
-// stable across turns (this component is rendered once per turn in a fixed map).
+// One chat turn, revealed by scroll. Scrolling past the turn's `start` threshold
+// *triggers* a self-playing entrance (rather than scrubbing opacity by scroll
+// position, which made bubbles track the scrollbar / snap in). Agent turns play a
+// real "…" typing beat, then the bubble springs in; `me` turns just rise in.
+// Scrolling back up past the threshold resets it so the sequence replays.
 function ConvoTurn({
   progress,
   start,
@@ -706,16 +744,28 @@ function ConvoTurn({
   turn: Turn
 }) {
   const me = turn.from === 'me'
-  // Typing dots live only in the opening slice of an agent turn's window.
-  const typingOpacity = useTransform(
-    progress,
-    [start, start + 0.008, start + 0.03, start + 0.038],
-    [0, 1, 1, 0],
-  )
-  // The reply bubble lands right after the typing beat (agent) or immediately (me).
-  const bubbleStart = turn.typing ? start + 0.035 : start
-  const bubbleOpacity = useTransform(progress, [bubbleStart, bubbleStart + 0.02], [0, 1])
-  const bubbleY = useTransform(progress, [bubbleStart, bubbleStart + 0.02], [14, 0])
+  const reduce = useReducedMotion()
+
+  // `phase`: 'hidden' before the threshold, 'typing' during the agent's typing
+  // beat, 'shown' once the bubble has landed. `me` turns skip straight to 'shown'.
+  const [phase, setPhase] = useState<'hidden' | 'typing' | 'shown'>('hidden')
+
+  useMotionValueEvent(progress, 'change', (p) => {
+    if (p < start) {
+      if (phase !== 'hidden') setPhase('hidden')
+      return
+    }
+    // Crossed the threshold going down: kick off the entrance once.
+    if (phase === 'hidden') {
+      if (turn.typing && !reduce) {
+        setPhase('typing')
+        // Hold the typing dots briefly, then reveal the reply.
+        setTimeout(() => setPhase('shown'), 650)
+      } else {
+        setPhase('shown')
+      }
+    }
+  })
 
   return (
     <div className={cn('flex flex-col gap-1.5', me ? 'items-end' : 'items-start')}>
@@ -736,7 +786,9 @@ function ConvoTurn({
         {/* typing "…" beat, agent turns only */}
         {turn.typing && (
           <motion.div
-            style={{ opacity: typingOpacity }}
+            initial={false}
+            animate={{ opacity: phase === 'typing' ? 1 : 0 }}
+            transition={{ duration: 0.2 }}
             className="absolute left-0 top-0 w-fit rounded-2xl border border-border bg-surface-raised px-4 py-3 shadow-sm"
             aria-hidden
           >
@@ -752,9 +804,15 @@ function ConvoTurn({
           </motion.div>
         )}
         <motion.span
-          style={{ opacity: bubbleOpacity, y: bubbleY }}
+          initial={false}
+          animate={{
+            opacity: phase === 'shown' ? 1 : 0,
+            y: phase === 'shown' ? 0 : 14,
+            scale: phase === 'shown' ? 1 : 0.96,
+          }}
+          transition={{ type: 'spring', stiffness: 320, damping: 26 }}
           className={cn(
-            'block max-w-[19rem] rounded-2xl px-4 py-2.5 text-[14px] leading-snug',
+            'block max-w-[19rem] origin-bottom rounded-2xl px-4 py-2.5 text-[14px] leading-snug',
             me ? 'bg-surface-inverse text-on-inverse' : 'border border-border bg-surface-raised text-text shadow-sm',
           )}
         >
@@ -776,9 +834,16 @@ function ConversationScrollPinned() {
   // resolves over the tail so it lands as the pin releases.
   const step = 0.14
   const checkStart = CONVO.length * step
-  const checkOpacity = useTransform(scrollYProgress, [checkStart, checkStart + 0.05], [0, 1])
-  const checkY = useTransform(scrollYProgress, [checkStart, checkStart + 0.05], [20, 0])
-  const checkScale = useTransform(scrollYProgress, [checkStart, checkStart + 0.05], [0.92, 1])
+
+  // Triggered entrance (matches the message bubbles): the resolution card
+  // springs in once scroll crosses its threshold and then *stays* — it doesn't
+  // fade back out as you keep scrolling past. Reset only if you scroll back up
+  // above the threshold, so it replays on the next pass down.
+  const [checkShown, setCheckShown] = useState(false)
+  useMotionValueEvent(scrollYProgress, 'change', (p) => {
+    if (p >= checkStart && !checkShown) setCheckShown(true)
+    else if (p < checkStart && checkShown) setCheckShown(false)
+  })
 
   return (
     <section className="bg-surface">
@@ -819,7 +884,13 @@ function ConversationScrollPinned() {
 
                 {/* Resolution — the green checkmark: the group agreed */}
                 <motion.div
-                  style={{ opacity: checkOpacity, y: checkY, scale: checkScale }}
+                  initial={false}
+                  animate={{
+                    opacity: checkShown ? 1 : 0,
+                    y: checkShown ? 0 : 20,
+                    scale: checkShown ? 1 : 0.92,
+                  }}
+                  transition={{ type: 'spring', stiffness: 320, damping: 26 }}
                   className="mt-1 flex items-center gap-3 rounded-2xl border border-success/30 bg-success/10 px-4 py-3"
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill bg-success text-on-inverse">
@@ -954,7 +1025,12 @@ function FeatureShowcase() {
               </div>
               <Icon name="arrow-right" size={26} className="hidden text-primary-text sm:block" />
               <div className="overflow-hidden rounded-2xl bg-surface-raised text-text shadow-xl sm:ml-2 sm:w-64">
-                <div className="h-20 bg-gradient-to-br from-member-terracotta to-primary" />
+                <RestaurantImage
+                  cuisineTags={['mexican']}
+                  identity={8807}
+                  className="h-20 w-full"
+                  tintClass="bg-gradient-to-br from-member-terracotta to-primary"
+                />
                 <div className="p-3.5">
                   <span className="rounded-pill bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary-text">
                     96% match
