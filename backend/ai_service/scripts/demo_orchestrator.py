@@ -59,6 +59,7 @@ from app.ai.agents.conversation_agent import analyze_turn
 from app.ai.agents.orchestrator_agent import (
     _CANDIDATE_LIMIT,
     _build_query_text,
+    _group_budget_fit,
     _parse_ranked,
     _reconcile,
 )
@@ -459,11 +460,12 @@ def _affinity(
     rating = r.avg_rating if r.avg_rating is not None else 3.5
     rating_score = max(0.0, min(1.0, (rating - 3.5) / (5.0 - 3.5)))
 
-    price_score = 0.5
-    if reconciled.price_max and r.price_avg is not None and reconciled.price_max > 0:
-        price_score = max(
-            0.0, min(1.0, (reconciled.price_max - r.price_avg) / reconciled.price_max)
-        )
+    # Budget is a soft CEILING: at or under everyone's cap costs nothing, and it
+    # only decays past the tightest one. Mirrors orchestrator_agent's
+    # _group_budget_fit so the offline stand-in ranks the way the real path does.
+    price_score = _group_budget_fit(r.price_avg, reconciled.member_budget_caps)
+    if price_score is None:
+        price_score = 1.0
 
     raw = 0.55 * cuisine_score + 0.30 * rating_score + 0.15 * price_score
     return round(max(0.0, min(1.0, raw)), 4)
@@ -499,9 +501,11 @@ def _mock_similarity_search(
         # dietary_tags must be a superset of the required tags (`@>`).
         if required and not required.issubset(set(r.dietary_tags)):
             continue
-        # price cap.
-        if reconciled.price_max is not None:
-            if r.price_avg is None or r.price_avg > reconciled.price_max:
+        # Retrieval price ceiling — a RECALL guardrail (tightest cap plus
+        # headroom), not the group's budget. Budget itself is soft and applied at
+        # ranking time via budget_fit.
+        if reconciled.retrieval_price_ceiling is not None:
+            if r.price_avg is None or r.price_avg > reconciled.retrieval_price_ceiling:
                 continue
         # geo bounding box.
         if box is not None:
@@ -816,7 +820,12 @@ async def _print_preference_agents(ink: Ink) -> list[MemberPref]:
         _kv(ink, "preferred (profile)", str(pref.preferred_cuisines))
         _kv(ink, "qa_preferred (override)", _fmt_tags(pref.qa_preferred_cuisines))
         _kv(ink, "qa_disliked (override)", _fmt_tags(pref.qa_disliked_cuisines))
-        _kv(ink, "effective budget_max", f"${pref.effective_budget_max}")
+        cap = pref.effective_budget_cap
+        _kv(
+            ink,
+            "effective budget ceiling",
+            f"${cap}" if cap is not None else "none (flexible / no data)",
+        )
         print(f"    {ink.agent('✔ END OF SUB-AGENT CONVERSATION for ' + name)}")
 
     return prefs
@@ -834,16 +843,26 @@ def _print_reconcile(
 ) -> ReconciledConstraints:
     """Run + narrate the orchestrator's reconcile step (the real `_reconcile`)."""
     _step(ink, "4/6", "MASTER ORCHESTRATOR — reconcile the whole group")
-    _note(ink, "Union all dietary needs (HARD), take the tightest budget cap, "
-               "and weight cuisines")
+    _note(ink, "Union all dietary needs (HARD), collect each member's budget "
+               "CEILING (soft — scored, never filtered), and weight cuisines")
     _note(ink, "(preferred +1 each, disliked −1 each), summed across members.")
 
     reconciled = _reconcile(state)
     print()
     _substep(ink, "Reconciled group constraints:")
     _kv(ink, "required_dietary (HARD)", ink.warn(str(reconciled.required_dietary)))
-    price = "none" if reconciled.price_max is None else f"${reconciled.price_max:.0f}"
-    _kv(ink, "price_max (tightest cap)", ink.warn(price))
+    caps = reconciled.member_budget_caps
+    _kv(
+        ink,
+        "member_budget_caps (SOFT)",
+        ink.warn(str([f"${c}" for c in caps]) if caps else "[] (nobody capped)"),
+    )
+    ceiling = reconciled.retrieval_price_ceiling
+    _kv(
+        ink,
+        "retrieval ceiling (recall only)",
+        "none" if ceiling is None else f"${ceiling:.0f}",
+    )
     _kv(ink, "center / radius",
         f"{reconciled.center} / {reconciled.radius_miles} mi")
     _kv(ink, "host anchor (primary)", str(reconciled.host_location))
@@ -904,7 +923,7 @@ async def _print_orchestrate_and_rank(
             query_embedding,
             limit=_CANDIDATE_LIMIT,
             required_dietary_tags=reconciled.required_dietary or None,
-            price_max=reconciled.price_max,
+            price_max=reconciled.retrieval_price_ceiling,
             center=reconciled.center,
             radius_miles=reconciled.radius_miles,
         )
@@ -944,7 +963,10 @@ async def _print_orchestrate_and_rank(
     # --- 4d. LLM re-rank ----------------------------------------------------
     print()
     messages = build_group_rerank_messages(
-        reconciled=reconciled.model_dump(),
+        # Same exclusion the real orchestrator applies — retrieval_price_ceiling
+        # is a recall guardrail, and showing it invites the model to read it as a
+        # budget the group agreed to.
+        reconciled=reconciled.model_dump(exclude={"retrieval_price_ceiling"}),
         candidates=[c.model_dump() for c in candidates],
     )
     if live:
@@ -964,37 +986,43 @@ async def _print_orchestrate_and_rank(
     if len(raw.strip().splitlines()) > 14:
         print(f"        {ink.dim('… (truncated)')}")
 
-    # --- Real parsing + real proximity blend + distance-ranked fallback ------
-    from app.ai.agents.orchestrator_agent import _blend_proximity
+    # --- Real parsing + real proximity/budget blend + distance-ranked fallback -
+    from app.ai.agents.orchestrator_agent import _blend_score
 
     valid_ids = {c.id for c in candidates}
     tier_by_id = {c.id: c.proximity_tier for c in candidates}
+    fit_by_id = {c.id: c.budget_fit for c in candidates}
     ranked = _parse_ranked(raw, valid_ids)
     if ranked:
         _substep(ink, f"_parse_ranked accepted {len(ranked)} of "
-                      f"{len(candidates)} candidates; blending proximity tiers.")
+                      f"{len(candidates)} candidates; blending proximity tiers "
+                      f"and the soft budget penalty.")
         for item in ranked:
-            item.match_score = _blend_proximity(
-                item.match_score, tier_by_id.get(item.restaurant_id)
+            item.match_score = _blend_score(
+                item.match_score,
+                tier_by_id.get(item.restaurant_id),
+                fit_by_id.get(item.restaurant_id),
             )
         ranked.sort(key=lambda item: item.match_score, reverse=True)
     else:
         # Same fallback the real orchestrator uses when the LLM returns nothing
-        # parseable — rank by retrieval distance + proximity so we still emit
-        # valid, geometry-aware output.
+        # parseable — rank by retrieval distance + proximity + budget so we still
+        # emit valid, geometry- and budget-aware output.
         _substep(ink, ink.warn("LLM returned nothing parseable → "
-                               "distance+proximity FALLBACK engaged."))
+                               "distance+proximity+budget FALLBACK engaged."))
         ordered = sorted(
             candidates, key=lambda c: (c.distance if c.distance is not None else 1.0)
         )
         ranked = [
             RankedItem(
                 restaurant_id=c.id,
-                match_score=_blend_proximity(
-                    max(0.0, 1.0 - (c.distance or 0.0)), c.proximity_tier
+                match_score=_blend_score(
+                    max(0.0, 1.0 - (c.distance or 0.0)),
+                    c.proximity_tier,
+                    c.budget_fit,
                 ),
-                justification="Ranked by embedding similarity + proximity "
-                              "(LLM re-rank unavailable).",
+                justification="Ranked by embedding similarity + proximity + "
+                              "budget fit (LLM re-rank unavailable).",
             )
             for c in ordered
         ]

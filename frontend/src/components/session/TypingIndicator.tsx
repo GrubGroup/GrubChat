@@ -38,15 +38,18 @@ function avatarForTyper(t: Typer, members?: SessionMember[]): string | null {
 // are typing.
 export function TypingIndicator({ typers, members }: TypingIndicatorProps) {
   const reduce = useReducedMotion()
-  // Re-render on a 1s tick so expired typers disappear even without new events.
-  const [, force] = useState(0)
+  // Prune expired typers on a 1s tick so they disappear even without new events.
+  // The clock is read in the effect (never during render) and the result is held
+  // in state, so this component stays pure — reading Date.now() while rendering
+  // would make the output depend on when React happened to re-render.
+  const [active, setActive] = useState<Typer[]>([])
   useEffect(() => {
+    const prune = () => setActive(typers.filter((t) => Date.now() - t.at < EXPIRY_MS))
+    prune()
     if (typers.length === 0) return
-    const id = setInterval(() => force((n) => n + 1), 1000)
+    const id = setInterval(prune, 1000)
     return () => clearInterval(id)
-  }, [typers.length])
-
-  const active = typers.filter((t) => Date.now() - t.at < EXPIRY_MS)
+  }, [typers])
 
   const shown = active.slice(0, MAX_AVATARS)
   const overflow = active.length - shown.length

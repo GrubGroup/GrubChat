@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.ai.budget import is_no_cap
 from app.crud import session as session_crud
 from app.crud import user as user_crud
 from app.db.session import async_session_factory
@@ -46,14 +47,27 @@ def profile_diff(signals: ExtractedSignals) -> dict:
     Lists are always included (they carry the full reconciled list, so a
     correction that dropped a tag is represented). Scalars are included only when
     set, so an unspoken budget never overwrites a stored one.
+
+    The NO_CAP budget sentinel is deliberately NOT written to the Profile. "I'm
+    flexible" is a SESSION-scoped answer (it lives on the Qa row), and
+    Profile.budget_min/budget_max are non-null Ints that both band pickers
+    round-trip by exact (min, max) tuple equality — so a durable {0, 0} written
+    from one chat sentence would be a one-way door the profile editor could not
+    undo. Both bounds are skipped TOGETHER so a partial write can never leave
+    min > max. Keyed on the stored number rather than the derived
+    `budget_flexible` flag, which a degraded turn can leave null.
+
+    (In-session turns never reach here at all — analyze_member_turn only calls
+    persist_qa. This guards the profile-EDIT turn, where session_id is None.)
     """
     diff: dict = {}
     for field in _PROFILE_LIST_FIELDS:
         diff[field] = list(getattr(signals, field) or [])
-    for field in _PROFILE_SCALAR_FIELDS:
-        value = getattr(signals, field)
-        if value is not None:
-            diff[field] = value
+    if not is_no_cap(signals.budget_max):
+        for field in _PROFILE_SCALAR_FIELDS:
+            value = getattr(signals, field)
+            if value is not None:
+                diff[field] = value
     return diff
 
 
@@ -65,6 +79,12 @@ def qa_diff(signals: ExtractedSignals) -> dict:
     included only when set, so an unspoken budget/location never overwrites a
     stored one. Host-only occasion passes through here; the CRUD layer drops it
     for a non-host.
+
+    The NO_CAP budget sentinel needs no special case: it is 0, which passes the
+    `is not None` test here and in crud.session.upsert_qa_signals, so "I'm
+    flexible" persists on the member's Qa row through the ordinary plumbing —
+    unlike a NULL, which both layers skip and which would be indistinguishable
+    from "not answered yet".
     """
     diff: dict = {}
     for field in _QA_LIST_FIELDS:

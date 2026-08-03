@@ -42,6 +42,7 @@ The backend is itself split into **two services**:
 GrubGroup/
 ├── README.md              # Project overview
 ├── PROJECT_STRUCTURE.md   # This file — explains the folder layout
+├── .gitignore             # Shared ignores (node_modules, .env / .env.*, build output, OS files)
 ├── frontend/              # React + TypeScript + Vite web app  (see §4)
 ├── backend/               # Unified backend: gateway + ai_service  (see §3)
 ├── planning/              # Product & system design documents
@@ -81,44 +82,56 @@ service clients are `*Client.js`. There is no dotted `*.routes.js` / `*.service.
 
 ```
 gateway/
-├── package.json                  # Deps (Express, Socket.IO, better-auth, @prisma/client, axios) + Bun scripts
+├── package.json                  # Deps (Express, Socket.IO, better-auth, @prisma/client, axios, pg) + Bun scripts
 ├── .env.example                  # Sample environment variables
+├── Dockerfile  fly.toml          # Container + Fly.io deploy config (app `grubgroup-gateway`)
 ├── server.js                     # Entry point: starts the HTTP + WebSocket server
 ├── prisma/                       # Prisma schema + migrations (owns the DB DDL + pgvector) + seeds
 │   ├── schema.prisma  SCHEMA.md
 │   ├── migrations/               # SQL migrations (incl. enable vector extension)
+│   ├── generated_restaurants.json  # ~2,000-restaurant seed catalog (OSM-derived, ODbL)
 │   └── seed.mjs  seed_groups.mjs
+├── scripts/                      # Dev/ops harnesses (not part of the running service)
+│   ├── e2e_rest.mjs              # Live REST harness across ~29 endpoints (Better Auth cookies)
+│   ├── probe_voice_relay.js      # Voice-relay authorization-guard suite
+│   └── backfill_flexible_budget.mjs / .sql   # One-time no-cap budget migration
 └── src/
-    ├── app.js                    # Express app: mounts Better Auth /api/auth/* (before express.json), then /api routes
+    ├── app.js                    # Express app: mounts Better Auth /api/auth/* (before express.json),
+    │                             #   then GET /health (the fly.toml probe), GET /api/me, and /api routes
     ├── lib/
     │   ├── auth.js               # Better Auth config (Prisma adapter, email/password + Google)
     │   └── prisma.js             # Prisma client singleton
     ├── config/
     │   └── index.js              # Loads & validates environment config
     ├── routes/                   # URL → controller mappings
-    │   ├── index.js              # Mounts /health, /auth-methods, /geocode, /restaurants, /sessions,
-    │   │                         #   /profile, /user, /users, /groups, /events
+    │   ├── index.js              # Mounts /auth-methods, /geocode, /restaurants, /sessions, /profile,
+    │   │                         #   /user, /users, /groups, /events, /voice
     │   ├── restaurantsRoutes.js  # /restaurants — create + embed
     │   ├── sessionsRoutes.js     # /sessions — recommendations + analyze proxy, close, members
     │   ├── profileRoutes.js      # /profile — read/update the caller's Profile
-    │   ├── userRoutes.js         # /user — caller identity (GET /me, PATCH /)
+    │   ├── userRoutes.js         # /user — caller identity (GET /me, PATCH /, DELETE /)
     │   ├── usersRoutes.js        # /users — username search (member-picker)
     │   ├── groupsRoutes.js       # /groups — group CRUD + membership
-    │   └── eventsRoutes.js       # /events — the caller's dining history
+    │   ├── eventsRoutes.js       # /events — the caller's dining history
+    │   └── voiceRoutes.js        # /voice — POST /preview (audition a TTS voice from settings)
     ├── controllers/              # Request handlers (the logic per route)
     │   ├── restaurantsController.js  # create Restaurant + embed via ai_service + ::vector write
     │   ├── sessionsController.js     # session lifecycle + AI proxy (recommendations/analyze) + geocode
     │   ├── profileController.js  userController.js  usersController.js
     │   ├── groupsController.js  eventsController.js  authMethodsController.js
+    │   ├── voiceController.js    # proxies the voice preview; returns WAV bytes, not JSON
     ├── middleware/               # Cross-cutting request logic
     │   ├── authMiddleware.js     # Better Auth session guard (requireAuth)
     │   └── errorMiddleware.js    # Central error handling
     ├── sockets/                  # Real-time WebSocket logic
-    │   ├── index.js              # Socket.IO setup + session-cookie handshake
-    │   ├── sessionHandlers.js    # group:join/leave, chat:message, session:start/picks/confirmed, typing:*, vote:*
+    │   ├── index.js              # Socket.IO setup + session-cookie handshake + Postgres adapter
+    │   │                         #   (cross-machine broadcast fan-out; skipped when DATABASE_URL is unset)
+    │   ├── sessionHandlers.js    # group:join/leave, chat:history, chat:message, group:preview,
+    │   │                         #   session:start, typing:*, vote:*
     │   └── voiceHandlers.js      # voice:* binary relay — bridges the browser mic loop to ai_service's voice WS
     ├── services/                 # Outbound clients
-    │   ├── aiClient.js           # Talks to the FastAPI ai_service (embed, recommendations, analyze)
+    │   ├── aiClient.js           # Talks to the FastAPI ai_service (embed, recommendations, analyze,
+    │   │                         #   voice preview — the last one returns audio, not JSON)
     │   ├── geocodeClient.js      # Server-side geocoding (Geocodio) for the host modal
     │   └── voiceClient.js        # Opens a raw WS to ai_service's /voice/session (forwards X-Internal-Secret)
     └── utils/
@@ -128,6 +141,9 @@ gateway/
 > The AI proxy lives in `sessionsController.js` + `services/aiClient.js`. There is **no**
 > `aiRoutes.js` / `aiController.js` (an earlier empty starter pair was removed), and no
 > `auth.routes.js` / `jwt.service.js` — Better Auth owns `/api/auth/*` directly in `app.js`.
+>
+> `session:picks` and `session:confirmed` are broadcast from `sessionsController.js` (they follow
+> an HTTP action), not from `sessionHandlers.js` — the socket file handles client-initiated events.
 
 ### 3b. `backend/ai_service/` — AI / Data Service (FastAPI)
 
@@ -135,33 +151,35 @@ The Python "brains." Responsibilities: the database (read-side mirror + recommen
 the AI agents, restaurant search (RAG), and the **server-side voice loop**. The group-chat composer
 sends browser-transcribed text; the **session agent chat** runs a wired **cascaded STT→analyze→TTS
 voice loop** — a WebSocket in `routes/voice.py` bridging **Deepgram Flux** STT (`ai/voice/stt.py`)
-and **Cartesia** TTS (`ai/voice/tts.py`), with catalog-derived STT keyterms (`ai/voice/keyterms.py`)
-and the frame DTOs in `schemas/voice.py`. The tree is almost entirely wired; the only stub is
-`db/init_db.py` (intentional — Prisma owns DDL).
+and **Cartesia** TTS (`ai/voice/tts.py`), with catalog-derived STT keyterms (`ai/voice/keyterms.py`),
+the selectable-voice allowlist (`ai/voice/voices.py`), and the frame DTOs in `schemas/voice.py`.
+Every module in the tree is wired — Prisma (in the gateway) owns the DDL, so this service never
+creates tables.
 
 ```
 ai_service/
 ├── pyproject.toml / uv.lock / .python-version   # Python project + locked dependencies
 ├── .env.example / .gitignore / .dockerignore
-├── Dockerfile                    # Packages the service (CMD: uvicorn app.main:app)
+├── Dockerfile  fly.toml          # Container + Fly.io deploy config (app `grubgroup-ai`)
 ├── README.md                     # Service-specific setup instructions
-├── scripts/                      # One-off dev/ops scripts
+├── scripts/                      # Dev/ops tooling (not part of the running service)
 │   ├── seed_restaurants.py       # Fills the DB with ~54 mock restaurants (with embeddings)
 │   ├── backfill_embeddings.py    # (Re)embeds existing restaurants — e.g. after the embedding-model swap
 │   ├── smoke_orchestrator.py     # Direct end-to-end orchestrator graph smoke test
 │   ├── demo_orchestrator.py      # Narrated terminal walkthrough of the recommendation pipeline
 │   ├── analyze_turn_demo.py      # Conversational analyze-turn demo
 │   ├── interactive_session.py    # Interactive session harness
+│   ├── verify_budget_ceiling.py  # Offline assertion suite for budget / no-cap semantics
 │   ├── measure_analyze_latency.py  # Measures analyze-turn latency (the voice-path budget)
+│   ├── probe_extractor_bench.py  # Benchmarks candidate extraction models against the real prompt
 │   ├── live_http_gateway_e2e.py  # Live HTTP harness across ai_service + gateway (401/409/200)
-│   └── probe_*.py                # Ad-hoc latency/voice/DB probes (Flux STT, Cartesia TTS, voice session, …)
+│   └── probe_voice_session.py / probe_flux_stt.py / probe_cartesia_tts.py   # Voice-path smoke tests
 └── app/                          # The actual application code
     ├── main.py                   # Builds & configures the FastAPI app (the canonical entrypoint)
     ├── core/
     │   └── config.py             # Reads settings from environment (Pydantic Settings)
     ├── db/                       # Database connection & setup
-    │   ├── session.py            # Async engine + async_session_factory
-    │   └── init_db.py            # Intentional stub — Prisma (gateway) owns DDL + pgvector; never runs create_all
+    │   └── session.py            # Async engine + async_session_factory (Prisma owns DDL + pgvector)
     ├── models/                   # Database tables (SQLModel read-side mirror of Prisma)
     │   ├── user.py  profile.py  session.py  session_member.py     # core
     │   ├── restaurant.py  qa.py  group.py                         # restaurant has vector(1024) embedding
@@ -178,7 +196,9 @@ ai_service/
     │           ├── health.py         # Is the service up?
     │           ├── ai.py             # POST /embed, POST /sessions/{id}/recommendations,
     │           │                     #   POST /sessions/{id}/analyze, POST /analyze
-    │           └── voice.py          # WS /voice/session — cascaded STT→analyze→TTS voice loop
+    │           └── voice.py          # WS /voice/session — cascaded STT→analyze→TTS voice loop;
+    │                                 #   POST /voice/preview — one-shot WAV of a fixed line in a
+    │                                 #   chosen voice (settings audition), cached per voice
     ├── services/                 # Business logic (multi-step workflows)
     │   ├── recommendation_service.py  # orchestrator wrapper: guard → pipeline → persist
     │   ├── session_service.py         # analyze_member_turn (in-session Qa)
@@ -206,8 +226,10 @@ ai_service/
         ├── voice/                # Server voice loop (wired — session agent chat)
         │   ├── stt.py            # Speech → text (Deepgram Flux, streaming WS)
         │   ├── tts.py            # Text → speech (Cartesia sonic-3.5, HTTP SSE)
-        │   └── keyterms.py       # Catalog-derived STT keyterms (biases Flux toward restaurant names)
-        └── taxonomy.py  geo.py  hours.py   # cuisine taxonomy; geo helpers; open/closed hours filter
+        │   ├── keyterms.py       # Catalog-derived STT keyterms (biases Flux toward restaurant names)
+        │   └── voices.py         # SELECTABLE_VOICES — allowlist validating the client's voice_id
+        └── taxonomy.py  geo.py  hours.py  budget.py   # cuisine taxonomy; geo helpers;
+                                  #   open/closed hours filter; the NO_CAP budget sentinel
 ```
 
 ---
@@ -231,12 +253,18 @@ frontend/
 ├── eslint.config.js      # Linting rules
 ├── index.html            # HTML entry point
 ├── README.md
-├── public/               # Static files served as-is (favicon.svg, icons.svg)
+├── scripts/              # One-off asset tooling (not part of the build)
+│   └── fetch-cuisine-images.ts   # (re)builds public/media/cuisines from Openverse; `bun run` it
+├── public/               # Static files served as-is (favicon.svg, worklets/pcm-recorder.js)
+│   └── media/cuisines/   # COMMITTED cuisine stock photos, 5 per pool, served at
+│                         #   /media/cuisines/<key>/<key>-N.jpg on the deployed site.
+│                         #   Plus ATTRIBUTION.md + credits.json (CC BY needs credit) and
+│                         #   rejected.json (Openverse ids a review pass ruled out).
 └── src/                  # Application source (see §4a)
     ├── main.tsx          # App entry point (mounts React inside <BrowserRouter>)
     ├── App.tsx           # The route tree (<Routes>) — layout routes + every path
     ├── index.css         # Tailwind import + @theme design tokens
-    └── assets/           # hero.png, react.svg, vite.svg
+    └── assets/           # unset-table.svg (the empty/404 illustration)
 ```
 
 ### 4a. `src/` layout (implemented)
@@ -247,13 +275,14 @@ The feature structure below **exists and is populated** — build new work into 
 src/
 ├── api/            # HTTP calls to the gateway via axios (live only — no mock layer)
 │   └── authApi.ts  sessionApi.ts  eventsApi.ts  restaurantsApi.ts
-│       profileApi.ts  groupsApi.ts  userApi.ts  usersApi.ts
+│       profileApi.ts  groupsApi.ts  userApi.ts  usersApi.ts  voiceApi.ts
 ├── pages/          # Full screens (one per route)
-│   ├── public/         # LandingPage                          → /
+│   ├── public/         # LandingPage → / ; NotFoundPage → * (catch-all)
 │   ├── auth/           # AuthForm (Better Auth sign-in/up + Google)  → /login, /signup
-│   └── member/         # GroupsIndex → /groups (renders GroupsPage — the list/zero-state);
-│       │               #   GroupChatPage → /groups/:groupId; EventsPage → /events[/:eventId];
-│       │               #   ProfilePage, ProfileEditPage
+│   └── member/         # GroupsIndex → /groups (redirects on desktop, renders GroupsPage —
+│       │               #   the list/zero-state — on mobile); GroupChatPage → /groups/:groupId;
+│       │               #   ExplorePage → /explore; EventsPage → /events[/:eventId];
+│       │               #   ProfilePage, ProfileEditPage; SettingsPage → /settings
 │       ├── onboarding/     # Onboarding1-3 + OnboardingCuisines  → /onboarding/*
 │       └── session/        # AgentChatPage, TopPicksPage
 │                           #   → /groups/:groupId/sessions/:sessionId[/done|/picks]
@@ -265,27 +294,40 @@ src/
 │   │                   #   Plus AppSidebar, BrandPanel, AppSplash, AccountMenu, and the mobile
 │   │                   #   shell: BottomTabBar, MobileHeader, MobileActionSheet
 │   ├── session/        # Session/chat widgets (HostSessionModal, SessionTopBar, SessionTimer,
-│   │                   #   GroupMessageRow, ChatStream, SessionCard, MemberRoster, GroupList,
-│   │                   #   MobileSessionStrip, GroupDetailPanel, …)
-│   ├── restaurant/     # RankedRestaurantCard (reused by TopPicksPage; ephemeral voting), MenuList
-│   │                   #   (placeholder), RestaurantHeader, TagRow, MenuItemRow
+│   │                   #   GroupMessageRow, ChatStream, ChatMessage, SessionCard, MemberRoster,
+│   │                   #   GroupList, GroupsSidebar, GroupDetailPanel, GroupProgressPanel,
+│   │                   #   NewGroupModal, NotedSoFarPanel, SegmentedProgress, TypingIndicator,
+│   │                   #   AgentAvatar, AgentTypingBubble, MessagesLoader, PicksLoader,
+│   │                   #   MobileSessionStrip)
+│   ├── restaurant/     # RankedRestaurantCard (reused by TopPicksPage; ephemeral voting),
+│   │                   #   RestaurantExploreCard, RestaurantDetailModal, ExploreFilters,
+│   │                   #   LikedPlacesPanel, LikeStarButton, RestaurantHeader, TagRow,
+│   │                   #   MenuList (placeholder) + MenuItemRow, and RestaurantImage (the random
+│   │                   #   cuisine-photo banner, used by every restaurant surface incl. Events)
 │   ├── profile/        # CuisineTriStatePicker, PreferenceTag
 │   └── voice/          # VoiceComposer — one composer, two paths (Web Speech dictation for group
-│                       #   chat; hands-free server voice loop for the session agent chat)
+│                       #   chat; hands-free server voice loop for the session agent chat).
+│                       #   VoicePreviewButton — auditions a TTS voice from Settings
 ├── hooks/          # Routing: useGroupId, useSessionId (decode a name-42 slug), useBindSession
 │                   #   (rebinds a group's live session on a cold URL entry).
 │                   #   Sync: useSocket, useGroupSync, useSessionSync, useSessionCountdown.
 │                   #   Voice: useVoiceInput (Web Speech), useVoiceSession (server loop).
-│                   #   Plus usePlacesInput, useMediaQuery, useIsMobile, useNewItemIds,
-│                   #   useScrollToBottom, useScrollLock, useDismissOnBack, useCreateGroup, useSignOut
-├── stores/         # 9 zustand stores: auth, session, groupChat, chat, event, eventList,
-│                   #   profile, groups, restaurant. (No nav store — the URL owns navigation.)
+│                   #   Visuals: useCuisineImage (holds one random cuisine photo per mount).
+│                   #   Plus useExploreFilters, usePlacesInput, useAnchoredPosition, useMediaQuery,
+│                   #   useIsMobile, useNewItemIds, useScrollToBottom, useScrollLock,
+│                   #   useDismissOnBack, useCreateGroup, useSignOut
+├── stores/         # 11 zustand stores: auth, session, groupChat, chat, event, eventList,
+│                   #   profile, groups, restaurant, theme, voicePref.
+│                   #   (No nav store — the URL owns navigation.)
 ├── lib/            # Client setup: axios, socket, authClient (Better Auth), env, motion
 ├── types/          # Shared TypeScript types (user, profile, session, recommendation, analyze,
-│                   #   group, groupChat, chat, restaurant, qa, voice, …)
+│                   #   group, groupChat, chat, restaurant, menu, qa, voice, …)
 ├── utils/          # Small helpers (cn.ts, hours.ts — TS mirror of ai_service app/ai/hours.py,
-│                   #   memberColor.ts, memberName.ts, timeAgo.ts, slug.ts — the name-42 route slugs)
-└── constants/      # App-wide constants (dietary.ts, memberColors.ts, agentChat.ts, mobileNav.ts)
+│                   #   distance.ts, formatBudget.ts, price.ts, password.ts, memberName.ts,
+│                   #   timeAgo.ts, slug.ts — the name-42 route slugs)
+└── constants/      # App-wide constants (dietary.ts, memberColors.ts — the shared avatar palette,
+                    #   agentChat.ts, mobileNav.ts, theme.ts, voices.ts, restaurantVisuals.ts,
+                    #   cuisineImages.ts — cuisine tag → photo pool mapping)
 ```
 
 ---
@@ -302,4 +344,5 @@ src/
 | An AI-proxy route (Node)      | `backend/gateway/src/routes/` + `controllers/` + `services/aiClient.js` |
 | A new screen/page (React)     | `frontend/src/pages/` + a `<Route>` in `frontend/src/App.tsx`            |
 | A reusable UI element (React) | `frontend/src/components/`                                              |
+| A static image/asset          | `frontend/public/media/` (served verbatim at `/media/…` in prod)        |
 | A product/planning doc        | `planning/`                                                             |

@@ -37,8 +37,8 @@ const RESULTS_REDIRECT_ROUTE = /^\/groups\/([^/]+)(?:\/sessions\/[^/]+(?:\/done)
 // Delivery reaches here via the gateway's per-user room broadcast (broadcastPicks in
 // sessionsController), so a host who force-finishes and every member sees the ranked
 // picks live — no wait on the HTTP round-trip, no page reload. Routes each event to
-// the correct group's slice by payload.groupId. No-op in mock mode (getSocket()
-// returns null) and while signed out. receivePicks is idempotent, so overlapping with
+// the correct group's slice by payload.groupId. No-op while signed out (getSocket()
+// returns null). receivePicks is idempotent, so overlapping with
 // useSocket's own session:picks handler on the chat page is harmless.
 export function useSessionSync() {
   const userId = useAuthStore((s) => s.user?.id)
@@ -136,11 +136,42 @@ export function useSessionSync() {
     }
     socket.on('session:confirmed', handleConfirmed)
 
+    // A new session started in one of the user's groups. useSocket already adopts
+    // this via the GROUP room while the member is viewing that group — but a member
+    // who has navigated away (Events / Profile / another group) has left the group
+    // room and misses it, leaving that group's slice bound to its now-auto-closed
+    // prior session until a reload. Delivered here via the per-user room
+    // (sessionHandlers), so adopt the new session into that group's slice in the
+    // background. Skip when the member is currently on that group's own pages —
+    // useSocket owns the adoption there, so acting would only cause a redundant load.
+    const handleSessionStart = (p: {
+      groupId: number
+      sessionId?: number | null
+      at?: string
+    }) => {
+      if (p.sessionId == null) return
+      // On that group's chat / agent-chat / results pages, useSocket(groupId) is
+      // mounted and handles this. The slug's tail carries the authoritative id.
+      const m = /^\/groups\/([^/]+)/.exec(pathRef.current)
+      if (m != null && idFromSlug(m[1]) === p.groupId) return
+      const store = useSessionStore.getState()
+      // Duplicate delivery (already bound to this session) — nothing to do.
+      if (store.byGroup[p.groupId]?.activeSessionId === p.sessionId) return
+      useGroupChatStore.getState().receiveSessionStart(p.groupId, p.sessionId)
+      void store.load(p.groupId, p.sessionId, userId ?? store.currentUserId).catch(() => {
+        // Not a member server-side / transient failure — the group's own
+        // useBindSession recovers the correct state on next entry.
+      })
+      if (p.at) store.setStartedAt(p.groupId, p.at)
+    }
+    socket.on('session:start', handleSessionStart)
+
     return () => {
       socket.off('session:picks', handlePicks)
       socket.off('session:member_done', handleMemberDone)
       socket.off('vote:update', handleVote)
       socket.off('session:confirmed', handleConfirmed)
+      socket.off('session:start', handleSessionStart)
     }
   }, [userId, navigate])
 }

@@ -12,7 +12,6 @@ export interface GroupLastMessage {
 export interface Group {
   id: number
   name: string
-  emoji: string
   // When the group was created (ISO). From GET /api/groups[/:id]; may be absent.
   created_at?: string
   // Latest message from the DB (null when the group has no messages yet).

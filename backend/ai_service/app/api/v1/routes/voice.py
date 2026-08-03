@@ -42,13 +42,28 @@ import logging
 import time
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+import httpx
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 
 from app.ai.agents.conversation_agent import _QUESTION_FOR
 from app.ai.taxonomy import expand_cuisine_terms
 from app.ai.voice.keyterms import get_keyterms
 from app.ai.voice.stt import TurnEvent, consume_turns
-from app.ai.voice.tts import ConcurrencyLimitError, stream_audio
+from app.ai.voice.tts import (
+    WAV_OUTPUT,
+    ConcurrencyLimitError,
+    stream_audio,
+    synthesize_bytes,
+)
 from app.ai.voice.voices import resolve_voice_id
 from app.api.deps import require_internal_secret
 from app.core.config import settings
@@ -62,6 +77,7 @@ from app.schemas.voice import (
     SpeechEndFrame,
     TurnFinalFrame,
     TurnResultFrame,
+    VoicePreviewRequest,
 )
 from app.services import session_service
 
@@ -526,3 +542,102 @@ async def _session_guard(conn: _VoiceConnection) -> None:
         conn._audio_q.put_nowait(None)
     with contextlib.suppress(Exception):
         await conn.ws.close(code=1000)
+
+
+# ---------------------------------------------------------------------------
+# Voice preview (HTTP) — "what does this voice sound like?" for the settings
+# screen's voice picker, so choosing one never means starting a real session.
+#
+# Deliberately NOT part of the WS relay above: there is no mic, no STT, no
+# analyze and no Qa write here — just one fixed sentence run through Cartesia and
+# handed back as a whole WAV the browser can drop into an <audio> element.
+# ---------------------------------------------------------------------------
+
+# The line every voice speaks. Fixed on purpose: comparing two voices only works
+# if they say the same thing, and a constant transcript is what makes the cache
+# below a cache. Kept short (~4s) — this is a timbre sample, not a demo.
+PREVIEW_LINE = (
+    "Hi, I'm your GrubGroup agent. Tell me what you're in the mood for, "
+    "and I'll find a spot the whole group will love."
+)
+
+# voice_id -> rendered WAV. The transcript never changes, so a voice is
+# synthesized at most ONCE per process: Cartesia bills per generation and a user
+# auditioning four voices back and forth would otherwise pay for every click.
+# Bounded by the allowlist (`SELECTABLE_VOICES`), so it cannot grow unboundedly.
+_preview_cache: dict[str, bytes] = {}
+# One lock per voice so N simultaneous first-clicks collapse into ONE synthesis
+# instead of N (the cache is only useful if concurrent misses wait for it).
+_preview_locks: dict[str, asyncio.Lock] = {}
+
+
+@router.post("/voice/preview", dependencies=[Depends(require_internal_secret)])
+async def voice_preview(payload: VoicePreviewRequest) -> Response:
+    """Return a short WAV of `PREVIEW_LINE` spoken in the requested voice."""
+    voice_id = resolve_voice_id(payload.voice_id)
+
+    audio = _preview_cache.get(voice_id)
+    if audio is None:
+        lock = _preview_locks.setdefault(voice_id, asyncio.Lock())
+        async with lock:
+            # Re-read under the lock: whoever held it first may have filled it.
+            audio = _preview_cache.get(voice_id)
+            if audio is None:
+                audio = await _synthesize_preview(voice_id)
+                _preview_cache[voice_id] = audio
+
+    return Response(
+        content=audio,
+        media_type="audio/wav",
+        headers={
+            # Immutable for the browser too — same voice, same fixed line. This is
+            # what makes a re-click after a page reload cost nothing at all.
+            "Cache-Control": "public, max-age=86400, immutable",
+            "Content-Disposition": 'inline; filename="voice-preview.wav"',
+        },
+    )
+
+
+async def _synthesize_preview(voice_id: str) -> bytes:
+    """One-shot TTS for the preview line, with upstream failures mapped to 5xx.
+
+    Uses the BYTES endpoint rather than the SSE one the live loop uses: there is
+    no turn to start early, the caller wants a complete file, and a WAV container
+    is directly playable by <audio> (the streaming path emits headerless PCM).
+
+    ``WAV_OUTPUT`` is 44.1 kHz float PCM, so this line is roughly 0.9 MB — large
+    for a preview, and a deliberate choice: it is the exact output format the rest
+    of the service already uses against Cartesia, so it is known-good. A lighter
+    ``{"container": "mp3", "bit_rate": …}`` or 16-bit/24 kHz PCM would cut it by
+    an order of magnitude and is a one-line change, but neither has been verified
+    against the live API here (``tts.py`` documents how easily an unverified
+    output field turns into a hard 400), and both browser and server cache the
+    result after the first play.
+    """
+    try:
+        return await synthesize_bytes(
+            PREVIEW_LINE, voice_id=voice_id, output_format=WAV_OUTPUT
+        )
+    except RuntimeError as exc:  # no CARTESIA_API_KEY configured
+        logger.error("voice preview unavailable: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Voice preview is not configured on this deployment.",
+        ) from exc
+    except httpx.HTTPStatusError as exc:
+        # 429 is Cartesia's concurrency cap — a retry moments later works, so say
+        # "busy" rather than "broken".
+        upstream = exc.response.status_code
+        code = (
+            status.HTTP_503_SERVICE_UNAVAILABLE
+            if upstream == 429
+            else status.HTTP_502_BAD_GATEWAY
+        )
+        logger.warning("voice preview upstream %s: %s", upstream, exc)
+        raise HTTPException(status_code=code, detail="Could not generate a preview.") from exc
+    except Exception as exc:
+        logger.exception("voice preview failed")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not generate a preview.",
+        ) from exc

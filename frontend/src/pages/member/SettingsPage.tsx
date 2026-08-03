@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { motion, useReducedMotion, type Variants } from 'framer-motion'
 import { Button, Icon, Input, Modal, PasswordChecklist } from '@/components/ui'
+import { VoicePreviewButton } from '@/components/voice/VoicePreviewButton'
 import { isPasswordValid } from '@/utils/password'
 import { EASE } from '@/lib/motion'
 import { changeEmail, changePassword, linkSocial } from '@/lib/authClient'
@@ -63,6 +64,10 @@ export function SettingsPage() {
   // `start` frame, so a change takes effect on the next voice session.
   const voiceId = useVoicePrefStore((s) => s.voiceId)
   const setVoiceId = useVoicePrefStore((s) => s.setVoiceId)
+  const selectedVoice = VOICE_OPTIONS.find((v) => v.id === voiceId)
+  // A failed preview (TTS unconfigured, upstream busy) is reported here rather
+  // than inside the button — the control row has no space for a message.
+  const [voicePreviewError, setVoicePreviewError] = useState<string | null>(null)
 
   // Color theme — a per-device rendering preference (themeStore, persisted to
   // localStorage). Changing it re-applies immediately via the store's applyTheme
@@ -331,7 +336,7 @@ export function SettingsPage() {
               ) : (
                 <SettingRow
                   label="Email"
-                  value={user?.email ?? '—'}
+                  value={user?.email ?? 'Not set'}
                   actionLabel="Edit"
                   onAction={openEmailEditor}
                   actionDisabled={!canEditCredentials}
@@ -470,19 +475,38 @@ export function SettingsPage() {
                     </span>
                   </div>
                 </div>
-                <select
-                  aria-label="Agent voice"
-                  value={voiceId}
-                  onChange={(e) => setVoiceId(e.target.value)}
-                  className="h-11 w-full min-w-0 rounded-input border border-border bg-surface-sunken px-3 text-text focus:outline-none focus:ring-2 focus:ring-focus-ring sm:w-auto sm:min-w-56"
-                >
-                  {VOICE_OPTIONS.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.name} ({v.gender})
-                    </option>
-                  ))}
-                </select>
+                {/* Preview sits to the LEFT of the picker: the point is to hear a
+                    voice BEFORE committing to it, and a session is otherwise the
+                    only place you'd find out what it sounds like. */}
+                <div className="flex w-full items-center gap-2 sm:w-auto">
+                  <VoicePreviewButton
+                    voiceId={voiceId}
+                    voiceName={selectedVoice?.name ?? 'the selected voice'}
+                    onError={setVoicePreviewError}
+                    className="shrink-0 border border-border bg-surface-sunken text-text"
+                  />
+                  <select
+                    aria-label="Agent voice"
+                    value={voiceId}
+                    onChange={(e) => {
+                      setVoiceId(e.target.value)
+                      setVoicePreviewError(null)
+                    }}
+                    className="h-11 min-w-0 flex-1 rounded-input border border-border bg-surface-sunken px-3 text-text focus:outline-none focus:ring-2 focus:ring-focus-ring sm:flex-none sm:w-auto sm:min-w-56"
+                  >
+                    {VOICE_OPTIONS.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name} ({v.gender})
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
+              {voicePreviewError && (
+                <p className="px-4 pb-4 text-xs text-error-text" role="status">
+                  {voicePreviewError}
+                </p>
+              )}
             </div>
           </Section>
 

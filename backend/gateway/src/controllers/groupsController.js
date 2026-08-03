@@ -434,12 +434,13 @@ const listGroupSessions = async (req, res, next) => {
 /**
  * GET /api/groups/:group_id/sessions/current — the group's current OPEN session,
  * or null. Lets a client rebind an in-progress session on page reload (the socket
- * `session:start` was already missed and isn't replayed). "Open" = not host-closed:
- * `closed_at` is set ONLY by the host's explicit restaurant confirm (closeSession);
- * a session that finishes by timeout or auto-complete keeps `closed_at = null`, so
- * newest `closed_at: null` is the right "current" signal. Returns 200 with the
- * session or null (not 404) so "no active session" is a normal state. 403 for
- * non-members.
+ * `session:start` was already missed and isn't replayed). "Open" = `closed_at:
+ * null`, which is set either by the host's explicit restaurant confirm
+ * (closeSession) OR when a newer session supersedes it (createSession closes the
+ * group's prior open sessions). A group therefore has at most one open session, so
+ * newest `closed_at: null` is the right "current" signal — no stale open row lingers
+ * to re-bind the inline card after a refresh. Returns 200 with the session or null
+ * (not 404) so "no active session" is a normal state. 403 for non-members.
  */
 const getCurrentGroupSession = async (req, res, next) => {
   const groupId = toPositiveInt(req.params.group_id);

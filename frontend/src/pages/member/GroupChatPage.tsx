@@ -1,14 +1,15 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router'
 import { motion, useReducedMotion } from 'framer-motion'
 import type { Session } from '@/types'
 import { EASE } from '@/lib/motion'
 import { GroupsSidebar } from '@/components/session/GroupsSidebar'
 import { GroupMessageRow } from '@/components/session/GroupMessageRow'
+import { MessagesLoader } from '@/components/session/MessagesLoader'
 import { SessionCard } from '@/components/session/SessionCard'
 import { GroupDetailPanel } from '@/components/session/GroupDetailPanel'
 import { HostSessionModal } from '@/components/session/HostSessionModal'
-import { Icon, IconButton, Spinner } from '@/components/ui'
+import { Icon, IconButton } from '@/components/ui'
 import { AppSplash } from '@/components/layout/AppSplash'
 import { COLUMN_HEADER_H } from '@/components/layout/AppSidebar'
 import { MobileActionSheet } from '@/components/layout/MobileActionSheet'
@@ -33,7 +34,7 @@ import {
 } from '@/stores/sessionStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useGroupId } from '@/hooks/useGroupId'
-import { useGroupsStore, mostRecentGroup } from '@/stores/groupsStore'
+import { useGroupsStore } from '@/stores/groupsStore'
 import {
   useGroupChatStore,
   selectGroupMessages,
@@ -95,6 +96,30 @@ export function GroupChatPage() {
   // the message index where the card belongs (null = not started), so every
   // client shows the card inline at the same point. Broadcasts to the whole room.
   const sessionStartIndex = useGroupChatStore(selectSessionStartIndex(groupId))
+
+  // Where the session card actually sits in the transcript. It must land at the
+  // point the session STARTED — after the messages that predate it, before those
+  // that follow. We derive that split from the session's start timestamp vs each
+  // message's `at`, NOT from the raw message-count the store captured when
+  // session:start arrived: on a reload / late-join the session:start echo (or the
+  // useBindSession rebind) can run BEFORE the async chat:history backlog lands, so
+  // the captured count is 0 and the card gets pinned to the TOP of the chat. That's
+  // the "session card randomly jumps to the top" bug — it shows up on the deployed
+  // site (real network latency reorders the two async loads) but not on localhost
+  // (local latency is ~0, so the loads settle in order). A timestamp split is recomputed
+  // after history replaces the list, so it's reload-safe. sessionStartIndex stays
+  // the "a session card should show" marker (null vs set) below; only its numeric
+  // value was unreliable.
+  const sessionSplitIndex = useMemo(() => {
+    if (sessionStartIndex === null) return null
+    const startMs = startedAt ? Date.parse(startedAt) : NaN
+    // startedAt not loaded yet (a brief window on cold entry): keep the card at the
+    // BOTTOM (all messages above it) until it arrives — never the top. It snaps into
+    // its real position the moment the session loads.
+    if (Number.isNaN(startMs)) return messages.length
+    const i = messages.findIndex((m) => Date.parse(m.at) >= startMs)
+    return i === -1 ? messages.length : i
+  }, [sessionStartIndex, startedAt, messages])
 
   // Auto-scroll to newest. Opening a chat (or switching groups via the groupId
   // reset key, or the initial socket history bulk-load) jumps to the bottom
@@ -239,12 +264,17 @@ export function GroupChatPage() {
     if (sessionPath) navigate(`${sessionPath}/picks`)
   }
 
-  // After leaving, the group is gone from the (refreshed) list. Jump to the next
-  // most-recent group, or /groups when none remain.
+  // After leaving, return to the groups page. We deliberately DON'T jump straight
+  // into a neighbor group's chat here: the store's list refresh has already
+  // dropped this group, which fires the membership guard below (`<Navigate
+  // to="/groups">`). Racing that with an imperative navigate to a *different*
+  // chat could strand the user on a room whose history loader never resolves —
+  // the "keeps loading, won't go back" bug. Sending both to /groups makes the
+  // redirect deterministic; on desktop GroupsIndex forwards to the latest group
+  // the user still belongs to, which loads through the normal join path.
   const handleLeft = () => {
     setEditing(false)
-    const next = mostRecentGroup(useGroupsStore.getState().groups)
-    navigate(next ? `/groups/${toSlugId(next.name, next.id)}` : '/groups')
+    navigate('/groups')
   }
 
   // Bounce a user who isn't a member of the group the URL names — but only once
@@ -304,8 +334,8 @@ export function GroupChatPage() {
             {/* Same rounded emoji badge as the group's sidebar row, so the header
                 matches the chat's list image — larger here, with the name + member
                 count stacked beside it. */}
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[13px] border border-border bg-surface-raised text-xl">
-              {group?.emoji}
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[13px] border border-border bg-surface-raised text-text-muted">
+              <Icon name="message" size={20} />
             </span>
             <div className="flex min-w-0 flex-col">
               <span className="truncate font-display text-item-title font-bold text-text">{groupName}</span>
@@ -347,14 +377,13 @@ export function GroupChatPage() {
             column growing and pushing the composer below the viewport. */}
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 md:p-5">
           {loadingHistory ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 text-text-muted">
-              <Spinner size="md" />
-              <span className="text-caption">Loading messages…</span>
+            <div className="flex flex-1 flex-col items-center justify-center px-2">
+              <MessagesLoader />
             </div>
           ) : (
           <>
           {/* Messages that existed before the session started */}
-          {(sessionStartIndex === null ? messages : messages.slice(0, sessionStartIndex)).map((m) => (
+          {(sessionSplitIndex === null ? messages : messages.slice(0, sessionSplitIndex)).map((m) => (
             <GroupMessageRow
               key={m.id}
               message={m}
@@ -403,7 +432,7 @@ export function GroupChatPage() {
               </motion.div>
 
               {/* Messages that arrived after the session started */}
-              {messages.slice(sessionStartIndex).map((m) => (
+              {messages.slice(sessionSplitIndex ?? messages.length).map((m) => (
                 <GroupMessageRow
                   key={m.id}
                   message={m}

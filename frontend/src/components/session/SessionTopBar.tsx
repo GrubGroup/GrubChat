@@ -1,4 +1,5 @@
 import { Icon } from '@/components/ui'
+import { AgentAvatar } from './AgentAvatar'
 import { SessionTimer } from './SessionTimer'
 import { COLUMN_HEADER_H } from '@/components/layout/AppSidebar'
 import { cn } from '@/utils/cn'
@@ -29,7 +30,7 @@ export function SessionTopBar({ groupId, label = 'Your food agent' }: SessionTop
   const activeSessionId = useSessionStore(selectActiveSessionId(groupId))
   const startedAt = useSessionStore(selectStartedAt(groupId))
   // The timer is now only a FALLBACK: auto-complete generates results the moment
-  // every member finishes (server-side live, simulated in mock). The host-only
+  // every member finishes (server-side). The host-only
   // expiry generation is centralized in the store, shared with the group-chat
   // card timer — see sessionStore.triggerExpiryGeneration.
   const triggerExpiryGeneration = useSessionStore((s) => s.triggerExpiryGeneration)
@@ -44,9 +45,7 @@ export function SessionTopBar({ groupId, label = 'Your food agent' }: SessionTop
       )}
     >
       <div className="flex items-center gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-pill bg-surface-inverse text-[11px] text-on-inverse">
-          🍽
-        </span>
+        <AgentAvatar size={24} />
         <span className="flex items-center gap-1.5 text-body font-semibold text-text">
           {label}
         </span>

@@ -5,14 +5,13 @@ import { Avatar, Badge, Button, Icon } from '@/components/ui'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { BottomTabBar, TabBarSpacer } from '@/components/layout/BottomTabBar'
 import { MobileHeader } from '@/components/layout/MobileHeader'
+import { RestaurantImage } from '@/components/restaurant/RestaurantImage'
 import { memberColor } from '@/constants/memberColors'
+import { restaurantTint } from '@/constants/restaurantVisuals'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useEventListStore } from '@/stores/eventListStore'
 import { cn } from '@/utils/cn'
 import { idFromSlug, toSlugId } from '@/utils/slug'
-
-// A cuisine/dietary emoji is not on the API row, so pick a stable default.
-const EVENT_EMOJI = '🍽️'
 
 // Sidebar subtitle: the event date + time, e.g. "Mon, Jul 28 · 7:00 PM".
 // Invalid dates render "".
@@ -34,14 +33,23 @@ function EventRow({ e, active }: { e: EventRecord; active: boolean }) {
           : 'flex w-full items-center gap-3 border-b border-border px-4 py-3 text-left transition-colors duration-150 ease-out hover:bg-surface-sunken/50'
       }
     >
-      <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-surface-raised text-lg">
-        {EVENT_EMOJI}
-      </span>
+      {/* Photo tile, replacing the one generic 🍽️ every row used to carry. Keyed
+          on the EVENT (rows are too), while the tint underneath stays keyed on the
+          restaurant so a venue keeps one identity colour across the app. */}
+      <RestaurantImage
+        cuisineTags={e.cuisine_tags}
+        identity={e.id}
+        className="h-10 w-10 shrink-0 rounded-2xl border border-border"
+        tintClass={restaurantTint(e.restaurant_id)}
+      />
       <div className="min-w-0 flex-1">
-        <span className="block truncate text-item-title font-semibold text-text">
+        {/* Bigger on mobile (the `md:` variants restore the desktop scale) — the
+            dense phone list read cramped at the desktop 15/12px sizes. Mirrors the
+            Groups row bump so the two tab lists match. */}
+        <span className="block truncate text-section-title font-semibold text-text md:text-item-title">
           {e.restaurant_name}
         </span>
-        <p className="truncate text-caption text-text-muted">{formatEventDate(e.date)}</p>
+        <p className="truncate text-body text-text-muted md:text-caption">{formatEventDate(e.date)}</p>
       </div>
     </Link>
   )
@@ -77,8 +85,12 @@ function EventSection({
 // identical — mirrors the Groups search (components/session/GroupList.tsx).
 function EventSearch({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <div className="px-2.5 py-1.5">
-      <div className="flex items-center gap-2 rounded-[10px] border border-border bg-surface-raised px-2.5 py-2">
+    // MOBILE matches the Explore search field — `h-9`, `text-body`, darker
+    // `surface-sunken` fill, `/75` placeholder, `pt-3.5` off the header. The `md:`
+    // variants restore the ORIGINAL desktop sidebar bar: compact `text-caption`,
+    // `py-2`, lighter `surface-raised`, tighter `pt-1.5`.
+    <div className="px-2.5 pb-1.5 pt-3.5 md:pt-1.5">
+      <div className="flex h-9 items-center gap-2 rounded-[10px] border border-border bg-surface-sunken px-3 md:h-auto md:bg-surface-raised md:px-2.5 md:py-2">
         <span className="text-text-muted">
           <Icon name="search" size={14} />
         </span>
@@ -87,7 +99,7 @@ function EventSearch({ value, onChange }: { value: string; onChange: (v: string)
           onChange={(e) => onChange(e.target.value)}
           placeholder="Search by event or group name"
           aria-label="Search events"
-          className="min-w-0 flex-1 bg-transparent text-caption font-medium text-text placeholder:text-text-muted focus:outline-none"
+          className="min-w-0 flex-1 bg-transparent text-body font-medium text-text placeholder:text-text-muted/75 focus:outline-none md:text-caption md:placeholder:text-text-muted"
         />
       </div>
     </div>
@@ -220,21 +232,46 @@ export function EventsPage() {
               title={active.restaurant_name}
               subtitle={active.group_name ?? undefined}
             />
-            <div className="flex h-56 shrink-0 flex-col justify-end gap-1 bg-surface-inverse p-4 text-on-inverse md:p-6">
-              {/* The time was absolutely positioned top-right, where it collided
-                  with the text-display title at 390px. In flow above the address
-                  it reads as part of the same block at every width. */}
-              {active.time_slot && (
-                <span className="text-caption text-on-inverse/70">{active.time_slot}</span>
-              )}
-              <p className="text-caption text-on-inverse/70">
-                📍 {active.address ?? active.group_name ?? 'Location TBD'}
-              </p>
-              <h1 className="font-display text-section-title font-bold md:text-display">
-                {active.restaurant_name}
-              </h1>
-              {active.occasion && <p className="text-body text-on-inverse/80">{active.occasion}</p>}
-            </div>
+            {/* Hero — a cuisine photo behind the outing's details. The scrim is
+                what keeps the on-inverse text at its contrast ratio over an
+                arbitrary photo; the flat surface-inverse fill stays beneath as
+                the tint, so this reads identically before the image lands. */}
+            <RestaurantImage
+              cuisineTags={active.cuisine_tags}
+              identity={active.id}
+              className="h-64 w-full shrink-0 md:h-72"
+              tintClass="bg-surface-inverse"
+            >
+              <div
+                aria-hidden
+                className="absolute inset-0 bg-gradient-to-t from-surface-inverse via-surface-inverse/75 to-surface-inverse/25"
+              />
+              {/* `justify-between` pulls the date to the TOP and the title cluster to
+                  the BOTTOM, so the block breathes instead of stacking tight in one
+                  corner. The date reads as a standalone pill; the title dominates. */}
+              <div className="relative flex h-full flex-col justify-between p-5 text-on-inverse md:p-7">
+                {active.time_slot && (
+                  <span className="inline-flex w-fit items-center gap-1.5 rounded-pill bg-on-inverse/15 px-3 py-1 text-caption font-semibold backdrop-blur-sm">
+                    <Icon name="calendar" size={13} className="shrink-0" />
+                    {active.time_slot}
+                  </span>
+                )}
+                <div className="flex flex-col gap-2">
+                  {active.occasion && (
+                    <span className="text-overline font-semibold uppercase tracking-[0.12em] text-on-inverse/70">
+                      {active.occasion}
+                    </span>
+                  )}
+                  <h1 className="font-display text-display font-bold leading-tight md:text-4xl">
+                    {active.restaurant_name}
+                  </h1>
+                  <p className="flex items-center gap-1.5 text-body text-on-inverse/85">
+                    <Icon name="map-pin" size={15} className="shrink-0" />
+                    {active.address ?? active.group_name ?? 'Location TBD'}
+                  </p>
+                </div>
+              </div>
+            </RestaurantImage>
 
             <div className="flex flex-col gap-5 p-4 md:p-6">
               <div className="flex flex-wrap gap-2">
@@ -285,6 +322,7 @@ export function EventsPage() {
                         >
                           <Avatar
                             name={name}
+                            src={a.avatar_url}
                             size="sm"
                             colorClass={memberColor(a.id)}
                             className={removed ? 'opacity-50' : undefined}
@@ -350,12 +388,12 @@ function EventsErrorState({ onRetry }: { onRetry: () => void }) {
 function EventsEmptyState() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-surface-raised text-2xl">
-        🍽️
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-surface-raised text-text-muted">
+        <Icon name="calendar" size={24} />
       </span>
       <p className="text-body font-medium text-text">No events yet</p>
       <p className="max-w-xs text-caption text-text-muted">
-        Start a group session and confirm a restaurant — your booked outings will
+        Start a group session and confirm a restaurant. Your booked outings will
         show up here.
       </p>
     </div>

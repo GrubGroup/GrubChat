@@ -1,7 +1,7 @@
 {
   "name": "gateway",
   "version": "0.1.0",
-  "description": "GrubGroup real-time gateway: Express + Socket.IO, frontend-facing JWT auth, proxy to FastAPI ai_service, and single Prisma DB writer.",
+  "description": "GrubGroup real-time gateway: Express + Socket.IO, Better Auth cookie sessions, proxy to FastAPI ai_service, and single Prisma DB writer.",
   "type": "module",
   "main": "server.js",
   "scripts": {

@@ -8,6 +8,8 @@ import {
 } from 'framer-motion'
 import type { RankedPick } from '@/types'
 import { Badge, Button, Icon } from '@/components/ui'
+import { RestaurantImage } from './RestaurantImage'
+import { restaurantTint } from '@/constants/restaurantVisuals'
 import { EASE } from '@/lib/motion'
 import { cn } from '@/utils/cn'
 import { formatHours, isOpenAt } from '@/utils/hours'
@@ -77,17 +79,33 @@ export function RankedRestaurantCard({
         if (e.key === 'Enter' || e.key === ' ') onSelect()
       }}
       className={cn(
-        'flex w-full cursor-pointer flex-col gap-2 border-b border-border px-4 py-4 text-left transition-colors',
+        'flex w-full cursor-pointer gap-3 border-b border-border px-4 py-4 text-left transition-colors',
         selected ? 'border-l-2 border-l-primary bg-surface-raised' : 'hover:bg-surface-raised/50',
       )}
     >
-      <div className="flex items-start gap-3">
-        <span className="pt-0.5 text-body font-semibold text-text-muted">{rank}</span>
-        <div className="min-w-0 flex-1">
+      <span className="shrink-0 pt-0.5 text-body font-semibold text-text-muted">{rank}</span>
+
+      {/* Cuisine thumbnail. The rank + photo are their own columns and everything
+          else stacks in the third — which is why the body rows below carry no
+          left margin (they used to fake this alignment with `ml-6`). */}
+      <RestaurantImage
+        cuisineTags={restaurant.cuisine_tags}
+        identity={restaurant.id}
+        className="h-12 w-12 shrink-0 rounded-xl"
+        tintClass={restaurantTint(restaurant.id)}
+      />
+
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <div>
           <div className="flex items-center justify-between gap-2">
-            <span className="font-display text-[15px] font-semibold text-text">{restaurant.name}</span>
+            {/* truncate + min-w-0: the thumbnail took ~60px off this column, so a
+                long venue name now has to yield to the match score rather than
+                push it off the card. */}
+            <span className="min-w-0 truncate font-display text-[15px] font-semibold text-text">
+              {restaurant.name}
+            </span>
             {pct != null && (
-              <span className="font-display text-section-title font-bold text-primary-text">
+              <span className="shrink-0 font-display text-section-title font-bold text-primary-text">
                 <AnimatedPct value={pct} />
                 <span className="text-caption">%</span>
               </span>
@@ -101,57 +119,55 @@ export function RankedRestaurantCard({
             <span>{priceDollars}</span>
           </div>
         </div>
-      </div>
 
-      {/* vote progress bar — fills from empty on reveal */}
-      <div className="ml-6 h-1 overflow-hidden rounded-pill bg-surface-sunken">
-        <motion.div
-          className="h-full rounded-pill bg-primary/40"
-          initial={{ width: reduce ? `${pct ?? 0}%` : 0 }}
-          animate={{ width: `${pct ?? 0}%` }}
-          transition={{ duration: reduce ? 0 : 0.5, ease: EASE }}
-        />
-      </div>
+        {/* vote progress bar — fills from empty on reveal */}
+        <div className="h-1 overflow-hidden rounded-pill bg-surface-sunken">
+          <motion.div
+            className="h-full rounded-pill bg-primary/40"
+            initial={{ width: reduce ? `${pct ?? 0}%` : 0 }}
+            animate={{ width: `${pct ?? 0}%` }}
+            transition={{ duration: reduce ? 0 : 0.5, ease: EASE }}
+          />
+        </div>
 
-      <div className="ml-6 flex flex-wrap items-center gap-1.5">
-        {restaurant.dietary_tags.slice(0, 3).map((t) => (
-          <Badge key={t} tone="success">
-            {t}
-          </Badge>
-        ))}
-        {showHours && (
-          <Badge tone={open ? 'success' : 'neutral'}>
-            {open ? 'Open' : 'Closed'}
-            {hoursText ? ` · ${hoursText}` : ''}
-          </Badge>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {restaurant.dietary_tags.slice(0, 3).map((t) => (
+            <Badge key={t} tone="success">
+              {t}
+            </Badge>
+          ))}
+          {showHours && (
+            <Badge tone={open ? 'success' : 'neutral'}>
+              {open ? 'Open' : 'Closed'}
+              {hoursText ? ` · ${hoursText}` : ''}
+            </Badge>
+          )}
+        </div>
+
+        {pick.justification && (
+          <p className="line-clamp-2 text-caption text-text-muted">{pick.justification}</p>
         )}
-      </div>
 
-      {pick.justification && (
-        <p className="ml-6 line-clamp-2 text-caption text-text-muted">{pick.justification}</p>
-      )}
+        <div className="flex items-center justify-between">
+          <span className="text-caption text-text-muted">
+            {pick.voteCount} {pick.voteCount === 1 ? 'vote' : 'votes'}
+          </span>
+          <Button
+            variant={hasVoted ? 'primary' : 'ghost'}
+            size="sm"
+            // tap-target: the 36px pill is unchanged; only the hit area reaches 44px.
+            className="tap-target"
+            leftIcon={hasVoted ? <Icon name="check" size={13} /> : undefined}
+            onClick={(e) => {
+              e.stopPropagation()
+              onVote()
+            }}
+          >
+            {hasVoted ? 'Voted' : 'Vote'}
+          </Button>
+        </div>
 
-      <div className="ml-6 flex items-center justify-between">
-        <span className="text-caption text-text-muted">
-          {pick.voteCount} {pick.voteCount === 1 ? 'vote' : 'votes'}
-        </span>
-        <Button
-          variant={hasVoted ? 'primary' : 'ghost'}
-          size="sm"
-          // tap-target: the 36px pill is unchanged; only the hit area reaches 44px.
-          className="tap-target"
-          leftIcon={hasVoted ? <Icon name="check" size={13} /> : undefined}
-          onClick={(e) => {
-            e.stopPropagation()
-            onVote()
-          }}
-        >
-          {hasVoted ? 'Voted' : 'Vote'}
-        </Button>
-      </div>
-
-      {showConfirm && onConfirm && (
-        <div className="ml-6">
+        {showConfirm && onConfirm && (
           <Button
             fullWidth
             variant="accent"
@@ -165,8 +181,8 @@ export function RankedRestaurantCard({
           >
             Confirm this restaurant
           </Button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

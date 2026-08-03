@@ -13,7 +13,6 @@ interface ProfileState {
   likePending: Set<number>
   load: () => Promise<void>
   toggleDietary: (value: string) => void
-  toggleCuisine: (value: string, list: 'preferred' | 'disliked') => void
   // Set a cuisine's explicit state (tri-state picker): 'like' → preferred,
   // 'avoid' → disliked, 'neutral' → removed from both. Always mutually exclusive.
   setCuisineState: (value: string, state: 'neutral' | 'like' | 'avoid') => void
@@ -25,7 +24,6 @@ interface ProfileState {
   // Optimistic: toggles locally at once, then reconciles from the server's returned
   // list; rolls back on failure. Async so callers can await if they need to.
   toggleLikedRestaurant: (id: number) => Promise<void>
-  setPreferredLocation: (loc: LocationPref | undefined) => void
   // Persist the profile. Resolves true on success, false on failure (never
   // throws), so callers can gate navigation / show an error. `saving` is always
   // reset.
@@ -86,29 +84,6 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     const p = get().profile
     if (!p) return
     set({ profile: { ...p, dietary_restrictions: toggleIn(p.dietary_restrictions, value) } })
-  },
-
-  toggleCuisine: (value, list) => {
-    const p = get().profile
-    if (!p) return
-    if (list === 'preferred') {
-      // A cuisine can't be both preferred and disliked.
-      set({
-        profile: {
-          ...p,
-          preferred_cuisines: toggleIn(p.preferred_cuisines, value),
-          disliked_cuisines: p.disliked_cuisines.filter((v) => v !== value),
-        },
-      })
-    } else {
-      set({
-        profile: {
-          ...p,
-          disliked_cuisines: toggleIn(p.disliked_cuisines, value),
-          preferred_cuisines: p.preferred_cuisines.filter((v) => v !== value),
-        },
-      })
-    }
   },
 
   setCuisineState: (value, state) => {
@@ -185,8 +160,6 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       set({ likePending: next })
     }
   },
-
-  setPreferredLocation: (loc) => set({ preferredLocation: loc }),
 
   save: async () => {
     const p = get().profile

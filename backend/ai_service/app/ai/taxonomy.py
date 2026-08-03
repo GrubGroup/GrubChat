@@ -53,8 +53,6 @@ __all__ = [
     "CUISINE_GROUPS",
     "RESTAURANT_STYLES",
     "DIETARY_SYNONYMS",
-    "MASTER_GROUP_KEYS",
-    "MASTER_STYLE_KEYS",
     "PROMPT_CUISINE_GROUP_CATALOG",
     "PROMPT_STYLE_CATALOG",
     "normalize_tag",
@@ -271,7 +269,7 @@ RESTAURANT_STYLES: dict[str, dict[str, list[str]]] = {
 #
 # Cuisine tags stay underscored (`middle_eastern`, `fine_dining`) — they are a
 # soft preference weight, so a near-miss loses a little signal instead of emptying
-# the result set. See scripts/probe_tag_format_mismatch.py.
+# the result set.
 DIETARY_SYNONYMS: dict[str, str] = {
     "veggie": "vegetarian",
     "meatless": "vegetarian",
@@ -298,9 +296,6 @@ DIETARY_SYNONYMS: dict[str, str] = {
     "shellfish_allergy": "shellfish-free",
 }
 
-
-MASTER_GROUP_KEYS: tuple[str, ...] = tuple(CUISINE_GROUPS.keys())
-MASTER_STYLE_KEYS: tuple[str, ...] = tuple(RESTAURANT_STYLES.keys())
 
 
 # ---------------------------------------------------------------------------

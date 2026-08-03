@@ -3,7 +3,6 @@
 from collections.abc import Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
 
 from app.models.recommendation import Recommendation
 from app.models.recommendation_item import RecommendationItem
@@ -48,16 +47,3 @@ async def add_items(
     return rows
 
 
-async def get_with_items(
-    db: AsyncSession, recommendation_id: int
-) -> tuple[Recommendation | None, list[RecommendationItem]]:
-    """Return a recommendation and its items (empty list if none / not found)."""
-    recommendation = await db.get(Recommendation, recommendation_id)
-    if recommendation is None:
-        return None, []
-    result = await db.execute(
-        select(RecommendationItem)
-        .where(RecommendationItem.recommendation_id == recommendation_id)
-        .order_by(RecommendationItem.id)
-    )
-    return recommendation, list(result.scalars().all())

@@ -8,7 +8,7 @@ type InputSize = 'sm' | 'md'
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string
   error?: string
-  hint?: string
+  hint?: ReactNode
   leftIcon?: ReactNode
   /** Field height + text size. 'md' (default) keeps the standard 44px form field;
    * 'sm' is a compact 36px / 14px bar for inline search. */

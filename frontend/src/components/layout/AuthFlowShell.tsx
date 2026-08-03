@@ -47,7 +47,7 @@ const DIETARY_STAGE: Stage = {
   index: 1,
   step: 1,
   title: 'Any dietary needs?',
-  subtitle: "Set once — the AI remembers for every session. You'll never be asked again.",
+  subtitle: "Set it once and the AI remembers for every session. You'll never be asked again.",
 }
 
 const STAGES: Record<string, Stage> = {
@@ -60,7 +60,7 @@ const STAGES: Record<string, Stage> = {
     index: 2,
     step: 2,
     title: 'Cuisines you love or avoid',
-    subtitle: 'Tell your agent what to lean toward and what to skip — all in one place.',
+    subtitle: 'Tell your agent what to lean toward and what to skip, all in one place.',
   },
   '/onboarding/budget': {
     key: 'budget',

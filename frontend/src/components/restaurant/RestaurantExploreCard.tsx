@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import type { Restaurant } from '@/types'
 import { Badge, Card, Icon } from '@/components/ui'
 import { LikeStarButton } from './LikeStarButton'
+import { RestaurantImage } from './RestaurantImage'
 import { DIETARY_RESTRICTIONS, labelFor } from '@/constants/dietary'
 import { POPULAR_MIN, restaurantTint } from '@/constants/restaurantVisuals'
 import { formatDistanceMi } from '@/utils/distance'
@@ -68,18 +69,25 @@ export function RestaurantExploreCard({
       }}
       className="overflow-hidden cursor-pointer transition-[translate,box-shadow] duration-150 ease-out hover:delay-150 hover:shadow-md motion-safe:hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
     >
-      {/* Banner — deterministic tint placeholder, with the state badge overlaid. */}
-      <div className={cn('relative h-28', restaurantTint(r.id))}>
+      {/* Banner — a cuisine photo picked at random for this viewing, with the
+          state badge overlaid. The deterministic tint stays as the backdrop under
+          it so the card still reads while the image decodes. */}
+      <RestaurantImage
+        cuisineTags={r.cuisine_tags}
+        identity={r.id}
+        className="h-28 w-full"
+        tintClass={restaurantTint(r.id)}
+      >
         {liked ? (
           <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-pill bg-primary px-2.5 py-0.5 text-caption font-semibold text-on-primary">
-            <Icon name="star" size={11} filled /> Liked
+            <Icon name="heart" size={11} filled /> Liked
           </span>
         ) : popular ? (
           <span className="absolute left-3 top-3 inline-flex items-center rounded-pill bg-surface-inverse px-2.5 py-0.5 text-caption font-semibold text-white">
             Popular
           </span>
         ) : null}
-      </div>
+      </RestaurantImage>
 
       {/* Body */}
       <div className="p-4">
@@ -87,7 +95,7 @@ export function RestaurantExploreCard({
           <div className="min-w-0">
             <h3 className="truncate font-display text-item-title font-semibold text-text">{r.name}</h3>
             <p className={cn('mt-0.5 text-caption', liked ? 'text-primary' : 'text-text-muted')}>
-              {liked ? 'Your agent factors this into picks' : 'Tap ★ to like — feeds your picks'}
+              {liked ? 'Your agent factors this into picks' : 'Tap ♥ to like. Feeds your picks'}
             </p>
           </div>
           <LikeStarButton

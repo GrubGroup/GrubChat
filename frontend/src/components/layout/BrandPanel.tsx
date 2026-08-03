@@ -81,12 +81,12 @@ export function BrandPanel({ onLogoClick }: BrandPanelProps = {}) {
             {/* Dish chips (back, tilted left) */}
             <FloatCard float={float(0)} rotate={-4} className="left-0 top-3 w-[58%]">
               <div className="flex gap-2 rounded-2xl border border-on-inverse/10 bg-on-inverse/[0.06] p-3 shadow-[0_18px_44px_var(--shadow-tint-deep)] backdrop-blur-sm">
-                {['🍱', '🍕', '🍷'].map((e) => (
+                {(['utensils', 'leaf', 'star'] as const).map((name) => (
                   <span
-                    key={e}
-                    className="flex h-10 w-10 items-center justify-center rounded-xl bg-on-inverse/10 text-xl"
+                    key={name}
+                    className="flex h-10 w-10 items-center justify-center rounded-xl bg-on-inverse/10 text-on-inverse"
                   >
-                    {e}
+                    <Icon name={name} size={20} />
                   </span>
                 ))}
               </div>

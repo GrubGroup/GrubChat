@@ -43,6 +43,7 @@ const emptySignals = (): ExtractedSignals => ({
   disliked_cuisines: [],
   budget_min: null,
   budget_max: null,
+  budget_flexible: null,
   occasion: null,
   location_mode: null,
   location_label: null,
@@ -82,7 +83,7 @@ interface ChatState {
   // Send one member turn to the QA sub-agent (analyze). Async: appends the user
   // message immediately, then the agent reply when it returns — always to the
   // ORIGIN group's slice, even if the user switched groups mid-round-trip.
-  // `sessionId` is the live session; null falls back to the mock/canned path.
+  // `sessionId` is the live session; null routes to the session-less /analyze turn.
   // `source` ('voice' when dictated, 'text' when typed) rides through to the
   // analyze endpoint's `message_source`, which makes the model forgiving of
   // speech-to-text transcription noise.
@@ -242,7 +243,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         const errorNotice: ChatMessage = {
           id: nextId(),
           role: 'system',
-          text: "Couldn't reach your food agent — check your connection and try again.",
+          text: "Couldn't reach your food agent. Check your connection and try again.",
           at: new Date().toISOString(),
         }
         patchChat(groupId, (prev) => ({ messages: [...prev.messages, errorNotice], sending: false }))
@@ -296,7 +297,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       const errorNotice: ChatMessage = {
         id: nextId(),
         role: 'system',
-        text: message ?? "Couldn't reach your food agent — check your connection and try again.",
+        text: message ?? "Couldn't reach your food agent. Check your connection and try again.",
         at: new Date().toISOString(),
       }
       // Clear `sending` and leave signals untouched — same as sendUserMessage's catch.

@@ -100,7 +100,14 @@ export function VoiceComposer({
   }
 
   // Emit "stopped" if the composer unmounts mid-type (e.g. switching rooms).
-  useEffect(() => () => stopTyping(), [])
+  // stopTyping is re-created every render, so hold the latest in a ref and read it
+  // only in the unmount cleanup. Depending on stopTyping directly would re-run the
+  // effect (and fire a spurious onTyping(false)) on every render.
+  const stopTypingRef = useRef(stopTyping)
+  useEffect(() => {
+    stopTypingRef.current = stopTyping
+  })
+  useEffect(() => () => stopTypingRef.current(), [])
 
   const handleSend = () => {
     const value = displayValue.trim()

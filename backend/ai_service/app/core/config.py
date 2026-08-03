@@ -39,9 +39,9 @@ class Settings(BaseSettings):
     # Salesforce internal model gateway (OpenAI-compatible). Used when
     # llm_provider == "salesforce".
     salesforce_api_key: str = ""  # env SALESFORCE_API_KEY
-    salesforce_base_url: str = (
-        "https://eng-ai-model-gateway.sfproxy.devx-preprod.aws-esvc1-useast2.aws.sfdc.cl"
-    )
+    # No default: this is an internal-network gateway, so its host is supplied per
+    # environment via SALESFORCE_BASE_URL. Required when llm_provider == "salesforce".
+    salesforce_base_url: str = ""  # env SALESFORCE_BASE_URL
     node_extra_ca_certs: str = ""  # env NODE_EXTRA_CA_CERTS (corporate CA bundle path)
     # Salesforce chat model (env SALESFORCE_LLM_MODEL).
     salesforce_llm_model: str = Field(
@@ -50,14 +50,14 @@ class Settings(BaseSettings):
     )
 
     # --- Extraction routing (separate from the ranking/justification model) -----
-    # backend/CLAUDE.md's model-routing rule is "cheap model for extraction, strong
-    # model for ranking/justification". The conversational analyze turn is
-    # EXTRACTION, so it routes here rather than to active_llm_model.
+    # Model-routing rule: cheap model for extraction, strong model for
+    # ranking/justification. The conversational analyze turn is EXTRACTION, so it
+    # routes here rather than to active_llm_model.
     #
     # This exists because the turn is output-token-bound (~13 ms/token measured):
     # on the strong model it ran ~3.9 s p50 against a ~700 ms real-time voice
     # budget. gemini-2.5-flash via OpenRouter measured ~916 ms p50 / 1388 ms p95
-    # at full extraction quality (see scripts/probe_combined_fix.py). Provider is
+    # at full extraction quality. Provider is
     # pinned separately because the SAME model was ~3x slower via the Salesforce
     # gateway, so the win comes from the provider+model pair, not the model alone.
     # Set extraction_provider="" to fall back to the main provider/model.
@@ -120,8 +120,8 @@ class Settings(BaseSettings):
     # The agent voice id. NOTE: this default is the id the scaffold shipped with;
     # it currently resolves but is NOT the documented "Skylar" id (db6b0ed5-…). A
     # stale id fails mid-turn as voice_not_found (silent — the agent just can't
-    # speak), so verify with scripts/probe_voice_session.py / GET /voices before a
-    # deploy and override here if it has drifted.
+    # speak), so verify with scripts/probe_voice_session.py before a deploy and
+    # override here if it has drifted.
     cartesia_voice_id: str = "694f9389-aac1-45b6-b726-9d9369183238"  # env CARTESIA_VOICE_ID
     # Cartesia bills TTS by CONCURRENT contexts, one per /tts/sse POST: 2 Free /
     # 3 Pro / 5 Startup / 15 Scale. A whole group finishing together can exceed the

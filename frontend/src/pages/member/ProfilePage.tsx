@@ -5,11 +5,14 @@ import { Avatar, Badge, Button, Icon, Modal } from '@/components/ui'
 import { BottomTabBar, TabBarSpacer } from '@/components/layout/BottomTabBar'
 import { EASE } from '@/lib/motion'
 import { PreferenceTag } from '@/components/profile/PreferenceTag'
+import { RestaurantImage } from '@/components/restaurant/RestaurantImage'
+import { restaurantTint } from '@/constants/restaurantVisuals'
 import { CUISINES, DIETARY_RESTRICTIONS, isAllergen, labelFor } from '@/constants/dietary'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useSignOut } from '@/hooks/useSignOut'
 import { useAuthStore } from '@/stores/authStore'
 import { memberColor } from '@/constants/memberColors'
+import { formatBudget } from '@/utils/formatBudget'
 import { useProfileStore } from '@/stores/profileStore'
 import { useRestaurantStore } from '@/stores/restaurantStore'
 
@@ -237,7 +240,11 @@ export function ProfilePage() {
             <InfoRow
               icon="wallet"
               title="Typical budget"
-              value={`$${profile?.budget_min ?? 0}–${profile?.budget_max ?? 0} per person`}
+              value={
+                formatBudget(profile?.budget_min, profile?.budget_max, {
+                  perPerson: true,
+                }) || 'Not set'
+              }
             />
             <div className="h-px bg-border" />
             <InfoRow
@@ -293,9 +300,12 @@ export function ProfilePage() {
                   <div key={r.id}>
                     {i > 0 && <div className="h-px bg-border" />}
                     <div className="flex items-center gap-3 px-4 py-3.5">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-sunken text-lg">
-                        {r.cuisine_tags?.[0] ? '🍽️' : '🍽️'}
-                      </span>
+                      <RestaurantImage
+                        cuisineTags={r.cuisine_tags}
+                        identity={r.id}
+                        className="h-10 w-10 shrink-0 rounded-xl border border-border"
+                        tintClass={restaurantTint(r.id)}
+                      />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-body font-semibold text-text">{r.name}</p>
                         <p className="truncate text-caption text-text-muted">

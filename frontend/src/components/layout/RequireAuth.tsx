@@ -48,7 +48,7 @@ export function RequireAuth() {
   // they must outlive any single page. This layout route stays mounted across every
   // navigation inside the guard, so the subscriptions survive moving between the
   // group chat, the agent chat and the results screen — which is exactly when their
-  // events arrive. Both no-op while signed out and in mock mode.
+  // events arrive. Both no-op while signed out (getSocket() returns null).
   //
   // Keep the sidebar's group list live: refresh it when the gateway signals this
   // user was added to / removed from a group.

@@ -11,7 +11,8 @@ CURSOR.md
 
 # Environment variables
 .env
-.vscode
+.env.*
+!.env.example
 
 # Logs
 *.log

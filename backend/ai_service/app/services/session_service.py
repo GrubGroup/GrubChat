@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.ai.agents.conversation_agent import analyze_turn
+from app.ai.agents.conversation_agent import (
+    analyze_turn,
+    apply_profile_cuisine_fallback,
+)
+from app.ai.budget import is_no_cap
 from app.ai.taxonomy import expand_cuisine_terms
 from app.crud import session as session_crud
+from app.crud import user as user_crud
 from app.db.session import async_session_factory
 from app.models.qa import Qa
 from app.schemas.ai import AnalyzeRequest, ExtractedSignals
@@ -31,6 +36,11 @@ def _merge_prior_qa(
         return request_signals
     req = request_signals or ExtractedSignals()
 
+    # Resolved once so the derived budget_flexible below reads the SAME value the
+    # signal set is built with (request wins, else the stored row).
+    budget_min = req.budget_min if req.budget_min is not None else qa.budget_min
+    budget_max = req.budget_max if req.budget_max is not None else qa.budget_max
+
     # Base = the stored Qa row mapped onto ExtractedSignals fields (names line up;
     # Qa.location_address -> location_label for the frontend geocode round-trip).
     merged = ExtractedSignals(
@@ -43,8 +53,14 @@ def _merge_prior_qa(
         disliked_cuisines=(
             req.disliked_cuisines or list(qa.disliked_cuisines or [])
         ),
-        budget_min=req.budget_min if req.budget_min is not None else qa.budget_min,
-        budget_max=req.budget_max if req.budget_max is not None else qa.budget_max,
+        budget_min=budget_min,
+        budget_max=budget_max,
+        # Re-derived from the resolved number, never carried on the wire — see
+        # ExtractedSignals.budget_flexible. This function rebuilds the signal set
+        # from an EXPLICIT field list, so anything not enumerated here is silently
+        # dropped on every in-session turn after the first Qa write; a flexible
+        # member would otherwise look "not answered" to the very next turn.
+        budget_flexible=is_no_cap(budget_max) if budget_max is not None else None,
         location_mode=req.location_mode or qa.location_mode,  # type: ignore[arg-type]
         location_label=req.location_label or qa.location_address,
         location_lat=(
@@ -121,6 +137,22 @@ async def analyze_member_turn(
         is_host=is_host,
         host_location_label=host_location_label,
     )
+
+    # "Anything works" -> acknowledge their saved cuisines. When the member
+    # expressed no cuisine preference and none was captured, analyze_turn flags
+    # this instead of looping. We resolve it here (I/O stays out of the agent):
+    # read their durable Profile favorites so the reply can confirm we're falling
+    # back to them ("I'll go with your usual ..."), so a flexible member never has
+    # to re-state a cuisine every session. This does NOT persist a Qa override —
+    # the pipeline already weights the durable Profile at +1, and stacking the +2
+    # session weight would over-represent a member who declined to choose. Lazy on
+    # purpose — the extra read only happens on the flexible turn, not every turn.
+    if result.wants_profile_cuisines and session_id is not None:
+        async with async_session_factory() as db:
+            profile = await user_crud.get_profile_by_user(db, payload.user_id)
+        saved_cuisines = list(profile.preferred_cuisines) if profile else []
+        if saved_cuisines:
+            apply_profile_cuisine_fallback(result, saved_cuisines)
 
     qa_updated = False
     profile_updated = False

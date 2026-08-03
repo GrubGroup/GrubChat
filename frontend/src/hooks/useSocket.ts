@@ -7,9 +7,8 @@ import { useSessionStore } from '@/stores/sessionStore'
 import { useEventListStore } from '@/stores/eventListStore'
 
 // Connects to the gateway socket and wires live group chat + session sync for one
-// group. Under mock mode getSocket() returns null and this is a no-op — the
-// stores are driven locally instead. Joins the group's room on mount, listens for
-// chat + session events, and leaves on unmount.
+// group. While signed out getSocket() returns null and this is a no-op. Joins the
+// group's room on mount, listens for chat + session events, and leaves on unmount.
 export function useSocket(groupId: number) {
   const name = useAuthStore((s) => s.user?.display_name ?? s.user?.username)
   const currentUserId = useAuthStore((s) => s.user?.id)

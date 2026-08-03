@@ -21,8 +21,10 @@ signals unchanged plus a safe reply, so a flaky LLM never turns a turn into a
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
+from app.ai.budget import NO_CAP, is_no_cap
 from app.ai.llm.client import chat_completion, strip_json_fence
 from app.ai.llm.prompts import build_preference_turn_messages
 from app.core.config import settings
@@ -58,6 +60,322 @@ _MISSING_ORDER = [
 
 _VALID_LOCATION_MODES = {"named", "realtime", "unset"}
 
+# Phrases that mean "I have no preference here — you decide". SUBJECT-NEUTRAL on
+# purpose: "I'm flexible" is the canonical answer to BOTH the cuisine question and
+# the budget question, so the phrase alone never tells you which one the member
+# meant. Every caller must scope it: the cuisine path gates on an empty
+# preferred_cuisines set, and _declares_no_budget_cap gates on budget being the
+# question actually on the table (or the sentence naming money) — otherwise one
+# "I'm flexible" at the cuisine step would silently erase the member's budget,
+# and vice versa.
+#
+# Matched as space-padded substrings against a normalized message (apostrophes
+# dropped, non-alphanumerics -> single spaces), so "I'm flexible" / "don't care"
+# reduce to "im flexible" / "dont care". This is the deterministic backstop; the
+# LLM's own `no_cuisine_preference` / `budget_flexible` flags (see the prompt)
+# cover paraphrases the list misses.
+_FLEXIBLE_PHRASES = frozenset(
+    {
+        "anything works",
+        "anything is fine",
+        "anything fine",
+        "anything is good",
+        "anything good",
+        "anything is ok",
+        "anything is okay",
+        "anything goes",
+        "eat anything",
+        "open to anything",
+        "open to whatever",
+        "im flexible",
+        "i am flexible",
+        "flexible",
+        "no preference",
+        "no preferences",
+        "no strong preference",
+        "no strong feelings",
+        "dont have a preference",
+        "dont have any preference",
+        "dont have preferences",
+        "no opinion",
+        "dont care",
+        "doesnt matter",
+        "does not matter",
+        "no matter",
+        "whatever",
+        "whatever works",
+        "you decide",
+        "you choose",
+        "you pick",
+        "up to you",
+        "your call",
+        "surprise me",
+        "im open",
+        "i am open",
+        "im not picky",
+        "i am not picky",
+        "not picky",
+        "im easy",
+        "i am easy",
+    }
+)
+
+
+def _normalize_for_match(message: str) -> str:
+    """Lowercase, drop apostrophes, and collapse non-alphanumerics to spaces.
+
+    Space-padded so the phrase set can be tested as whole-token substrings
+    ("flexible" matches " flexible " but not "inflexible").
+    """
+    out = []
+    for ch in message.lower():
+        out.append(ch if ch.isalnum() else " " if ch not in "'’" else "")
+    return f" {' '.join(''.join(out).split())} "
+
+
+def _expresses_flexibility(message: str) -> bool:
+    """True when the message is a bare "no preference / you decide" statement.
+
+    Subject-neutral — see _FLEXIBLE_PHRASES. Callers must decide WHICH question
+    the flexibility applies to.
+    """
+    if not message:
+        return False
+    norm = _normalize_for_match(message)
+    return any(f" {phrase} " in norm for phrase in _FLEXIBLE_PHRASES)
+
+
+# Money vocabulary, used ONLY to classify what the AGENT just asked about (see
+# _agent_asked_about_budget) — never to judge what the USER meant. That
+# asymmetry is deliberate: the agent's questions are our own text, so matching
+# them is safe, whereas "is this user sentence about money?" is direction-blind
+# and cannot tell "money's no object" from "just keep it cheap". Single tokens,
+# matched against the same normalized/space-padded form as _FLEXIBLE_PHRASES; a
+# literal "$" is checked separately since normalization strips it.
+_MONEY_TERMS = frozenset(
+    {
+        "budget",
+        "price",
+        "prices",
+        "priced",
+        "pricey",
+        "cost",
+        "costs",
+        "expensive",
+        "cheap",
+        "money",
+        "spend",
+        "spending",
+        "afford",
+        "dollar",
+        "dollars",
+        "splurge",
+        "bill",
+        "tab",
+    }
+)
+
+
+def _mentions_money(message: str) -> bool:
+    """True when the text names price/money in any form (incl. a bare "$")."""
+    if not message:
+        return False
+    if "$" in message:
+        return True
+    norm = _normalize_for_match(message)
+    return any(f" {term} " in norm for term in _MONEY_TERMS)
+
+
+# Phrases asking for something CHEAP. These are the OPPOSITE of "no ceiling", and
+# they routinely ride along with a flexibility phrase ("doesn't matter, as long
+# as it's cheap" / "I'm easy, just keep it cheap"), so they VETO the no-cap
+# inference outright — otherwise the member's stated ceiling would be erased by a
+# sentence that was tightening it.
+_CHEAPNESS_PHRASES = frozenset(
+    {
+        "cheap",
+        "cheaper",
+        "cheapest",
+        "inexpensive",
+        "affordable",
+        "budget friendly",
+        "on a budget",
+        "tight budget",
+        "frugal",
+        "economical",
+        "not expensive",
+        "nothing expensive",
+        "not too expensive",
+        "nothing too expensive",
+        "nothing pricey",
+        "not pricey",
+        "keep it low",
+        "keep costs down",
+        "keep the cost down",
+        "save money",
+    }
+)
+
+
+def _prefers_cheap(message: str) -> bool:
+    """True when the message asks for something CHEAP (never a no-ceiling answer)."""
+    if not message:
+        return False
+    norm = _normalize_for_match(message)
+    return any(f" {phrase} " in norm for phrase in _CHEAPNESS_PHRASES)
+
+
+# Agent replies are shaped "confirm what I captured. next question?", and the
+# confirm half routinely names the budget it just recorded ("Got it, ...; budget
+# up to $20. Any spot that's more convenient for you?"). So only the TRAILING
+# question tells us what was asked — matching the whole reply would read that
+# confirmation as a budget question and mis-scope the next answer.
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
+
+
+def _agent_asked_about_budget(
+    conversation_history: list[dict[str, Any]] | None,
+) -> bool | None:
+    """Was the agent's last question the budget one? None when it can't be told.
+
+    Reads the last assistant turn and tests ONLY its final interrogative sentence
+    for money vocabulary. This is the reliable signal for "which question is on
+    the table", and it beats re-deriving it from the stored signals: the server's
+    ask-order recompute (_compute_missing) counts an EMPTY cuisine list as still
+    missing, while an intentional "nothing I avoid" answer legitimately leaves it
+    empty — so for any member who answered that way, a recomputed pending
+    question is stuck on cuisines for the rest of the conversation even though
+    the agent has long since moved on to budget.
+    """
+    for turn in reversed(conversation_history or []):
+        if turn.get("role") != "assistant":
+            continue
+        questions = [
+            part
+            for part in _SENTENCE_SPLIT.split(str(turn.get("content") or ""))
+            if part.strip().endswith("?")
+        ]
+        return _mentions_money(questions[-1]) if questions else None
+    return None
+
+
+# Declarations that are unambiguously "no price ceiling" ON THEIR OWN — they name
+# money AND flexibility in one phrase, so unlike _FLEXIBLE_PHRASES they need no
+# further scoping and count whatever question the agent is on. Written in the
+# NORMALIZED form _normalize_for_match produces: apostrophes are DROPPED, so
+# "money's no object" must be spelled "moneys no object" here.
+_BUDGET_FLEXIBLE_PHRASES = frozenset(
+    {
+        "no budget",
+        "no budget limit",
+        "no price limit",
+        "no spending limit",
+        "no limit on price",
+        "money is no object",
+        "moneys no object",
+        "price is no object",
+        "cost is no object",
+        "price isnt a concern",
+        "price is not a concern",
+        "cost isnt a concern",
+        "cost is not a concern",
+        "price doesnt matter",
+        "price does not matter",
+        "cost doesnt matter",
+        "cost does not matter",
+        "money doesnt matter",
+        "money does not matter",
+        "whatever it costs",
+        "spend whatever",
+        "any price",
+        "dont care about the price",
+        "dont care what it costs",
+        "dont care about cost",
+        "not worried about price",
+        "not worried about cost",
+        "price is flexible",
+        "budget is flexible",
+        "budget isnt a concern",
+        "budget is not a concern",
+        "budget isnt an issue",
+        "budget is not an issue",
+        "budget doesnt matter",
+        "budget does not matter",
+        "dont have a budget",
+        "do not have a budget",
+        "no budget in mind",
+        "flexible on budget",
+        "flexible on price",
+        "flexible on cost",
+        "flexible with budget",
+        "flexible with price",
+        "no price cap",
+        "no cap on price",
+    }
+)
+
+
+def _expresses_budget_flexibility(message: str) -> bool:
+    """True for a money-specific "no ceiling" declaration (self-corroborating)."""
+    if not message:
+        return False
+    norm = _normalize_for_match(message)
+    return any(f" {phrase} " in norm for phrase in _BUDGET_FLEXIBLE_PHRASES)
+
+
+def _parsed_no_cuisine_pref(raw_signals: Any) -> bool:
+    """Read the LLM's optional `no_cuisine_preference` flag from the parse."""
+    return isinstance(raw_signals, dict) and bool(
+        raw_signals.get("no_cuisine_preference")
+    )
+
+
+def _declares_no_budget_cap(
+    raw_signals: Any, message: str, *, budget_pending: bool
+) -> bool:
+    """True when this turn declares NO price ceiling ("I'm flexible" on budget).
+
+    Three rules, in order:
+
+      1. A CHEAPNESS request vetoes everything. "Doesn't matter, as long as it's
+         cheap" is a tighter ceiling, not the absence of one, and it matches the
+         flexibility phrases; reading it as no-cap would invert what the member
+         said.
+      2. A money-specific declaration ("price isn't a concern", "money's no
+         object") stands on its own — it names both flexibility and money, so it
+         cannot be about anything else.
+      3. A BARE flexibility signal — the LLM's `budget_flexible` flag, or a
+         subject-neutral phrase like "I'm flexible" — counts only when BUDGET is
+         the question on the table. Honoring one wrongly silently deletes a
+         member's stated ceiling for the whole session, and nothing re-asks it
+         afterwards (a no-cap budget counts as answered).
+
+    Rule 3's gate is what stops a plain "I'm flexible" at the CUISINE step —
+    which the prompt itself teaches the model to read as flexibility, and which
+    _FLEXIBLE_PHRASES also matches — from zeroing the member's budget as a side
+    effect of an answer about food.
+
+    Note what is deliberately NOT a corroborator: "the message mentions money".
+    That test cannot tell a loosening from a tightening ("just keep it cheap"
+    mentions money too), and a false positive here is the expensive direction.
+    """
+    if _prefers_cheap(message):
+        return False
+    if _expresses_budget_flexibility(message):
+        return True
+    bare = _parsed_budget_flexible(raw_signals) or _expresses_flexibility(message)
+    return bare and budget_pending
+
+
+def _parsed_budget_flexible(raw_signals: Any) -> bool:
+    """Read the LLM's optional `budget_flexible` flag from the parse.
+
+    Strict `is True`: a stringly-typed "false" or a stray 1 must never zero
+    someone's budget. The safe failure direction is ignoring a real flexible
+    answer (the member can restate it), never erasing a stated ceiling.
+    """
+    return isinstance(raw_signals, dict) and raw_signals.get("budget_flexible") is True
+
 
 def _ask_order(is_host: bool) -> list[str]:
     """The signals this member's agent asks about, in ask-order.
@@ -84,12 +402,21 @@ class TurnResult:
         agent_reply: str,
         missing_signals: list[str],
         degraded: bool = False,
+        wants_profile_cuisines: bool = False,
     ) -> None:
         self.signals = signals
         self.agent_reply = agent_reply
         self.missing_signals = missing_signals
         # True when the LLM output was unusable and we fell back to prior signals.
         self.degraded = degraded
+        # True when the member expressed NO cuisine preference ("anything works",
+        # "I'm flexible") and none was captured, so the caller should acknowledge
+        # their durable Profile favorites in the reply (see
+        # apply_profile_cuisine_fallback — chat-layer only; the profile is already
+        # the +1 ranking baseline, so nothing is persisted). Kept as a
+        # request-for-data flag rather than doing the DB read here so analyze_turn
+        # stays pure/no-I/O.
+        self.wants_profile_cuisines = wants_profile_cuisines
 
 
 def _clean_tags(value: Any) -> list[str] | None:
@@ -251,7 +578,13 @@ def _coerce_int(value: Any) -> int | None:
         return None
 
 
-def _reconcile(prior: ExtractedSignals, parsed: dict[str, Any]) -> ExtractedSignals:
+def _reconcile(
+    prior: ExtractedSignals,
+    parsed: dict[str, Any],
+    *,
+    message: str = "",
+    budget_pending: bool = False,
+) -> ExtractedSignals:
     """Merge the LLM's updated signals over the prior set, field by field.
 
     The prompt asks the model to return the FULL updated set (prior + this turn,
@@ -261,6 +594,12 @@ def _reconcile(prior: ExtractedSignals, parsed: dict[str, Any]) -> ExtractedSign
     supplies a non-null value, so a partial turn never nulls out earlier answers.
     occasion is never read from the parse at all: it's a pre-session modal field
     (host's Qa row), not a conversational one, so no chat turn can set it.
+
+    BUDGET is the exception to "scalars only change when the model supplies one":
+    a flexibility declaration is an ANSWER that stores the NO_CAP sentinel, and
+    it has to be able to overwrite a stored number. `message` / `budget_pending`
+    are threaded in so that declaration can be corroborated — see
+    _declares_no_budget_cap.
 
     Cuisine lists are additionally EXPANDED through the taxonomy (broad group
     terms like "asian" -> their member cuisines; style terms like "bbq" ->
@@ -329,12 +668,40 @@ def _reconcile(prior: ExtractedSignals, parsed: dict[str, Any]) -> ExtractedSign
         _clean_removals(parsed.get("removed_dietary")),
     )
 
+    # Budget. "I'm flexible" stores the NO_CAP sentinel, which is what DROPS the
+    # member's durable Profile budget for this session — a null/absent budget
+    # would instead fall back to it (MemberPref.effective_budget_cap).
+    #
+    # A number the member names THIS turn always beats the declaration ("I'm
+    # flexible, but let's stay under $30" -> a $30 ceiling). It is compared
+    # against the PRIOR value because the prompt asks the model to echo unchanged
+    # fields back verbatim, so a budget_max equal to what we already had is a
+    # carry-through, not a fresh answer — without that check, "actually I'm
+    # flexible" after a stored $20 would be silently defeated by the echo.
+    # Only a new CEILING counts as "they named a number": budget_min is a floor,
+    # which nothing in the ranking reads, so a model that renders "I'm flexible"
+    # as a lone budget_min must not be able to veto the declaration.
     bmin = _coerce_int(parsed.get("budget_min"))
-    if bmin is not None:
-        signals.budget_min = bmin
     bmax = _coerce_int(parsed.get("budget_max"))
-    if bmax is not None:
-        signals.budget_max = bmax
+    named_cap = bmax is not None and bmax != prior.budget_max
+    if not named_cap and _declares_no_budget_cap(
+        parsed, message, budget_pending=budget_pending
+    ):
+        signals.budget_min = NO_CAP
+        signals.budget_max = NO_CAP
+    else:
+        if bmin is not None:
+            signals.budget_min = bmin
+        if bmax is not None:
+            signals.budget_max = bmax
+    # SINGLE SOURCE OF TRUTH: only the numbers persist (Qa has just budget_min /
+    # budget_max), so the wire flag is always re-derived from them — here and in
+    # session_service._merge_prior_qa — and can never desync from storage. None
+    # (not False) while the budget question is unanswered, matching the field's
+    # contract and the sibling derivation.
+    signals.budget_flexible = (
+        is_no_cap(signals.budget_max) if signals.budget_max is not None else None
+    )
 
     # location_label is the only free-text field this conversation captures.
     # occasion is deliberately NOT read here — it's set once in the pre-session
@@ -414,21 +781,37 @@ def _summarize_tags(tags: list[str], *, limit: int = 4) -> str:
     return f"{shown}, +{len(pretty) - limit} more"
 
 
-def _fallback_reply(signals: ExtractedSignals, missing: list[str]) -> str:
-    """Deterministic reply used only when the LLM's own reply is unusable.
+def _fallback_reply(
+    signals: ExtractedSignals,
+    missing: list[str],
+    *,
+    profile_cuisines: list[str] | None = None,
+) -> str:
+    """Deterministic reply used when the server authors the line itself.
 
     Confirms whatever is now captured and asks the next missing question — the
     same confirm-then-ask shape the prompt requests, so a degraded turn still
-    behaves correctly for the user.
+    behaves correctly for the user. `profile_cuisines`, when given, is the
+    member's saved-Profile favorites to acknowledge after a "no preference" turn;
+    it is phrased as "your usual" and takes the place of the extracted-preference
+    bit. These are display-only and deliberately NOT in `signals`: the fallback is
+    not persisted as a session override (see apply_profile_cuisine_fallback), so
+    the ranking uses the Profile's own +1 weight rather than a heavier Qa +2.
     """
     bits: list[str] = []
     if signals.disliked_cuisines:
         bits.append(f"you don't like {_summarize_tags(signals.disliked_cuisines)}")
-    if signals.preferred_cuisines:
+    if profile_cuisines:
+        bits.append(f"I'll go with your usual {_summarize_tags(profile_cuisines)}")
+    elif signals.preferred_cuisines:
         bits.append(f"you're into {_summarize_tags(signals.preferred_cuisines)}")
     if signals.dietary_restrictions:
         bits.append(f"dietary: {', '.join(signals.dietary_restrictions)}")
-    if signals.budget_max is not None:
+    # NO_CAP has to be read BEFORE the numeric branches or a flexible member is
+    # told "budget up to $0" — the opposite of what they said.
+    if is_no_cap(signals.budget_max):
+        bits.append("budget is flexible")
+    elif signals.budget_max is not None:
         bits.append(f"budget up to ${signals.budget_max}")
     elif signals.budget_min is not None:
         bits.append(f"budget from ${signals.budget_min}")
@@ -437,6 +820,39 @@ def _fallback_reply(signals: ExtractedSignals, missing: list[str]) -> str:
     if missing:
         return f"{confirm} {_QUESTION_FOR.get(missing[0], 'What else matters to you?')}"
     return f"{confirm} That's everything I need — thanks!"
+
+
+def apply_profile_cuisine_fallback(
+    result: TurnResult, profile_cuisines: list[str]
+) -> TurnResult:
+    """Acknowledge a flexible member's saved cuisines WITHOUT boosting their weight.
+
+    Called by the service ONLY when ``result.wants_profile_cuisines`` is set (the
+    member said "anything works" / "I'm flexible" and named nothing) AND their
+    Profile has saved favorites. This is what lets a member skip re-stating a
+    cuisine every session.
+
+    Deliberately CHAT-LAYER ONLY: it re-authors the reply to confirm we're falling
+    back to their usual favorites and leaves the cuisine question answered
+    (analyze_turn already dropped it from missing), but it does NOT write those
+    cuisines into ``result.signals`` (and thus never into the session Qa row). The
+    recommendation pipeline already counts every member's durable Profile cuisines
+    at the base +1 weight, so the profile is used at ranking regardless; persisting
+    them as a Qa override would stack the +2 session weight on top (=+3), letting a
+    member who DECLINED to choose outrank one who actively did — the opposite of
+    "flexible". Mutates and returns ``result``; a no-op if nothing nameable remains.
+    """
+    # Display-only, unexpanded (readable), and never a cuisine they just vetoed —
+    # an explicit "no sushi, otherwise anything" must not be echoed back as a like.
+    disliked = set(result.signals.disliked_cuisines)
+    favorites = [c for c in _dedupe_lower(profile_cuisines) if c not in disliked]
+    if not favorites:
+        return result
+    result.wants_profile_cuisines = False
+    result.agent_reply = _fallback_reply(
+        result.signals, result.missing_signals, profile_cuisines=favorites
+    )
+    return result
 
 
 # Output-token cap for the analyze call. The turn's response is small — a
@@ -512,6 +928,19 @@ async def analyze_turn(
     history = [t.model_dump() for t in (conversation_history or [])]
     fast = settings.analyze_low_latency if low_latency is None else low_latency
 
+    # Which question this message is answering — used to scope a bare "I'm
+    # flexible" to the right signal (see _declares_no_budget_cap). Read from what
+    # the agent ACTUALLY asked last turn; only when there is no history to read
+    # (the opening turn, or a caller that doesn't replay it) do we fall back to
+    # recomputing the ask-order, which can disagree with the agent (an
+    # intentional "nothing I avoid" leaves an empty list that _compute_missing
+    # still calls missing, pinning the recomputed question on cuisines forever).
+    asked_budget = _agent_asked_about_budget(history)
+    if asked_budget is None:
+        pending = _compute_missing(prior, is_host=is_host)
+        asked_budget = bool(pending) and pending[0] == "budget"
+    budget_pending = asked_budget
+
     messages = build_preference_turn_messages(
         message,
         message_source=message_source,
@@ -552,12 +981,35 @@ async def analyze_turn(
         parsed = None
 
     if not isinstance(parsed, dict):
+        signals = prior
         missing = _compute_missing(prior, is_host=is_host)
+        # Even on a degraded (LLM-unusable) turn, honor a "no cuisine preference"
+        # message so a flaky LLM doesn't strand the member in the ask loop: drop
+        # the cuisine question and flag the Profile-favorites acknowledgment
+        # (message-only, since there is no parse to read a flag from).
+        wants_profile_cuisines = (
+            _expresses_flexibility(message) and not prior.preferred_cuisines
+        )
+        if wants_profile_cuisines:
+            missing = [m for m in missing if m != "preferred_cuisines"]
+        # Same for a budget flexibility declaration. This one WRITES (NO_CAP onto
+        # a copy of the prior signals) rather than just dropping the question:
+        # marking budget answered without storing the sentinel would leave the
+        # member's Profile cap silently in force — the exact bug being fixed. Safe
+        # on a degraded turn because the detection is fully deterministic (phrase
+        # list + the corroboration gate), with no parse involved.
+        if _declares_no_budget_cap({}, message, budget_pending=budget_pending):
+            signals = prior.model_copy(deep=True)
+            signals.budget_min = NO_CAP
+            signals.budget_max = NO_CAP
+            signals.budget_flexible = True
+            missing = [m for m in missing if m != "budget"]
         return TurnResult(
-            signals=prior,
-            agent_reply=_fallback_reply(prior, missing),
+            signals=signals,
+            agent_reply=_fallback_reply(signals, missing),
             missing_signals=missing,
             degraded=True,
+            wants_profile_cuisines=wants_profile_cuisines,
         )
 
     raw_signals = parsed.get("extracted_signals")
@@ -565,15 +1017,43 @@ async def analyze_turn(
         # Tolerate a model that put the signal fields at the top level.
         raw_signals = parsed
 
-    signals = _reconcile(prior, raw_signals)
+    signals = _reconcile(
+        prior, raw_signals, message=message, budget_pending=budget_pending
+    )
     missing = _clean_missing(parsed.get("missing_signals"), signals, is_host=is_host)
 
-    if fast:
+    # "Anything works" handling: when the member expressed no cuisine preference
+    # (a flexibility phrase in the message, or the LLM's no_cuisine_preference
+    # flag) and none was captured this turn, treat the cuisine question as
+    # ANSWERED — dropping it from missing stops the re-ask loop — and flag that the
+    # caller should acknowledge the member's saved-Profile favorites in the reply
+    # (used at ranking as the +1 baseline; not persisted as a session override).
+    wants_profile_cuisines = (
+        _expresses_flexibility(message) or _parsed_no_cuisine_pref(raw_signals)
+    ) and not signals.preferred_cuisines
+    if wants_profile_cuisines:
+        missing = [m for m in missing if m != "preferred_cuisines"]
+
+    # A no-cap budget IS an answer. _clean_missing returns the MODEL's list
+    # verbatim whenever it's a list, and the model — having been told to leave
+    # budget_min/budget_max null when flexible — routinely still reports "budget"
+    # as missing. Without this backstop the agent confirms "budget is flexible"
+    # and then re-asks the price range in the same breath, every turn, and never
+    # reaches the "that's everything I need" wrap-up. Mirrors the cuisine
+    # backstop above; _compute_missing (the fallback path) already agrees, since
+    # NO_CAP is `0 is not None`.
+    if is_no_cap(signals.budget_max):
+        missing = [m for m in missing if m != "budget"]
+
+    if fast or wants_profile_cuisines:
         # Low-latency mode asked the model NOT to write a reply, so the server
         # authors the whole line. _fallback_reply already produces exactly the
         # confirm-then-ask shape the prompt otherwise requests, and it walks the
         # canonical ask-order — which also makes the spoken wording deterministic
-        # (what the voice/TTS path needs) rather than a model paraphrase.
+        # (what the voice/TTS path needs) rather than a model paraphrase. We also
+        # author it when wants_profile_cuisines is set, so the LLM's reply (written
+        # before the Profile back-fill, and likely still re-asking cuisine) can't
+        # leak through ahead of apply_profile_cuisine_fallback.
         reply = _fallback_reply(signals, missing)
     else:
         reply = parsed.get("agent_reply")
@@ -586,4 +1066,5 @@ async def analyze_turn(
         signals=signals,
         agent_reply=reply,
         missing_signals=missing,
+        wants_profile_cuisines=wants_profile_cuisines,
     )

@@ -86,6 +86,10 @@ export function ExplorePage() {
       aria-label="Search restaurants or cuisines"
       value={search}
       onChange={(e) => setSearch(e.target.value)}
+      // Darker `surface-sunken` fill on mobile; the `md:` variant lifts it to the
+      // lighter `surface-raised` in the desktop header (it's ordered after the
+      // base utility, so it wins at ≥md). Keeps Groups + Events consistent.
+      className="md:bg-surface-raised"
     />
   )
 
@@ -231,8 +235,8 @@ function SkeletonGrid() {
 function ExploreErrorState({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-surface-raised text-2xl">
-        🍽️
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-surface-raised text-text-muted">
+        <Icon name="utensils" size={24} />
       </span>
       <p className="text-body font-medium text-text">Couldn't load restaurants</p>
       <p className="max-w-xs text-caption text-text-muted">
@@ -249,8 +253,8 @@ function ExploreErrorState({ onRetry }: { onRetry: () => void }) {
 function ExploreEmptyResults({ onClear }: { onClear: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-surface-raised text-2xl">
-        🔍
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-surface-raised text-text-muted">
+        <Icon name="search" size={24} />
       </span>
       <p className="text-body font-medium text-text">No places match your filters</p>
       <p className="max-w-xs text-caption text-text-muted">

@@ -38,11 +38,15 @@ export type IconName =
   | 'settings'
   | 'user'
   | 'speaker'
+  | 'play'
+  | 'pause'
   | 'sun'
   | 'moon'
   | 'monitor'
   | 'eye'
   | 'eye-off'
+  | 'leaf'
+  | 'ban'
 
 const PATHS: Record<IconName, ReactSvgContent> = {
   mic: (
@@ -214,6 +218,17 @@ const PATHS: Record<IconName, ReactSvgContent> = {
       <path d="M19 5a9 9 0 0 1 0 14" />
     </>
   ),
+  // Play / pause — the voice-preview button's two states. The triangle is a
+  // CLOSED path, so it works stroked or filled as-is; pause's two bars are
+  // zero-area strokes and would disappear under fill, hence the FILLED_PATHS
+  // entry below.
+  play: <path d="M8 5.5v13l11-6.5Z" />,
+  pause: (
+    <>
+      <path d="M9.5 5.5v13" />
+      <path d="M14.5 5.5v13" />
+    </>
+  ),
   // Sun — the "Light" theme segment. A disc plus eight radiating rays.
   sun: (
     <>
@@ -247,6 +262,20 @@ const PATHS: Record<IconName, ReactSvgContent> = {
       <path d="M8 21h8M12 17v4" />
     </>
   ),
+  // Leaf — the vegan / plant-based dietary tag. A leaf blade with a center vein.
+  leaf: (
+    <>
+      <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+      <path d="M2 21c0-3 1.85-5.36 5.08-6" />
+    </>
+  ),
+  // Ban / no-entry — the "avoid" dietary tag (allergen, dislike). Circle + slash.
+  ban: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="m5.6 5.6 12.8 12.8" />
+    </>
+  ),
 }
 
 // A few icons only make sense as a clean SOLID glyph when `filled` (their stroke
@@ -254,6 +283,14 @@ const PATHS: Record<IconName, ReactSvgContent> = {
 // purpose-built filled variants for those; everything else just fills its stroke
 // path. Needed by the tab/rail icons (users, calendar, user) and the mic.
 const FILLED_PATHS: Partial<Record<IconName, ReactSvgContent>> = {
+  // Solid pause: the outline's two bars are zero-area lines, which vanish under
+  // fill. Rects of the same visual weight keep the glyph identical either way.
+  pause: (
+    <>
+      <rect x="8" y="5" width="3.2" height="14" rx="1.2" />
+      <rect x="12.8" y="5" width="3.2" height="14" rx="1.2" />
+    </>
+  ),
   // Solid mic: filled capsule head + a solid "cradle" wedge (the u-shaped stand
   // ring, drawn as a closed shape so no open arc self-intersects) + a short
   // filled stem/base. Built purpose-first so the outline's open base tick

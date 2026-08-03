@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router'
 import { motion, useReducedMotion } from 'framer-motion'
 import { GroupsSidebar } from '@/components/session/GroupsSidebar'
+import { PicksLoader } from '@/components/session/PicksLoader'
 import { RankedRestaurantCard } from '@/components/restaurant/RankedRestaurantCard'
 import { RestaurantHeader } from '@/components/restaurant/RestaurantHeader'
 import { MenuList } from '@/components/restaurant/MenuList'
 import { MobileHeader } from '@/components/layout/MobileHeader'
-import { Button, Icon, Spinner } from '@/components/ui'
+import { Button, Icon } from '@/components/ui'
 import { useDismissOnBack } from '@/hooks/useDismissOnBack'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { cn } from '@/utils/cn'
@@ -19,10 +20,12 @@ import {
   selectRecommendationError,
   selectVotes,
   selectIsHost,
+  selectMembers,
 } from '@/stores/sessionStore'
 import { useRestaurantStore } from '@/stores/restaurantStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useGroupsStore } from '@/stores/groupsStore'
+import { useGroupChatStore } from '@/stores/groupChatStore'
 import { toSlugId } from '@/utils/slug'
 import { useGroupId } from '@/hooks/useGroupId'
 import { useSessionId } from '@/hooks/useSessionId'
@@ -30,6 +33,7 @@ import { useBindSession } from '@/hooks/useBindSession'
 import { useSocket } from '@/hooks/useSocket'
 import { EASE } from '@/lib/motion'
 import { closeSession } from '@/api/sessionApi'
+import { isAxiosError } from 'axios'
 
 export function TopPicksPage() {
   const reduce = useReducedMotion()
@@ -52,8 +56,8 @@ export function TopPicksPage() {
   const loadRecommendation = useSessionStore((s) => s.loadRecommendation)
   const votes = useSessionStore(selectVotes(groupId))
   const castVote = useSessionStore((s) => s.castVote)
-  const chooseRestaurant = useSessionStore((s) => s.chooseRestaurant)
   const isHost = useSessionStore(selectIsHost(groupId))
+  const members = useSessionStore(selectMembers(groupId))
   const byId = useRestaurantStore((s) => s.byId)
   const restaurantsLoaded = useRestaurantStore((s) => s.loaded)
   const loadRestaurants = useRestaurantStore((s) => s.load)
@@ -132,23 +136,40 @@ export function TopPicksPage() {
 
   const handleConfirm = async () => {
     if (activeId == null || confirming) return
-    chooseRestaurant(groupId, activeId)
     const sessionId = activeSessionId ?? session?.id ?? null
     if (sessionId != null) {
       setConfirming(true)
+      let closed = false
       try {
         await closeSession(sessionId, activeId)
-      } catch {
-        // Surface nothing fatal — the confirm is idempotent-ish (409 if already
-        // closed). Fall through to the completion screen regardless.
+        closed = true
+      } catch (err) {
+        // A 409 means the session was ALREADY closed (a retry, or another path won
+        // the race) — still a closed session, so treat it as success. Any other
+        // failure (offline / 5xx) left it open server-side; don't fake a local close.
+        if (isAxiosError(err) && err.response?.status === 409) closed = true
       } finally {
         setConfirming(false)
       }
+      // Close the session on THIS (host) client right away, rather than waiting for
+      // the session:confirmed socket broadcast to round-trip back (useSessionSync).
+      // That broadcast is unreliable on the deployed gateway: the host has already
+      // LEFT the group room to view results (useSocket's unmount emitted group:leave),
+      // and on a multi-instance deploy the per-user-room emit may not cross instances
+      // — so the host often never received it and the inline "Session complete" card
+      // stayed open until a full page reload. This is why it worked on localhost
+      // (single process, in-memory rooms) but not on Render. Mirror exactly what
+      // useSessionSync.handleConfirmed does for every other member: close() flips
+      // closed_at + phase:'complete', clearSessionStart() drops the inline card marker.
+      if (closed) {
+        useSessionStore.getState().close(groupId)
+        useGroupChatStore.getState().clearSessionStart(groupId)
+      }
     }
-    // Return to the group chat — where the confirmation SYSTEM message and the closed
-    // session card appear. Every other member is pulled here too via session:confirmed
-    // (useSessionSync), so the whole group lands in the same place. That state is
-    // derived from the recommendation/roster, so it needs no dedicated URL.
+    // Return to the group chat — where the confirmation SYSTEM message and the (now
+    // closed) session card state appear. Every other member is pulled here too via
+    // session:confirmed (useSessionSync). That state is derived from the
+    // recommendation/roster, so it needs no dedicated URL.
     navigate(`/groups/${groupSlug}`)
   }
 
@@ -178,15 +199,7 @@ export function TopPicksPage() {
               <Icon name="chevron-left" size={14} /> Back
             </button>
           </div>
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-text-muted">
-            <Spinner size="lg" className="text-primary-text" />
-            <div className="flex flex-col items-center gap-1 text-center">
-              <p className="text-body font-medium text-text">Finding the group's picks…</p>
-              <p className="max-w-xs text-caption text-text-muted">
-                Matching everyone's preferences, budget, and location. This can take a moment.
-              </p>
-            </div>
-          </div>
+          <PicksLoader members={members} groupName={groupName} />
         </div>
       </div>
     )

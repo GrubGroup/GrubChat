@@ -1,4 +1,4 @@
-"""Health endpoints: GET /health and /health/ready."""
+"""Health endpoint: GET /health (liveness probe used by fly.toml)."""
 
 from fastapi import APIRouter
 

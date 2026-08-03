@@ -12,6 +12,12 @@ export interface ExtractedSignals {
   disliked_cuisines: string[]
   budget_min: number | null
   budget_max: number | null
+  // True when the member said they're flexible on budget — a real ANSWER that
+  // drops their saved profile budget for this session. Server-derived from
+  // `budget_max === 0` (the NO_CAP sentinel; see @/utils/formatBudget), never a
+  // separate stored value, so read the number when in doubt. Null = the budget
+  // question hasn't been answered yet.
+  budget_flexible?: boolean | null
   // Session-scoped Qa signals. occasion is host-only (dropped for non-hosts
   // server-side). The event TIME is NOT here — it lives on Session.scheduled_for.
   occasion: string | null
@@ -80,12 +86,14 @@ export interface CreateSessionBody {
 }
 
 // A dining-history event as returned by GET /api/events (gateway `listEvents`).
-// The frontend's live Events tab renders these. Distinct from the mock
-// `EventLite` (presentation fixture) — this is the real API row shape.
+// The frontend's Events tab renders these — the real API row shape.
 export interface EventAttendee {
   id: number
   username: string
   display_name?: string | null
+  // Profile image, so the Events avatar matches the one shown in chat/roster
+  // (falls back to initials when null — see the Avatar component).
+  avatar_url?: string | null
   // True when this attendee has since deleted (deactivated) their account. The
   // Events UI greys out + marks their name with an X on UPCOMING events only.
   deactivated?: boolean
@@ -103,8 +111,12 @@ export interface EventRecord {
   time_slot?: string | null
   group_id?: number | null
   group_name?: string | null
+  // The booked restaurant's cuisine tags, read through the Event→Restaurant
+  // relation by the gateway's listEvents. Not stored on the Event row itself —
+  // it exists purely so the Events UI can pick a cuisine photo without loading
+  // the whole restaurant catalog. Absent → the neutral fallback pool.
+  cuisine_tags?: string[]
   // Participants who attended the session this event came from (gateway
-  // listEvents joins Event.attendees). Absent on legacy rows / mock fixtures
-  // that don't supply it.
+  // listEvents joins Event.attendees). Absent on legacy rows that don't supply it.
   attendees?: EventAttendee[]
 }
