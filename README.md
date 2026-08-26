@@ -21,7 +21,7 @@ A consumer-facing, "voice-first" web app where a group of friends each talk to t
 - **`backend/gateway/`** — Node.js + Express 4 + Socket.IO 4. Frontend-facing service: runs Better Auth (cookie sessions, email/password + Google OAuth), Socket.IO live group chat and session sync, Prisma (owns DB schema + migrations + pgvector extension), proxies AI requests to `ai_service`. Managed with **Bun**.
 - **`backend/ai_service/`** — Python 3.14 + FastAPI + SQLModel + asyncpg. The AI/data brain: LangGraph multi-agent pipeline (per-member preference agent → group orchestrator), RAG (Perplexity `pplx-embed-v1-0.6b` embeddings via OpenRouter + pgvector similarity search), LLM chat, and a cascaded STT→analyze→TTS voice loop. Read-side SQLModel mirror of the Prisma schema; also writes `Recommendation`/`RecommendationItem` + `Qa` rows and update-only `Profile` signals. Managed with **uv**.
 
-Deployment Website: **grubchat.xyz**
+Deployment Website: [grubchat.xyz](grubchat.xyz)
 
 ### Open-source libraries used
 
